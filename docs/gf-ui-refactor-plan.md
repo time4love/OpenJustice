@@ -365,7 +365,7 @@ lint` green from `apps/glass-fortress/frontend`; the first browser exercise of �
 the nav sheet from one control, the locale switch keeping the path, the banner, the footer on `/about` (a live page), no
 horizontal scroll; and every legacy page still served with one header (`/about`, `/researchers`, `/reports/new` read).
 
-**STATUS:** LANDED 2026-09-15 — PRs #490, #491, #492, `staging` `8b3e5c5`; the approved copy, the exercise scored, two entries 404 **AMENDED 2026-09-16:** the chrome becomes the three-pane shell, a step of its own before the re-briefed UI-5 — docs/gf-ui-design-session-2026-09-16.md §4.
+**STATUS:** LANDED 2026-09-15 — PRs #490, #491, #492, `staging` `8b3e5c5`; the approved copy, the exercise scored, two entries 404 **AMENDED 2026-09-16:** the chrome becomes the three-pane shell, a step of its own before the re-briefed UI-5 — docs/gf-ui-design-session-2026-09-16.md §4. It is **UI-4b, §9**; the re-briefs are §10.
 until UI-7 and UI-8. Findings: `docs/gf-ui-step-4-2026-09-15.md`.
 
 ### UI-5 · The public thesis page, the call page, the version page
@@ -887,7 +887,7 @@ Three rules of this plan's own, each named where it bites:
 - **The exercise is read from the DOM, never from a screenshot alone** (§6). A dated doc records what was measured — the
   scroll width, the context line's position, the state provoked — beside the picture.
 
-## 5. THE TEST INVENTORY — EVERY INSTRUMENT, ITS FILE, ITS STEP, AND WHAT IT HOLDS
+## 5. THE TEST INVENTORY — EVERY INSTRUMENT, ITS FILE, ITS STEP, AND WHAT IT HOLDS **AMENDED 2026-09-16:** UI-4b's six instruments are named in §9 and join this table in the step's landing PR.
 
 The frontend has no test today, so this inventory is what the plan CREATES; the backend's rows are the files the routes
 touch, tagged as the thesis plan's §5 tags them. **Instruments, by file** (the frontend's `test/`, unless marked backend):
@@ -944,7 +944,7 @@ hold nothing themselves and are exercised by the first instrument each serves.
 | `test/walk/retiredNames.test.ts` | extended, as at 11a | UI-3 | `/api/forensics` and `/api/stats` as sentences no file may say |
 | `test/markingLabelParity.test.ts`, `test/reportLabelParity.test.ts` | KEEP | — | the frontend's `marking` and report namespaces whole — the proof at UI-10 that the KEEP namespaces survived |
 
-## 6. VERIFICATION — WHAT "VERIFIED" MEANS AT EACH STEP
+## 6. VERIFICATION — WHAT "VERIFIED" MEANS AT EACH STEP **AMENDED 2026-09-16:** from UI-4b every page step is designed and approved as an IMAGE before its code, and its exercise sets the built page beside the approved board (`docs/gf-ui-design-session-2026-09-16.md`; §9, §10).
 
 As the refactor plan's §6 and the thesis plan's: a step is verified by its instruments green, each observed to fail on its
 decoy first; by `npm test`, `npm run build` and `npm run lint` green from the workspace it changed, by absolute path (the
@@ -1039,3 +1039,109 @@ unsteered run's transcript, after this plan) — are recorded where they are fir
 - **Copy is the slow gate.** UI-4, UI-5, UI-6, UI-7, UI-8 and UI-9 each wait on approved Hebrew; a step can be green in every
   instrument and not done. The brief for each says: draft every sentence first, in one message, and land nothing until
   the researcher's word on all of them.
+
+## 9. UI-4b · THE SHELL — the sidebar, the centre, the tabbed right pane, the Sheet, the tokens. Added 2026-09-16.
+
+Appended here rather than between UI-4 and UI-5 so that no existing line of this plan moves — §4 is cited by line from code. The
+step's number says where it belongs: after UI-4's chrome, before the re-briefed UI-5. Ruled by the researcher on 2026-09-16 with
+the UX design session (`docs/gf-ui-design-session-2026-09-16.md`).
+
+**Contract:** `docs/gf-ui-design-session-2026-09-16.md` §1.1–§1.3, §1.6 (the Sheet), §1.8 (the system), §3 (the amendments to §4, §14,
+§22, §30, §32 of the UI design), §4 (this step); the design canvas, page 1 (boards A–F) and page 7 (the system sheet) — the approved
+images this step is compared against; `docs/gf-ui-flows.md` §32 as amended (the sidebar IS the nav), §4 :167–:178 (no id as text — the
+sidebar's recents included), §8 (one read per page; a recents list is browser-local state, never a read), §39 (state and who may
+write it); UI-4's landed chrome (`SiteHeader`, `SiteNav`, the locale layout) as the "from"; §4 :880–:883 of this plan (bodies
+hand-written from the appendix — nothing here reads a body). Frontend only.
+
+**What lands.**
+
+- **The shell, mounted once** by `app/[locale]/layout.tsx`: a LEFT SIDEBAR, a CENTRE, a RIGHT PANE, a SPLITTER between the centre and
+  the right pane, and a drag edge on the sidebar. The sidebar is resizable and collapsible; the right pane is resizable; both widths and
+  the collapsed state are browser-local. No page renders chrome of its own; the centre is the page's `<main>` as every page already
+  renders it.
+- **The sidebar is the nav** (§32 amended): the name as TEXT at its top, no dove; the categories תזות and הארכיון, the archive with a
+  search icon leading to `/corpus/search`; under each category the items opened IN THIS BROWSER, newest-watched first, each named as a
+  person recognises it — a thesis by its claim's first words, a page by its domain and path, a record by „צילום · <date>” — never an
+  id; at the foot the public entries אודות · לחוקרים · the locale control, a signed-in researcher's מחקר and handle, an admin's ניהול,
+  exactly the set `nav-is-the-map` holds today, and הגנה only when the door flag is live. On a phone the sidebar is a drawer from the
+  menu control, as the nav is today.
+- **The right pane is a tab strip and an area**, empty on every route at this step: the tabs are declared by the page (UI-5's re-brief
+  declares the first ones, §10), the active tab is browser-local, the pane collapses to nothing when a page declares none. On a phone
+  the pane's content opens full-screen with a back control, one layer at a time.
+- **Two centres by URL, none by identity:** the shell chooses nothing; the route's page IS the centre. A source scan holds that nothing
+  under `components/shell` imports `AuthContext` except the sidebar's identity level, which is the nav's existing read.
+- **ONE Sheet primitive** (`components/Sheet.tsx`): Escape closes, focus is trapped while open and returned on close, the body's scroll
+  is locked, `role="dialog"` and `aria-modal` are set by it and by nothing else. The citation chip's portalled sheet moves onto it in
+  this step — the one existing sheet, so the primitive is proved on real content; every later sheet, dialog and drawer uses it.
+- **The tokens and the fonts:** the colour tokens of the session's §1.8 defined once in `globals.css` and used by name; no raw colour
+  outside the token block; Frank Ruhl Libre (already at `app/fonts/`) and Heebo, both self-hosted through `next/font/local`, the
+  serif for the researcher's words and headings, the sans for the chrome and the marks — the two voices' faces. The type scale of the
+  system sheet as CSS custom properties.
+- **The eight glyphs** in one file (`components/glyphs.tsx`), currentColor SVG on a 16 grid; no emoji anywhere under `src/` — a scan
+  with a decoy.
+- **Copy:** every label the sidebar and the shell add is drafted and approved before landing — the category name תזות, the two drag
+  handles' accessible names, the collapse control's — and the existing chrome strings are reused as they stand.
+- **No read, no write:** the shell issues no request; the recents list lives in `localStorage` under one key, written by the pages that
+  render a thesis, a page or a record, read by the sidebar.
+
+**Files.** NEW: `components/shell/Shell.tsx`, `Sidebar.tsx`, `RightPane.tsx`, `Splitter.tsx`; `components/Sheet.tsx`;
+`components/glyphs.tsx`; `lib/recents.ts`; `app/fonts/heebo-*.woff2`; `test/fixtures/shell/` (a recents list of the three kinds; an
+empty one; a page declaring two tabs; a page declaring none); the instrument files below. REWRITE in place: `app/[locale]/layout.tsx`
+(mounts the shell), `app/globals.css` (the tokens, the scale, the shell's primitives), `components/thesis/CitationChip.tsx` (its
+sheet onto `Sheet`), `components/SiteNav.tsx` (its list and level function become the sidebar's — one list, moved, not copied),
+`messages/*.json` (`common.nav`, `common.chrome`). RETIRE here (replaced in place, tagged): `components/SiteHeader.tsx`. KEEP,
+`git diff` empty: every page under `app/[locale]`, `components/thesis/*` but the chip, `lib/api.ts`, `lib/doors.ts`,
+`context/AuthContext.tsx`, every backend file.
+
+*Verified by:* the instruments green, each observed red on its decoy first — `nav-is-the-map` re-pointed at the sidebar (the set and
+order per identity unchanged; a decoy entry caught), `recents-are-local` (a source scan: nothing under `components/shell` or
+`lib/recents.ts` fetches or reads a route; a render over the fixture shows the claim's words, the domain and path, „צילום · <date>”
+and no 64-hex, cuid or 14-digit string — `no-id-as-text` gains the sidebar; a decoy id caught), `two-centres-by-url` (no
+`AuthContext` import in the shell but the sidebar's level; a decoy import caught), `sheet-primitive` (Escape closes, focus trapped and
+returned, in jsdom; a scan that no other file under `components` carries `role="dialog"` or `aria-modal` — a decoy caught),
+`tokens-only` (no raw hex or named colour under `src/` outside `globals.css`; a decoy caught), `no-emoji` (a decoy caught),
+`shell-mounted-once` (the layout mounts it; no page imports it); `name-never-glass-fortress`, `messages-parity`, `bidi-isolated`
+still green; `npm test`, `npm run build`, `npm run lint` green. The six new instruments join §5's inventory in the step's landing PR.
+On staging, in the dated doc, at 375 and at 1440: the shell on every route with the landed thesis page in the centre; the recents
+after opening the thesis and its page; the drawer on the phone; the citation sheet closing on Escape with focus returned;
+`document.fonts.check` true for both faces; **the rendered shell set beside canvas page 1 boards A, B, D and E, screenshot beside
+screenshot, the DOM measured for what the boards fixed (the element order, the widths, the tokens), and the researcher's reading of
+the comparison recorded verbatim.**
+
+**STATUS:** OPEN. Closes with `docs/gf-ui-step-4b-<date>.md`: the approved copy, the fonts' sizes, the comparison against the
+boards, the exercise.
+
+## 10. THE RE-BRIEFS OF UI-5 TO UI-9 AGAINST THE DESIGN CANVAS — 2026-09-16
+
+Each block amends its step's *What lands* for the shell and the approved boards; everything a block does not name stands as the
+step says. The binding image is the canvas page; the binding words are `docs/gf-ui-design-session-2026-09-16.md`. A step's DEV brief
+cites the step's body AND its block here; where they disagree, the block wins, dated.
+
+**UI-5, pages 1–3.** The thesis page renders in the centre under the shell: the preface FOLDED to one line that opens (document
+order unchanged); the claim, the provision, the byline with the COPY; the TICK LINE of the cited captures under the byline; the text
+with each citation a DATED TICK carrying one status dot, the marks' words in the record; one card leading to the call page — region 4,
+the appeals, is gone (R56); the case, the history, the pages and VERIFY as folds, closed; the short disclaimer last. The citation
+record, the call page and a previous version open as RIGHT-PANE TABS at width and full-screen on the phone, on the Sheet of UI-4b.
+The call page is the legacy shape (page 3, board A) and the letter its dialog (board B) with the six ruled decisions; „קריאה לעדים”
+muted when `appeals.call` is empty. `theses.sheet.capture` renamed to „צילום”. `statement-and-disclaimer-first` holds document
+order, not the fold; `no-id-as-text` gains the tick and the tabs. Copy to approve first: the state tabs, „להכנת המכתב”, „…ועוד N”.
+
+**UI-6, page 1 board A and page 6 board D.** The door is the centre's EMPTY state: the dove and the glow above the name, the
+approved lede, the thesis cards, the three entries, the short disclaimer; the sidebar shows nothing under its categories until
+something is opened. No animation anywhere but here.
+
+**UI-7, page 4.** The chronology opens on the PAGE CARD with the TIME STRIP — captures as dots, cited captures ringed, diffs as bars
+by chunk count — which is also the scrubber; the stream oldest-first under month headers, a capture a thin row, a diff a card with
+removed/added bars and the labelled opinion clamped; a record opened from a row is a right-pane tab. A SEARCH page
+`/corpus/search?phrase=` over the existing route, one row per capture, present or absent in the stored text. The claims lens with a
+run strip per claim and the claim's sheet on the right. The capture page whole with the second witness and the chain check; the diff
+page with the two texts side by side and the chunks marked where they stand. Hebrew names for the classifier's `categories`. Copy to
+approve first: the lens names, the filter chips, the six drafted sentences of page 4.
+
+**UI-8, page 1 board C and page 5.** The event stream is the centre; §11's state segments are the RIGHT-PANE TABS (התזה · ציטוטים ·
+פערים · ניתוח · מסגור · פניות לציבור); the eleven kinds render with the eight glyphs of UI-4b, the gap decision in both shapes, every
+model field inside the labelled container with the model and prompt version beside the label, every verdict a mark beside its
+sentence; the owed strip above the stream. Copy to approve first: the owed line, the tab names.
+
+**UI-9, page 6.** `/about` with the dove at its head and the six sections of §34 in the researcher's approved words; `/safety` the
+three lines; `/researchers` with the two corrected sentences and the MCP URL from the deployment. Copy to approve first: all of it.
