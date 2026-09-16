@@ -376,7 +376,7 @@ text; the COPY control and the VERIFY disclosure); §8 :329–:342; A1 :976–:9
 A5 :1565–:1570 as amended (the bodies); T6 :898–:901 (the history's diff, the frontend's one computation) and :915–:918
 (the notice); COMPLIANCE.md :82–:99 (rule 5's statement; the disclaimer verbatim in both languages); document plan
 :506–:509 (the intake-down window — no door drawn); thesis plan :327 (the DoD line this step closes) and :331–:332 (the
-hazard: a page against a route not landed — UI-3 is landed). Frontend only; the routes are UI-3's.
+hazard: a page against a route not landed — UI-3 is landed). Frontend, and one backend field (`provisionTitle`, ruled 2026-09-16); the routes are UI-3's.
 
 **What lands.**
 
@@ -439,7 +439,7 @@ a call body, `{ live: false }` — each written from A5, none from the backend's
 RETIRE at UI-10: `CitationSheet.tsx`, `TipTapRenderer.tsx`, `ThesisProvenancePanel.tsx`, `ThesisPublicationPanel.tsx`,
 `ThesisVersionHistory.tsx`, `FoiaModal.tsx`, `WhistleblowerModal.tsx`, `lib/thesisDocument.ts`, `lib/citations.ts`,
 `lib/documentVault.ts`, the four `@tiptap/*` dependencies. KEEP, `git diff` empty: `context/AuthContext.tsx`, `lib/session.ts`,
-`lib/stagingApiAuth.ts`, the layout of UI-4, every backend file.
+`lib/stagingApiAuth.ts`, the layout of UI-4, every backend file but `services/publishedThesis.ts` and the one case.
 
 *Verified by:* the eight instruments green, each observed to fail first by its decoy — `statement-and-disclaimer-first` (the
 first two content elements of `<main>` on both pages; a fixture without a statement renders the disclaimer first and nothing

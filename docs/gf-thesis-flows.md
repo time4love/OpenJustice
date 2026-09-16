@@ -1566,7 +1566,7 @@ GET /api/thesis/:id                the PUBLISHED version resolved as T5's page s
                                    text, each mention resolved with its pin, VERIFIED and FLAGGED,
                                    the appeals, the rationale, the history of published versions,
                                    the withdrawal notice when PUBLISHED(t) is none and a
-                                   Withdrawal exists; 404 only for a thesis never published; the one source of the public-interest statement a call page shows (COMPLIANCE.md rule 5, 2026-09-14); `pages` carries `trackedUrlId` beside `url` — amended by docs/gf-ui-flows.md §6 (2026-09-15)
+                                   Withdrawal exists; 404 only for a thesis never published; the one source of the public-interest statement a call page shows (COMPLIANCE.md rule 5, 2026-09-14); `pages` carries `trackedUrlId` beside `url` — amended by docs/gf-ui-flows.md §6 (2026-09-15); `provisionTitle` beside `provision`, the table entry’s title (A1 :1251–:1254), null when none — amended by docs/gf-ui-refactor-plan.md UI-5 (2026-09-16)
 GET /api/thesis/:id/versions/:v    a version that was ever published — the history's reads; while the thesis is withdrawn every version, and after it a version named by a Withdrawal, answers the notice, never its text (2026-09-14)
 ```
 
