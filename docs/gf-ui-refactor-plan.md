@@ -1104,11 +1104,11 @@ returned, in jsdom; a scan that no other file under `components` carries `role="
 still green; `npm test`, `npm run build`, `npm run lint` green. The six new instruments join §5's inventory in the step's landing PR.
 On staging, in the dated doc, at 375 and at 1440: the shell on every route with the landed thesis page in the centre; the recents
 after opening the thesis and its page; the drawer on the phone; the citation sheet closing on Escape with focus returned;
-`document.fonts.check` true for both faces; **the rendered shell set beside canvas page 1 boards A, B, D and E, screenshot beside
+`document.fonts.check` true for both faces **— AMENDED 2026-09-17 (F8, the researcher's ruling): the SERIF half of that reading MOVES TO UI-5. Measured on `1dc1231`: both Frank Ruhl Libre faces report `unloaded` and check FALSE, because NOTHING APPLIES `--font-serif` — 182 elements under `main` resolve to the sans, 7 to the mono, ZERO to the serif, and no rule outside `:root` names it. The faces are in the tree, self-hosted and correct; no glyph has yet rendered in one. Every page that would apply the serif is KEEP at UI-4b. Both HEEBO faces DO load and check true here.**; **the rendered shell set beside canvas page 1 boards A, B, D and E, screenshot beside
 screenshot, the DOM measured for what the boards fixed (the element order, the widths, the tokens), and the researcher's reading of
 the comparison recorded verbatim.**
 
-**STATUS:** OPEN. Closes with `docs/gf-ui-step-4b-<date>.md`: the approved copy, the fonts' sizes, the comparison against the
+**STATUS:** **CLOSED 2026-09-17 — `docs/gf-ui-step-4b-2026-09-17.md`** (#500 → `staging` `1dc1231`; frontend deploy SUCCESS, backend SKIPPED, drift clean). The record carries the approved copy and its freeze sha, the four faces' measured coverage, both seats' decoys, the five defects only a browser found, the canvas comparison with the researcher's reading verbatim, the exercise 11 HIT · 1 MISS · 1 limit, **F8 — the serif applied to nothing, ruled (b) and moved to UI-5** — and the reading test's FAILURE in the researcher's own words. Closed with `docs/gf-ui-step-4b-<date>.md`: the approved copy, the fonts' sizes, the comparison against the
 boards, the exercise.
 
 ## 10. THE RE-BRIEFS OF UI-5 TO UI-9 AGAINST THE DESIGN CANVAS — 2026-09-16
@@ -1124,7 +1124,7 @@ the appeals, is gone (R56); the case, the history, the pages and VERIFY as folds
 record, the call page and a previous version open as RIGHT-PANE TABS at width and full-screen on the phone, on the Sheet of UI-4b.
 The call page is the legacy shape (page 3, board A) and the letter its dialog (board B) with the six ruled decisions; „קריאה לעדים”
 muted when `appeals.call` is empty. `theses.sheet.capture` renamed to „צילום”. `statement-and-disclaimer-first` holds document
-order, not the fold; `no-id-as-text` gains the tick and the tabs. Copy to approve first: the state tabs, „להכנת המכתב”, „…ועוד N”.
+order, not the fold; `no-id-as-text` gains the tick and the tabs. Copy to approve first: the state tabs, „להכנת המכתב”, „…ועוד N”. **AMENDED 2026-09-17: UI-5 also APPLIES `--font-serif` — the claim at 24/22 FRL 700 and the researcher's words at 17/16 at 1.75, §1.8's two voices — and OWES the reading UI-4b could not give: `document.fonts.check` true for BOTH Frank Ruhl Libre faces on a page that actually uses them (F8). It carries THE TYPE SCALE with them, measured wrong on `1dc1231` (the claim Heebo 24 px/600, the researcher's words **14 px** where the design says 17). And it RE-RUNS THE READING TEST, whose answer at UI-4b was the researcher's own: „currently it is not clear”.**
 
 **UI-6, page 1 board A and page 6 board D.** The door is the centre's EMPTY state: the dove and the glow above the name, the
 approved lede, the thesis cards, the three entries, the short disclaimer; the sidebar shows nothing under its categories until
