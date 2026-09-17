@@ -161,6 +161,25 @@ html, body {
     direction: rtl;
     display: flex;
     flex-direction: column;
+    /* THE CENTRE MUST SCROLL. At `md` the shell is `height: 100dvh; overflow: hidden`, and the pane, the
+       drawer and the sheet each declare a scroll of their own — the CENTRE ALONE did not, so a page
+       taller than the viewport was cut off with nothing to scroll.
+
+       MEASURED ON THE DEPLOYED PAGE (staging `b9d689f`, run B's published thesis, 1440x900): the centre
+       was 3,368px inside a 900px box, overflowing by 2,521px, while the document could scroll only
+       1,441px — leaving 1,080px UNREACHABLE BY ANY MEANS. Five of `<main>`'s eleven children could not
+       be reached at all: the publication rationale, the published versions, THE PAGES (the
+       counterweight), the VERIFY disclosure, and the SHORT LEGAL DISCLAIMER, which COMPLIANCE.md
+       requires on every thesis page. Each was present in the DOM — which is why every instrument was
+       green over it — and none could be arrived at.
+
+       The phone was never affected: at 375 the shell is a column with `min-height`, the centre
+       overflowed by 0 and the document scrolled 4,637px.
+
+       UI-4b could not see it although its exercise DID run at 1440 on this very page: every reading it
+       took was an element query or a computed style, and not one read a scroll dimension.
+       A VIEWPORT IS NOT AN INSTRUMENT. */
+    overflow-y: auto;
   }
 
   .shell-pane {
