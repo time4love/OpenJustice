@@ -887,7 +887,7 @@ Three rules of this plan's own, each named where it bites:
 - **The exercise is read from the DOM, never from a screenshot alone** (§6). A dated doc records what was measured — the
   scroll width, the context line's position, the state provoked — beside the picture.
 
-## 5. THE TEST INVENTORY — EVERY INSTRUMENT, ITS FILE, ITS STEP, AND WHAT IT HOLDS **AMENDED 2026-09-16:** UI-4b's six instruments are named in §9 and join this table in the step's landing PR.
+## 5. THE TEST INVENTORY — EVERY INSTRUMENT, ITS FILE, ITS STEP, AND WHAT IT HOLDS **AMENDED 2026-09-16:** UI-4b's six instruments are named in §9 and join this table in the step's landing PR. **JOINED 2026-09-17, named here rather than as rows because a row added inside this table moves every `:line` citation below it:** `nav-is-the-map` re-pointed at the sidebar (`navIsTheMap.test.tsx`, UI-4b) · `recents-are-local` (`recentsAreLocal.test.tsx`) · `two-centres-by-url` and `shell-mounted-once` (`shell.test.tsx`) · `sheet-primitive` (`sheetPrimitive.test.tsx`) · `tokens-only` (`tokensOnly.test.ts`) · `no-emoji` (`noEmoji.test.ts`) · `fonts-are-local` (`fontsAreLocal.test.ts`) — SEVEN instruments in seven files, which §9 counts as six because `shell.test.tsx` holds two; and `no-id-as-text` gains the sidebar as a subject.
 
 The frontend has no test today, so this inventory is what the plan CREATES; the backend's rows are the files the routes
 touch, tagged as the thesis plan's §5 tags them. **Instruments, by file** (the frontend's `test/`, unless marked backend):
@@ -1128,7 +1128,7 @@ order, not the fold; `no-id-as-text` gains the tick and the tabs. Copy to approv
 
 **UI-6, page 1 board A and page 6 board D.** The door is the centre's EMPTY state: the dove and the glow above the name, the
 approved lede, the thesis cards, the three entries, the short disclaimer; the sidebar shows nothing under its categories until
-something is opened. No animation anywhere but here.
+something is opened. No animation anywhere but here. **AMENDED 2026-09-17:** the door's field is the dark `--door-field` `#0F172A` — UI-6 lands it as a token in `globals.css` and takes `app/[locale]/page.tsx` off `tokens-only`'s allow-list; the dove, the glow and the light animation are drawn ON that field, and the animation honours `prefers-reduced-motion`.
 
 **UI-7, page 4.** The chronology opens on the PAGE CARD with the TIME STRIP — captures as dots, cited captures ringed, diffs as bars
 by chunk count — which is also the scrubber; the stream oldest-first under month headers, a capture a thin row, a diff a card with

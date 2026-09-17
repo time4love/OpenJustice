@@ -3,20 +3,27 @@
     "appName": "צדק לעם - תיק הקורונה",
     "operational": "פעיל",
     "nav": {
-      "home": "הבית",
       "corpus": "הארכיון",
       "about": "אודות",
       "safety": "הגנה",
       "researchers": "לחוקרים",
       "research": "מחקר",
       "admin": "ניהול",
-      "figures": "דמויות"
+      "figures": "דמויות",
+      "theses": "תזות"
     },
     "chrome": {
       "navLabel": "ניווט ראשי",
       "openNav": "פתיחת התפריט",
       "closeNav": "סגירת התפריט",
-      "otherLocale": "English"
+      "otherLocale": "English",
+      "search": "חיפוש בארכיון",
+      "sidebarResize": "שינוי רוחב התפריט",
+      "paneResize": "שינוי רוחב החלונית",
+      "collapse": "קיפול התפריט",
+      "expand": "הרחבת התפריט",
+      "panelLabel": "לשוניות החלונית",
+      "back": "חזרה"
     },
     "footer": {
       "source": "קוד המקור של האתר פתוח לציבור"

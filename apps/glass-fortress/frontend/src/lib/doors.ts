@@ -6,7 +6,7 @@
  * the intake instruction as TEXT and draw no door — a page that pointed at a channel which is not open would be
  * asking the public to send documents nobody can receive.
  *
- * Read by: `components/SiteNav.tsx`' `/safety` entry (§32 :808 "when live"), UI-6's door card, and
+ * Read by: `components/shell/Sidebar.tsx`' `/safety` entry (§32 :808 "when live"), UI-6's door card, and
  * `test/noDoorBeforeItExists.test.tsx`. Typed `boolean`, not the literal, so a reader's condition is a real one.
  */
 export const DOORS_OPEN: boolean = false;

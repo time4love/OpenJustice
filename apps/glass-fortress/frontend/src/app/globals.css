@@ -1,22 +1,99 @@
 @import "tailwindcss";
 
-@theme inline {
-  --color-background: #f8fafc;
-  --color-foreground: #0f172a;
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* ---------------------------------------------------------------------------
+   THE SYSTEM — docs/gf-ui-design-session-2026-09-16.md §1.8, drawn on canvas page 7.
+
+   THE ONE PLACE A RAW COLOUR BELONGS. Every colour of the system is defined here, once, and used by name
+   everywhere else; `test/tokensOnly.test.ts` holds that no file under `src/` carries a raw hex or a named
+   palette utility outside this file and outside its dated, shrinking allow-list.
+
+   The rule the palette encodes: INK for actions, colour only for MEANING. Four meaning colours and no more —
+   olive and seal red are not "good" and "bad" but ADDED and REMOVED, PRESENT and ABSENT, VERIFIED and
+   WITHDRAWN.
+   --------------------------------------------------------------------------- */
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  /* The chrome's one row: the sticky line and the sheet sit against it. */
-  --chrome-height: 3.5rem;
+  /* The surfaces and the text */
+  --paper: #FAF7F1;          /* the page */
+  --paper-deep: #F3EEE4;     /* the sidebar */
+  --surface: #FFFFFF;        /* a card, a pane, a sheet */
+  --ink: #1F1B16;            /* text, actions, the primary button */
+  --ink-muted: #6B6157;      /* labels, meta, the disclaimer */
+  --line: #E4DCCF;           /* every border and divider */
+
+  /* The four meaning colours */
+  --olive: #4F6B3A;          /* verified against the anchor · added · present */
+  --gold: #B08D3B;           /* the anchor · the seal · publication */
+  --amber: #B7791F;          /* flagged · missing · draft */
+  --seal-red: #A8322A;       /* removed · absent · withdrawal */
+
+  /* The two in-text tints, for a changed passage */
+  --olive-tint: #dee8d3;
+  --seal-tint: #f5dad7;
+
+  /* THE TWO VOICES, as two faces each — see app/[locale]/layout.tsx for why there are four files.
+     The HEBREW subset comes first in each stack and the LATIN one immediately after it: CSS font fallback is
+     per GLYPH, and neither Hebrew subset maps a single digit, so „בצילום מ-28.6.2022” takes its letters from
+     the first face and its digits from the second. Reversing the order silently changes which face draws a
+     digit inside a Hebrew heading. */
+  --font-serif: var(--font-frank-hebrew), var(--font-frank-latin), 'Times New Roman', serif;
+  --font-sans: var(--font-heebo-hebrew), var(--font-heebo-latin), system-ui, sans-serif;
+  /* The values a reader checks — a document hash, a registry index, a citation token — are Latin and digits
+     only, so they need no shipped face of their own. */
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* THE TYPE SCALE (canvas page 7). Phone sizes are the second number where the scale has two. */
+  --text-claim: 1.5rem;          /* 24px, Frank Ruhl Libre 700, 1.35 */
+  --text-claim-compact: 1.375rem;/* 22px — in the right pane and on the phone */
+  --text-words: 1.0625rem;       /* 17px, Frank Ruhl Libre 400, 1.75 — the researcher's words */
+  --text-words-compact: 1rem;    /* 16px */
+  --text-record: 0.9375rem;      /* 15px, 1.7 — a sheet's and a record's body */
+  --text-label: 0.8125rem;       /* 13px — section headings (600), labels, meta, the context line */
+  --text-mark: 0.75rem;          /* 12px — marks, chips, tabs, the disclaimer */
+  --text-value: 0.71875rem;      /* 11.5px — a checkable value, LTR */
+
+  --leading-claim: 1.35;
+  --leading-words: 1.75;
+  --leading-record: 1.7;
+  --leading-disclaimer: 1.55;
+
+  /* The shell's own measurements (canvas page 7's closing line). The two widths are the INITIAL values; both
+     are resizable and browser-local from there. */
+  --sidebar-width: 268px;
+  --pane-width: 580px;
+  --splitter-width: 8px;
+  --reading-column: 42rem;       /* 672px */
+  --drawer-width: 300px;
+  --touch-target: 44px;
+  --chrome-height: 3.5rem;       /* the phone's top bar */
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-pill: 999px;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-deep: var(--paper-deep);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-line: var(--line);
+  --color-olive: var(--olive);
+  --color-gold: var(--gold);
+  --color-amber: var(--amber);
+  --color-seal-red: var(--seal-red);
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-mono: var(--font-mono);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-label);
 }
 
 /* Belt-and-suspenders: side-entrance reveal animations (framer-motion x
@@ -29,26 +106,271 @@ html, body {
   max-width: 100vw;
 }
 
-/* Scrollbar styling for the light theme */
 ::-webkit-scrollbar {
   width: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: var(--paper);
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--line);
   border-radius: 3px;
 }
 
-/* THE MOBILE-FIRST BASE (docs/gf-ui-flows.md §4 :152–:161; docs/gf-ui-refactor-plan.md UI-4). Primitives every page
-   step reuses, and nothing page-specific. The chrome calls .site-header, .chrome-name and .sheet from UI-4;
-   .page-column and .sticky-line are first called by UI-5's pages. */
+/* ---------------------------------------------------------------------------
+   THE SHELL (docs/gf-ui-refactor-plan.md §9; canvas page 1, boards A–F).
+
+   THE DIRECTION TRICK, which is the board's spelling and not an invention: the shell itself is `ltr` so that
+   flex-row lays its FIRST child against the left edge, and each pane flips back to `rtl` for its own content.
+   That is how a LEFT sidebar survives a right-to-left document. `row-reverse` would put it left too and would
+   reverse the pane order for a screen reader; this does not.
+
+   MOBILE FIRST (docs/gf-ui-flows.md §4): one column by default; the sidebar is a drawer; the pane's content
+   is a full-screen layer with a back control, one layer at a time. The three-pane shell begins at `md`.
+   --------------------------------------------------------------------------- */
 @layer components {
+  .shell {
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+    background: var(--paper);
+  }
+
+  .shell-sidebar {
+    display: none;
+    flex-direction: column;
+    gap: 2px;
+    padding: 14px 14px 14px 10px;
+    background: var(--paper-deep);
+    direction: rtl;
+    position: relative;
+    flex: none;
+  }
+
+  /* COLLAPSED: a RAIL exactly one touch target wide, holding only the control that expands it again.
+     Never zero — a zero-width sidebar clips its own expand control and the shell cannot be re-opened. */
+  .shell-sidebar-rail {
+    padding: 8px 0 0;
+    align-items: center;
+    gap: 0;
+  }
+
+  .shell-centre {
+    flex: 1;
+    min-width: 0;
+    direction: rtl;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .shell-pane {
+    background: var(--surface);
+    direction: rtl;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* The drag edge and the splitter: the same grip, 8px of hit area, a real resize cursor. */
+  .shell-grip {
+    width: 3px;
+    height: 36px;
+    border-radius: 2px;
+    background: var(--line);
+  }
+
+  .shell-splitter {
+    display: none;
+    width: var(--splitter-width);
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    cursor: col-resize;
+    background: var(--paper);
+    border: 0;
+    padding: 0;
+  }
+
+  .shell-edge {
+    position: absolute;
+    inset-inline-end: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--splitter-width);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: col-resize;
+    background: transparent;
+    border: 0;
+    padding: 0;
+  }
+
+  /* The sidebar's contents */
+  .shell-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-weight: 600;
+    font-size: var(--text-label);
+    line-height: 1.25;
+    color: var(--ink);
+  }
+
+  .shell-category {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: var(--text-mark);
+    font-weight: 600;
+    color: var(--ink-muted);
+    padding: 12px 8px 4px;
+  }
+
+  .shell-item {
+    font-size: var(--text-label);
+    line-height: 1.35;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    color: var(--ink);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+
+  .shell-item[aria-current='page'] {
+    background: var(--surface);
+    font-weight: 500;
+  }
+
+  .shell-foot {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+  }
+
+  .shell-foot .shell-item {
+    padding: 6px 8px;
+  }
+
+  /* An icon control: 44px of touch target on a phone, the board's 28 at width. */
+  .shell-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
+    border-radius: var(--radius-sm);
+    color: var(--ink-muted);
+    flex: none;
+    background: transparent;
+    border: 0;
+  }
+
+  /* The right pane's tab strip */
+  .shell-tabs {
+    display: flex;
+    flex-direction: row;
+    gap: 2px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line);
+    background: var(--paper);
+    flex: none;
+    overflow-x: auto;
+  }
+
+  .shell-tab {
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-label);
+    color: var(--ink-muted);
+    white-space: nowrap;
+    background: transparent;
+    border: 0;
+  }
+
+  .shell-tab[aria-selected='true'] {
+    background: var(--surface);
+    color: var(--ink);
+    font-weight: 600;
+    box-shadow: 0 0 0 1px var(--line);
+  }
+
+  .shell-pane-body {
+    flex: 1;
+    overflow: auto;
+    padding: 24px 28px;
+  }
+
+  /* The phone's top bar: the menu control, the name as TEXT, the locale control. */
+  .shell-topbar {
+    height: var(--chrome-height);
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface);
+  }
+
+  .shell-scrim {
+    position: fixed;
+    inset: 0;
+    background: rgb(31 27 22 / 38%);
+    z-index: 40;
+    border: 0;
+  }
+
+  .shell-drawer {
+    position: fixed;
+    /* LEFT, physically — not `inset-inline-start`, which resolves to the RIGHT in a Hebrew document and put
+       the drawer at x=75 on a 375px phone (measured in the local run). The shell is left-anchored by design
+       at every width and in both locales, which is the same reason `.shell` itself is `direction: ltr`. */
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--drawer-width);
+    z-index: 50;
+    box-shadow: 0 0 40px rgb(31 27 22 / 25%);
+    display: flex;
+    overflow-y: auto;
+  }
+
+  /* From `md` the three panes sit side by side and the phone's chrome disappears. */
+  @media (width >= 48rem) {
+    .shell {
+      flex-direction: row;
+      direction: ltr;
+      height: 100dvh;
+      overflow: hidden;
+    }
+    .shell-sidebar {
+      display: flex;
+      width: var(--sidebar-width);
+    }
+    .shell-splitter,
+    .shell-edge {
+      display: flex;
+    }
+    .shell-pane {
+      width: var(--pane-width);
+      flex: none;
+      border-inline-start: 1px solid var(--line);
+    }
+    .shell-topbar {
+      display: none;
+    }
+  }
+
   /* One column at any width, at the reading measure. */
   .page-column {
     width: 100%;
-    max-width: 42rem;
+    max-width: var(--reading-column);
     margin-inline: auto;
     padding-inline: 1rem;
   }
@@ -60,37 +382,17 @@ html, body {
     bottom: 0;
     max-height: 85dvh;
     overflow-y: auto;
-    background: var(--background);
+    background: var(--surface);
     border-start-start-radius: 1rem;
     border-start-end-radius: 1rem;
-    z-index: 40;
+    box-shadow: 0 0 40px rgb(31 27 22 / 25%);
+    z-index: 60;
   }
 
   /* The context line: under the chrome, never leaving the top. */
   .sticky-line {
     position: sticky;
-    top: var(--chrome-height);
-    z-index: 10;
-  }
-
-  /* The chrome's row: one fixed height, a solid ground (no backdrop filter, which would capture the fixed sheet). */
-  .site-header {
-    position: sticky;
     top: 0;
-    z-index: 30;
-    height: var(--chrome-height);
-    background: #fff;
-  }
-
-  /* The name inside that row: it never widens the row, and wraps to at most two lines before clamping. */
-  .chrome-name {
-    min-width: 0;
-    font-size: 0.875rem;
-    line-height: 1.2;
-    overflow-wrap: anywhere;
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    overflow: hidden;
+    z-index: 10;
   }
 }
