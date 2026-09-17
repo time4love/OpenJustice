@@ -42,6 +42,18 @@ const NAMES = [
   // `services/evidencePredicates.ts` on the ruling of 2026-09-09.
   'movedBetween',
   'whereChunksWent',
+  // R57 CHUNK 3'S TWO. `verifiedFor` and `flaggedFor` are the PLURAL FORMS, and the plural IS the
+  // implementation: the singulars `verified` and `flagged` now read their answer out of the map one of these
+  // returns. So VERIFIED's one importable symbol is spelled `verifiedFor` and FLAGGED's is `flaggedFor`, and
+  // until they were listed here this half forbade a second spelling of NOTHING — the same gap `publishable`
+  // had between step 12 and step 15, recorded below. The existing pattern needs no change: it anchors on
+  // `function <name>[<(]`, so `function verifiedFor(` matches its OWN entry and never `verified`'s.
+  //
+  // THE SECOND SPELLING THIS FORBIDS IS A REAL ONE. A batching fold written inside `publishedThesis.ts` —
+  // exactly what chunk 3 was told not to build — would be a second implementation of VERIFIED beside the
+  // predicate's, and evidence A6 :1219 calls that "the copy that drifts". The decoy plants it there.
+  'verifiedFor',
+  'flaggedFor',
   // AND `contains` IS DELIBERATELY NOT HERE. It is module-private, and this
   // scan's own sentence is "every predicate of A3 has ONE **importable**
   // symbol" — a helper nobody can import cannot be a second spelling anyone
@@ -690,6 +702,9 @@ describe('every predicate of A3 has ONE importable symbol', () => {
       'whereChunksWent',
       // Evidence step 15's — A3's PUBLISHABLE(m), every conjunct a CALL.
       'publishable',
+      // R57 chunk 3's — the plural forms, which ARE the implementation of VERIFIED and FLAGGED.
+      'verifiedFor',
+      'flaggedFor',
     ];
     const declared = built.filter((name) =>
       new RegExp(`function\\s+${name}\\s*[<(]`).test(predicates?.code ?? ''),

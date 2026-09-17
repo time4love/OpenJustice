@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { provisionTitleOf } from '../lib/provisions';
-import { chunksOf, pairName, resolveRecordByName, type ResolvedRecord } from './corpusReads';
-import { argued, EVER_PUBLISHED, flagged, verified } from './evidencePredicates';
+import { chunksOf, heldTextKey, heldTextsFor, pairName, recordsByName, type ResolvedRecord } from './corpusReads';
+import { argued, EVER_PUBLISHED, flaggedFor, verifiedFor, type FlagReport, type VerifiedReport } from './evidencePredicates';
 import type { PublicationMaterial } from './publicationAssessor';
 import { decisionsAtPublication, gapList, theCall, theRequests, trajectoryCurrent } from './thesisPredicates';
 import { resolveTrajectoryCitations } from './trajectoryCitation';
@@ -238,9 +238,32 @@ function publishedAtOf(attempts: readonly { versionId: string; createdAt: Date }
   return attempt.createdAt;
 }
 
+/**
+ * The citations of EVERY version named, by version id — ONE read for all of them.
+ *
+ * `historyOf` walks every ever-published version, and asking per version cost one query per version: a thesis
+ * published five times paid five round trips for a list one `in` answers. The map has an entry for every id
+ * asked for, so a version that cites nothing is an empty list rather than a missing key.
+ */
+async function citationRefsByVersion(versionIds: readonly string[]): Promise<Map<string, CitationRef[]>> {
+  const byVersion = new Map<string, CitationRef[]>(versionIds.map((id) => [id, []]));
+  if (versionIds.length === 0) return byVersion;
+  const select = { versionId: true, kind: true, name: true, contentVersionHash: true } as const;
+  // A SET OF ONE BY ITS KEY, as the predicates' plurals do: the same rows under the same columns, and the
+  // query every single-version caller has always made.
+  const only = versionIds.length === 1 ? versionIds[0] : undefined;
+  const mentions =
+    only === undefined
+      ? await prisma.thesisMention.findMany({ where: { versionId: { in: [...versionIds] } }, select })
+      : (await prisma.thesisMention.findMany({ where: { versionId: only }, select })).map((m) => ({ ...m, versionId: only }));
+  for (const m of mentions) {
+    byVersion.get(m.versionId)?.push({ kind: m.kind, name: m.name, pin: m.contentVersionHash });
+  }
+  return byVersion;
+}
+
 async function citationRefsOf(versionId: string): Promise<CitationRef[]> {
-  const mentions = await prisma.thesisMention.findMany({ where: { versionId }, select: { kind: true, name: true, contentVersionHash: true } });
-  return mentions.map((m) => ({ kind: m.kind, name: m.name, pin: m.contentVersionHash }));
+  return (await citationRefsByVersion([versionId])).get(versionId) ?? [];
 }
 
 /**
@@ -284,6 +307,26 @@ async function pageOf(thesisId: string): Promise<ThesisPage | WithdrawnNotice | 
   const pages = new Map<string, string>();
   const trajectoryIds = mentions.filter((m) => m.kind === 'TRAJECTORY').map((m) => m.name);
   const { resolved } = await resolveTrajectoryCitations(trajectoryIds);
+
+  // ONE PASS FOR THE WHOLE SET, and every one of these is a PLURAL THE PREDICATE'S OWN MODULE EXPORTS — never
+  // a fold written here. Evidence A7 :1302–:1303 gives each predicate one importable symbol and A6 :1219
+  // forbids a caller re-deriving it; a batching helper in this file would be a second spelling of VERIFIED and
+  // FLAGGED, which is what the one-symbol scan refuses. The trajectory half above has always been plural —
+  // this makes the evidence half the shape its neighbour already had, ten lines away in the same loop.
+  const evidenceMentions = mentions.filter((m) => m.kind !== 'TRAJECTORY');
+  const names = evidenceMentions.map((m) => m.name);
+  const records = await recordsByName(names);
+  const reports = await verifiedFor(names);
+  const flags = await flaggedFor(evidenceMentions.map((m) => m.id));
+  const held = await heldTextsFor(
+    evidenceMentions.flatMap((mention) => {
+      const record = records.get(mention.name);
+      // Only a CAPTURE citation names a held text; a DIFF's content is its stored chunks.
+      if (record?.diff !== null || mention.contentVersionHash === null) return [];
+      return [{ snapshotId: captureOf(record).id, textHash: mention.contentVersionHash }];
+    }),
+  );
+
   for (const mention of mentions) {
     if (mention.kind === 'TRAJECTORY') {
       const t = resolved.find((r) => r.id === mention.name);
@@ -294,12 +337,12 @@ async function pageOf(thesisId: string): Promise<ThesisPage | WithdrawnNotice | 
       );
       continue;
     }
-    const record = await resolveRecordByName(mention.name);
+    const record = records.get(mention.name) ?? null;
     if (record === null) {
       throw new Error(`publishedThesis: published version ${pin} cites #ev_${mention.name}, which no record of the corpus resolves.`);
     }
     pages.set(record.page.url, record.page.id);
-    citations.push(await evidenceCitation(thesis.id, mention, record));
+    citations.push(evidenceCitation(thesis.id, mention, record, reports, flags, held));
   }
 
   const handles = await handlesOf([thesis.createdById]);
@@ -330,12 +373,15 @@ async function historyOf(
   withdrawals: readonly { versionId: string; createdAt: Date }[],
 ): Promise<HistoryEntry[]> {
   const entries: HistoryEntry[] = [];
+  // ONE read for every version's citations — a withdrawn entry shows none, so only the others are asked for.
+  const citing = versions.filter((version) => newestWithdrawal(withdrawals, version.id) === undefined).map((version) => version.id);
+  const refs = await citationRefsByVersion(citing);
   for (const version of versions) {
     const publishedAt = publishedAtOf(attempts, version.id);
     const withdrawal = newestWithdrawal(withdrawals, version.id);
     entries.push(
       withdrawal === undefined
-        ? { versionId: version.id, contentHash: version.contentHash, publishedAt, citations: await citationRefsOf(version.id) }
+        ? { versionId: version.id, contentHash: version.contentHash, publishedAt, citations: refs.get(version.id) ?? [] }
         : { versionId: version.id, publishedAt, withdrawn: true, withdrawnAt: withdrawal.createdAt },
     );
   }
@@ -343,7 +389,14 @@ async function historyOf(
 }
 
 /** One EVIDENCE citation resolved as T5 :812–:817 lists it, each fact from its own predicate. */
-async function evidenceCitation(
+/**
+ * ONE citation's shape, over answers ALREADY READ — this function makes no query at all.
+ *
+ * It takes the three plurals' maps rather than awaiting three singulars, which is what turns eight queries per
+ * citation into none. It decides nothing differently: the pin, the record's shape, the two marks and the two
+ * facts are composed exactly as before.
+ */
+function evidenceCitation(
   thesisId: string,
   mention: {
     id: string;
@@ -352,13 +405,19 @@ async function evidenceCitation(
     debateSession: { status: string; recordFileHash: string; thesisId: string; promotedOverObjection: boolean } | null;
   },
   record: ResolvedRecord,
-): Promise<EvidenceCitation> {
+  reports: Map<string, VerifiedReport>,
+  flags: Map<string, FlagReport>,
+  held: Map<string, string>,
+): EvidenceCitation {
   const pin = mention.contentVersionHash;
   if (pin === null) {
     throw new Error(`publishedThesis: the EVIDENCE citation ${mention.id} carries no pin — the version write computes one for every record.`);
   }
-  const report = await verified(mention.name);
-  const flag = await flagged(mention.id);
+  const report = reports.get(mention.name);
+  const flag = flags.get(mention.id);
+  if (report === undefined || flag === undefined) {
+    throw new Error(`publishedThesis: no VERIFIED or FLAGGED for the citation ${mention.id} — both maps answer for every key asked.`);
+  }
   return {
     kind: 'EVIDENCE',
     name: mention.name,
@@ -367,7 +426,7 @@ async function evidenceCitation(
       record.diff === null
         ? { url: record.page.url, capture: captureOf(record).capture }
         : { url: record.page.url, before: record.diff.before.capture, after: record.diff.after.capture },
-    content: await pinnedContent(record, pin),
+    content: pinnedContent(record, pin, held),
     verified: report.evaluable
       ? {
           verified: report.verified,
@@ -392,7 +451,8 @@ function captureOf(record: ResolvedRecord) {
  * already loaded and through `chunksOf`, the one reader of stored chunks; a capture's text at the pin — the snapshot's
  * text when the pin is its current text, else the kept text version.
  */
-async function pinnedContent(record: ResolvedRecord, pin: string): Promise<EvidenceCitation['content']> {
+/** The pinned content, over texts ALREADY READ — pure, so the citation path reaches no delegate. */
+function pinnedContent(record: ResolvedRecord, pin: string, held: Map<string, string>): EvidenceCitation['content'] {
   const { diff } = record;
   if (diff !== null) {
     const version = diff.versions.find((v) => v.contentVersionHash === pin);
@@ -402,14 +462,11 @@ async function pinnedContent(record: ResolvedRecord, pin: string): Promise<Evide
     return { kind: 'DIFF', chunks: chunksOf(version.chunks, pairName(diff)).map((c) => ({ side: c.side, text: c.text })) };
   }
   const capture = captureOf(record);
-  const held =
-    capture.textHash === pin
-      ? await prisma.urlSnapshot.findUnique({ where: { id: capture.id }, select: { text: true } })
-      : await prisma.textVersion.findUnique({ where: { snapshotId_textHash: { snapshotId: capture.id, textHash: pin } }, select: { text: true } });
-  if (held === null) {
+  const text = held.get(heldTextKey(capture.id, pin));
+  if (text === undefined) {
     throw new Error(`publishedThesis: capture ${capture.capture} holds no text at the pin ${pin} — a pin names a text the walk kept.`);
   }
-  return { kind: 'CAPTURE', text: held.text };
+  return { kind: 'CAPTURE', text };
 }
 
 /**

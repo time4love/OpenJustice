@@ -120,6 +120,66 @@ export const DIFF_ROW = {
   contentVersions: [CURRENT_VERSION],
 };
 
+// ---------------------------------------------------------------------------
+// THE OTHER FOUR RECORDS THE THREE CAPTURES ALREADY IMPLY (R57 chunk 3).
+//
+// Three captures over one page are three CAPTURE records and three DIFF pairs — SIX distinct records, every
+// one derivable from constants already above. They exist so that a cost case can cite six records whose names
+// all DIFFER: a case that cites the same record six times is passed by a per-request memo, which resolves it
+// once and collapses every count while the N+1 is still there. That is the R41 lax-implementation shape
+// arriving through the fixture instead of through the code.
+//
+// THE NAMES ARE COMPUTED, NEVER TYPED — this file's own rule at :15–:18. `DIFF_NAME_VECTOR`
+// (`test/thesis/fixtures.ts` :82–:111) already pins `recordId`'s answer against a vector derived at a shell
+// outside the implementation, so these four inherit that proof rather than asserting a fresh one.
+//
+// Nothing above is edited and `seedCorpus` still seeds exactly what it seeded before: the cost case seeds its
+// own rows from these names (R56 §9-2, ruled (a)), because widening `seedCorpus` would move the world of
+// every suite that calls `seedThesis`.
+// ---------------------------------------------------------------------------
+
+export const AFTER_CAPTURE_NAME = recordId({
+  kind: 'CAPTURE',
+  url: URL,
+  capture: { waybackTimestamp: AFTER.waybackTimestamp, documentHash: AFTER.documentHash },
+});
+
+export const BETWEEN_CAPTURE_NAME = recordId({
+  kind: 'CAPTURE',
+  url: URL,
+  capture: { waybackTimestamp: BETWEEN.waybackTimestamp, documentHash: BETWEEN.documentHash },
+});
+
+export const DIFF_BEFORE_BETWEEN_NAME = recordId({
+  kind: 'DIFF',
+  url: URL,
+  before: { waybackTimestamp: BEFORE.waybackTimestamp, documentHash: BEFORE.documentHash },
+  after: { waybackTimestamp: BETWEEN.waybackTimestamp, documentHash: BETWEEN.documentHash },
+});
+
+export const DIFF_BETWEEN_AFTER_NAME = recordId({
+  kind: 'DIFF',
+  url: URL,
+  before: { waybackTimestamp: BETWEEN.waybackTimestamp, documentHash: BETWEEN.documentHash },
+  after: { waybackTimestamp: AFTER.waybackTimestamp, documentHash: AFTER.documentHash },
+});
+
+/** The pair BEFORE → BETWEEN, with a whole content version so `chunksOf` has something entire to read. */
+export const DIFF_ROW_BEFORE_BETWEEN = {
+  id: 'diff-before-between',
+  beforeSnapshot: BEFORE,
+  afterSnapshot: BETWEEN,
+  contentVersions: [{ ...CURRENT_VERSION, contentVersionHash: 'content-before-between', afterTextHash: BETWEEN.textHash }],
+};
+
+/** The pair BETWEEN → AFTER, the same shape. */
+export const DIFF_ROW_BETWEEN_AFTER = {
+  id: 'diff-between-after',
+  beforeSnapshot: BETWEEN,
+  afterSnapshot: AFTER,
+  contentVersions: [{ ...CURRENT_VERSION, contentVersionHash: 'content-between-after', beforeTextHash: BETWEEN.textHash }],
+};
+
 /** A stored anchor check, as `recordOnChainCheck` writes one at v2. */
 export function anchorCheck(
   subjectId: string,

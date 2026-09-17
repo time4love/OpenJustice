@@ -573,6 +573,21 @@ const CAPTURE_IDENTITY = {
   trackedUrl: { select: { url: true } },
 } as const;
 
+const EVIDENCE_IDENTITY_SELECT = {
+  fileHash: true,
+  kind: true,
+  snapshot: { select: CAPTURE_IDENTITY },
+  urlVersionDiff: {
+    select: {
+      beforeSnapshot: { select: CAPTURE_IDENTITY },
+      afterSnapshot: { select: CAPTURE_IDENTITY },
+    },
+  },
+} as const;
+
+/** The identity columns VERIFIED reads — one select, so the plural and its per-row judgement cannot drift. */
+type EvidenceIdentityRow = Prisma.EvidenceGetPayload<{ select: typeof EVIDENCE_IDENTITY_SELECT }>;
+
 /**
  * VERIFIED(e) = RECOMPUTABLE(e) AND, for every capture of the record,
  * ATTRIBUTED(documentHash) AND `anchoredHash = documentHash` (A3).
@@ -584,20 +599,72 @@ const CAPTURE_IDENTITY = {
  * lesson of the 2026-08-20 audit.
  */
 export async function verified(fileHash: string): Promise<VerifiedReport> {
-  const row = await prisma.evidence.findUnique({
-    where: { fileHash },
-    select: {
-      fileHash: true,
-      kind: true,
-      snapshot: { select: CAPTURE_IDENTITY },
-      urlVersionDiff: {
-        select: {
-          beforeSnapshot: { select: CAPTURE_IDENTITY },
-          afterSnapshot: { select: CAPTURE_IDENTITY },
-        },
-      },
-    },
+  const report = (await verifiedFor([fileHash])).get(fileHash);
+  if (report === undefined) throw new Error(`verified: verifiedFor answered nothing for ${fileHash} — the map is total by construction.`);
+  return report;
+}
+
+/**
+ * VERIFIED FOR A SET OF RECORDS — the IMPLEMENTATION, which `verified` above delegates to.
+ *
+ * TWO QUERIES, whatever the number of names: one for the evidence rows, one `storedAttributionFor` over every
+ * capture of every row. Asking one name at a time made a published body pay two round trips per citation for
+ * an answer two round trips give for all of them.
+ *
+ * THE PLURAL IS THE IMPLEMENTATION AND IT LIVES HERE, in the predicate's own module — evidence A7 :1302–:1303
+ * gives every predicate of A3 ONE importable symbol, and a batching helper written inside `publishedThesis.ts`
+ * would be a SECOND SPELLING of VERIFIED, which is exactly what the one-symbol scan exists to refuse.
+ *
+ * IT FOLDS THE READS AND CACHES NO PREDICATE. Every per-row judgement below — `recomputable`, `nameOf`, the
+ * three `evaluable: false` reasons, the attribution fold — is made exactly as the singular made it. A3
+ * :1060–:1063 licenses caching the stored OBSERVATION and never the predicate; nothing here is stored at all.
+ *
+ * The map answers for EVERY name asked, so the singular's lookup is total and a miss is a loud throw rather
+ * than an `undefined` that would read as a negative verdict.
+ */
+export async function verifiedFor(fileHashes: readonly string[]): Promise<Map<string, VerifiedReport>> {
+  const wanted = [...new Set(fileHashes)];
+  const reports = new Map<string, VerifiedReport>();
+  if (wanted.length === 0) return reports;
+
+  // A SET OF ONE IS READ BY ITS KEY. `findUnique` on the unique `fileHash` is the better query for one name —
+  // an indexed point lookup rather than a one-element `IN` — and it is the SAME row selected by the SAME
+  // columns, so no judgement below can tell the two apart. It also keeps every caller that asks about one
+  // record reading the delegate it has always read: three suites stub `evidence.findMany` locally for other
+  // query shapes (`publicPage`'s OR-form and the promoted-names list), and they are cases this chunk must
+  // leave green and unedited. DECLARED, because a reader is owed the reason a read has two shapes at all.
+  // `.at(0)` rather than `[0]`: it is typed `T | undefined` unconditionally, so this guard is a real one
+  // under both debt ratchets — the standing rule where `no-unnecessary-condition` and
+  // `noUncheckedIndexedAccess` disagree about reading an element.
+  const onlyName = wanted.length === 1 ? wanted.at(0) : undefined;
+  const rows =
+    onlyName !== undefined
+      ? await (async (fileHash: string) => {
+          const row = await prisma.evidence.findUnique({ where: { fileHash }, select: EVIDENCE_IDENTITY_SELECT });
+          // Keyed by the name ASKED FOR. The row is that name's by construction — it was fetched by it — and a
+          // read whose select omitted the column would otherwise key the map by `undefined` and answer nothing.
+          return row === null ? [] : [{ ...row, fileHash }];
+        })(onlyName)
+      : await prisma.evidence.findMany({ where: { fileHash: { in: wanted } }, select: EVIDENCE_IDENTITY_SELECT });
+  const byName = new Map(rows.map((row) => [row.fileHash, row]));
+
+  // ONE attribution read for every capture of every row — `storedAttributionFor` is already the plural its own
+  // comment describes ("ONE QUERY FOR THE WHOLE PAGE"), and this calls it once instead of once per record.
+  const everyCapture = rows.flatMap((row) => {
+    if (row.kind === 'CAPTURE') return row.snapshot === null ? [] : [row.snapshot.id];
+    const diff = row.urlVersionDiff;
+    return diff === null ? [] : [diff.beforeSnapshot.id, diff.afterSnapshot.id];
   });
+  const attribution = await storedAttributionFor(everyCapture);
+
+  for (const fileHash of wanted) {
+    reports.set(fileHash, verifiedFromRow(byName.get(fileHash) ?? null, attribution));
+  }
+  return reports;
+}
+
+/** One record's VERIFIED, over rows already read — the singular's exact judgement, unchanged. */
+function verifiedFromRow(row: EvidenceIdentityRow | null, attribution: Map<string, StoredAttribution>): VerifiedReport {
   // VERIFIED is a property of an EVIDENCE ROW — "RECOMPUTABLE(e) AND ∀ capture
   // …" — so a corpus record nobody promoted has no VERIFIED to report. That is
   // NOT_PROMOTED, and it is not `verified: false`: a record nobody selected has
@@ -634,7 +701,6 @@ export async function verified(fileHash: string): Promise<VerifiedReport> {
   const captures = after === null ? [before] : [before, after];
 
   const { recomputable: isRecomputable, expected } = recomputable(row.fileHash, record);
-  const attribution = await storedAttributionFor(captures.map((c) => c.id));
 
   const reported: CaptureAttribution[] = captures.map((c) => {
     const stored = attribution.get(c.id) ?? NEVER_CHECKED;
@@ -709,38 +775,98 @@ export interface FlagReport {
  * gate for the same reason.
  */
 export async function flagged(mentionId: string): Promise<FlagReport> {
-  const mention = await prisma.thesisMention.findUnique({
-    where: { id: mentionId },
-    select: {
-      name: true,
-      contentVersionHash: true,
-      thesisVersion: { select: { isPublished: { select: { id: true } } } },
-    },
-  });
-  const unflagged: FlagReport = { flagged: false, armsEvaluated: FLAG_ARMS_EVALUATED, reasons: [] };
-  if (mention?.thesisVersion.isPublished == null) return unflagged;
+  const report = (await flaggedFor([mentionId])).get(mentionId);
+  if (report === undefined) throw new Error(`flagged: flaggedFor answered nothing for ${mentionId} — the map is total by construction.`);
+  return report;
+}
 
-  const evidence = await prisma.evidence.findUnique({
-    where: { fileHash: mention.name },
+const FLAG_MENTION_SELECT = {
+  id: true,
+  name: true,
+  contentVersionHash: true,
+  thesisVersion: { select: { isPublished: { select: { id: true } } } },
+} as const;
+
+const FLAG_EVIDENCE_SELECT = {
+  fileHash: true,
+  status: true,
+  snapshot: { select: { textHash: true, textExtractionVersion: true } },
+  urlVersionDiff: {
     select: {
-      status: true,
-      snapshot: { select: { textHash: true, textExtractionVersion: true } },
-      urlVersionDiff: {
+      beforeSnapshot: { select: { textHash: true, textExtractionVersion: true } },
+      afterSnapshot: { select: { textHash: true, textExtractionVersion: true } },
+      contentVersions: {
         select: {
-          beforeSnapshot: { select: { textHash: true, textExtractionVersion: true } },
-          afterSnapshot: { select: { textHash: true, textExtractionVersion: true } },
-          contentVersions: {
-            select: {
-              contentVersionHash: true,
-              beforeTextHash: true,
-              afterTextHash: true,
-              diffVersion: true,
-            },
-          },
+          contentVersionHash: true,
+          beforeTextHash: true,
+          afterTextHash: true,
+          diffVersion: true,
         },
       },
     },
-  });
+  },
+} as const;
+
+type FlagMentionRow = Prisma.ThesisMentionGetPayload<{ select: typeof FLAG_MENTION_SELECT }>;
+type FlagEvidenceRow = Prisma.EvidenceGetPayload<{ select: typeof FLAG_EVIDENCE_SELECT }>;
+
+/**
+ * FLAGGED FOR A SET OF MENTIONS — the IMPLEMENTATION, which `flagged` above delegates to.
+ *
+ * TWO QUERIES, whatever the number of mentions: one for the mention rows, one for the evidence rows they name.
+ * As with VERIFIED, the plural lives in the predicate's OWN module because evidence A7 :1302–:1303 gives the
+ * predicate one importable symbol and evidence A6 :1219 forbids the checks re-deriving it — a fold written
+ * inside `publishedThesis.ts` would be the second spelling those clauses exist to refuse.
+ *
+ * Every arm is decided exactly as the singular decided it: `recordContentOf`, `currentVersionOf`,
+ * `citationCurrent` and the reason order are untouched, and `armsEvaluated` still reports the same arms. No
+ * verdict is stored or reused — the reads are folded, the predicate is not.
+ */
+export async function flaggedFor(mentionIds: readonly string[]): Promise<Map<string, FlagReport>> {
+  const wanted = [...new Set(mentionIds)];
+  const reports = new Map<string, FlagReport>();
+  if (wanted.length === 0) return reports;
+
+  // A set of one by its key, for the reason stated in `verifiedFor`: the same row, the same columns, and the
+  // delegate every single-mention caller has always read.
+  const onlyMention = wanted.length === 1 ? wanted.at(0) : undefined;
+  const mentions =
+    onlyMention !== undefined
+      ? await (async (id: string) => {
+          const row = await prisma.thesisMention.findUnique({ where: { id }, select: FLAG_MENTION_SELECT });
+          return row === null ? [] : [{ ...row, id }];
+        })(onlyMention)
+      : await prisma.thesisMention.findMany({ where: { id: { in: wanted } }, select: FLAG_MENTION_SELECT });
+  const byId = new Map(mentions.map((mention) => [mention.id, mention]));
+
+  // Only the names of mentions that are actually on a published version can reach an arm, so nothing else is
+  // read: an unpublished mention is unflagged before any evidence row is consulted, as it was before.
+  const names = [...new Set(mentions.filter((m) => m.thesisVersion.isPublished != null).map((m) => m.name))];
+  // A set of one by its key, for the reason `verifiedFor` states above.
+  const onlyEvidence = names.length === 1 ? names.at(0) : undefined;
+  const evidence =
+    names.length === 0
+      ? []
+      : onlyEvidence !== undefined
+        ? await (async (fileHash: string) => {
+            const row = await prisma.evidence.findUnique({ where: { fileHash }, select: FLAG_EVIDENCE_SELECT });
+            return row === null ? [] : [{ ...row, fileHash }];
+          })(onlyEvidence)
+        : await prisma.evidence.findMany({ where: { fileHash: { in: names } }, select: FLAG_EVIDENCE_SELECT });
+  const byName = new Map(evidence.map((row) => [row.fileHash, row]));
+
+  for (const mentionId of wanted) {
+    reports.set(mentionId, flaggedFromRows(byId.get(mentionId) ?? null, byName));
+  }
+  return reports;
+}
+
+/** One mention's FLAGGED, over rows already read — the singular's exact judgement, unchanged. */
+function flaggedFromRows(mention: FlagMentionRow | null, byName: Map<string, FlagEvidenceRow>): FlagReport {
+  const unflagged: FlagReport = { flagged: false, armsEvaluated: FLAG_ARMS_EVALUATED, reasons: [] };
+  if (mention?.thesisVersion.isPublished == null) return unflagged;
+
+  const evidence = byName.get(mention.name) ?? null;
   // A mention of a record with no evidence row is a draft's citation carried onto
   // a published version by nothing this design allows: PUBLISHABLE refuses it at
   // the gate. There is no record here to be withdrawn or to have moved.
