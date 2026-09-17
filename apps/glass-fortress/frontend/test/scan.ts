@@ -176,6 +176,40 @@ export function importsOf(file: string): Import[] {
   });
 }
 
+export interface CallOptions {
+  line: number;
+  /** Each option of the call's object-literal argument, by name, as the SOURCE of its value (`false`, `'swap'`, `[]`). */
+  options: Record<string, string>;
+}
+
+/**
+ * Every call of `callee` in a file, with its object-literal argument read as NODES — so a mention of an
+ * option inside a comment or a string is never counted as one. That distinction is not hypothetical: the
+ * first draft of `fonts-are-local` counted `adjustFontFallback: false` with a regex over the file's text and
+ * read FIVE, because the block comment above the calls explains why the option is there.
+ * Callers: `fonts-are-local` (UI-4b).
+ */
+export function callsOf(file: string, callee: string): CallOptions[] {
+  const source = parse(file);
+  const found: CallOptions[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === callee) {
+      const options: Record<string, string> = {};
+      const argument = node.arguments.at(0);
+      if (argument !== undefined && ts.isObjectLiteralExpression(argument)) {
+        for (const property of argument.properties) {
+          if (!ts.isPropertyAssignment(property)) continue;
+          options[property.name.getText(source)] = property.initializer.getText(source);
+        }
+      }
+      found.push({ line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1, options });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return found;
+}
+
 export interface JsxTag {
   /** An intrinsic element's tag — `html`, `a`, `form`. Components (capitalised or dotted) are not listed. */
   tag: string;
@@ -245,6 +279,139 @@ export function packageNameOf(specifier: string): string | null {
   if (isLocal(specifier) || specifier.startsWith('node:') || builtinModules.includes(specifier)) return null;
   const parts = specifier.split('/');
   return (specifier.startsWith('@') ? parts.slice(0, 2) : parts.slice(0, 1)).join('/');
+}
+
+/**
+ * THE ONE SHRINKING ALLOW-LIST, dated 2026-09-17 (UI-4b; the researcher's ruling on Q1/Q2).
+ *
+ * `tokens-only` and `no-emoji` state their properties over ALL of `src/` — that is what makes a file written
+ * tomorrow a subject by default, and it is why the subject set was NOT narrowed to the step's own files. The
+ * files below are the ones UI-4b does not rewrite and may not edit: pages and components that a later UI step
+ * rewrites or UI-10 retires. Every entry is asserted to EXIST and to still be an OFFENDER, so a file that is
+ * deleted, or that stops offending, forces its line out rather than decorating the list forever.
+ *
+ * IT ONLY SHRINKS. It is emptied at UI-10. `components/thesis/CitationChip.tsx` is the first entry to leave,
+ * at this step, because this step rewrites it.
+ *
+ * The subject set is `src/**` + `.ts`/`.tsx` and therefore EXCLUDES `src/app/globals.css`, which is the token
+ * block's own home and the one place a raw colour belongs.
+ *
+ * ONE LIST, TWO PREDICATES — so "this entry still offends" is asked against the UNION of them, never against
+ * one half. A file that carries only an emoji is on the list for `no-emoji` and has no raw colour; checking
+ * it against the colour predicate alone would call it stale and demand its removal, after which `no-emoji`
+ * would redden. Both predicates therefore live HERE, beside the list they define, and `offendersIn` is the
+ * one reader of both.
+ */
+export const NOT_YET_REWRITTEN: readonly string[] = [
+  'src/app/[locale]/about/page.tsx',
+  'src/app/[locale]/admin/page.tsx',
+  'src/app/[locale]/article-rules/[trackedUrlId]/[capture]/MarkingClient.tsx',
+  'src/app/[locale]/auth/callback/page.tsx',
+  'src/app/[locale]/call/[thesisId]/page.tsx',
+  'src/app/[locale]/call/page.tsx',
+  'src/app/[locale]/evidence/[id]/page.tsx',
+  'src/app/[locale]/evidence/page.tsx',
+  'src/app/[locale]/figures/page.tsx',
+  'src/app/[locale]/forensics/[trackedUrlId]/page.tsx',
+  'src/app/[locale]/forensics/page.tsx',
+  'src/app/[locale]/guide/[slug]/page.tsx',
+  'src/app/[locale]/guide/page.tsx',
+  'src/app/[locale]/login/page.tsx',
+  'src/app/[locale]/oauth/interaction/[uid]/OAuthInteractionClient.tsx',
+  'src/app/[locale]/opengraph-image.tsx',
+  'src/app/[locale]/page.tsx',
+  'src/app/[locale]/profile/page.tsx',
+  'src/app/[locale]/reports/new/page.tsx',
+  'src/app/[locale]/reports/patterns/page.tsx',
+  'src/app/[locale]/researchers/page.tsx',
+  'src/app/[locale]/safety/page.tsx',
+  'src/app/[locale]/submit/page.tsx',
+  'src/app/[locale]/theses/[id]/edit/page.tsx',
+  'src/app/[locale]/theses/page.tsx',
+  'src/app/[locale]/unlock/UnlockForm.tsx',
+  'src/app/[locale]/unlock/page.tsx',
+  'src/components/AuthGuard.tsx',
+  'src/components/AuthShell.tsx',
+  'src/components/CategoryBadges.tsx',
+  'src/components/ClaimBlock.tsx',
+  'src/components/CopyableCode.tsx',
+  'src/components/DebugConsolePanel.tsx',
+  'src/components/DiffCard.tsx',
+  'src/components/EmptyState.tsx',
+  'src/components/EvidenceHighlightCard.tsx',
+  'src/components/EvidenceTimeline.tsx',
+  'src/components/FloatingChatWidget.tsx',
+  'src/components/FoiaModal.tsx',
+  'src/components/GuideStatusBadge.tsx',
+  'src/components/HeroSection.tsx',
+  'src/components/LegalDisclaimer.tsx',
+  'src/components/PublicationBadge.tsx',
+  'src/components/SkeletonRows.tsx',
+  'src/components/StagingBanner.tsx',
+  'src/components/StrengthBadge.tsx',
+  'src/components/SurvivalChip.tsx',
+  'src/components/ThesisEditor.tsx',
+  'src/components/ThesisHighlightCard.tsx',
+  'src/components/ThesisProvenancePanel.tsx',
+  'src/components/ThesisPublicationPanel.tsx',
+  'src/components/ThesisVersionHistory.tsx',
+  'src/components/TierBadge.tsx',
+  'src/components/TipTapRenderer.tsx',
+  'src/components/TrajectoryPanel.tsx',
+  'src/components/WhistleblowerModal.tsx',
+  'src/components/thesis/Appeals.tsx',
+  'src/components/thesis/Banner.tsx',
+  'src/components/thesis/Byline.tsx',
+  'src/components/thesis/ContextLine.tsx',
+  'src/components/thesis/History.tsx',
+  'src/components/thesis/PlatformMark.tsx',
+  'src/components/thesis/ProvisionName.tsx',
+  'src/components/thesis/PublicInterestStatement.tsx',
+  'src/components/thesis/TheCase.tsx',
+  'src/components/thesis/ThePages.tsx',
+  'src/components/thesis/ThesisNotFound.tsx',
+  'src/components/thesis/VerifyDisclosure.tsx',
+  'src/components/thesis/WithdrawnNotice.tsx',
+  'src/lib/debugCapture.ts',
+  'src/lib/evidencePerspective.ts',
+  'src/lib/guide.ts',
+  'src/lib/investigativeCategories.ts',
+  'src/lib/markdownToReact.tsx',
+  'src/lib/reportEvidenceTiers.ts',
+];
+
+/** A raw hex colour: `#fff`, `#0f172a`, `#0f172aff`. */
+export const RAW_HEX = /#[0-9a-fA-F]{3,8}\b/;
+
+/** A Tailwind palette utility — a colour NAMED rather than a token USED. */
+export const NAMED_COLOUR =
+  /\b(text|bg|border|ring|from|to|via|fill|stroke|divide|placeholder|shadow|outline|accent|decoration)-(slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}\b/;
+
+/**
+ * A pictograph, OR an arrow / geometric shape / box-drawing character. BOTH halves are needed:
+ * `\p{Extended_Pictographic}` alone misses the arrows the legacy pages carry as text (`→ ← ↗`) and is FALSE
+ * for `✓` U+2713 and `✕` U+2715, which are Dingbats; the ranges alone miss `🔒` and `⚖`. Three honest counts
+ * of "emoji under src/" were produced from three different predicates while UI-4b was being sketched, and
+ * that pair of Dingbats was the whole difference — which is why the value is written once, here.
+ */
+export const PICTOGRAPH = /\p{Extended_Pictographic}|[\u2190-\u21FF\u2B00-\u2BFF\u25A0-\u25FF\u2500-\u257F\u2700-\u27BF]/u;
+
+/**
+ * What a file offends on, as the two kinds separately — read from its own STRINGS, so a comment is never an
+ * offence. `test/tokensOnly.test.ts` and `test/noEmoji.test.ts` each state their half; the staleness of an
+ * allow-list entry is asked against BOTH, because the list is shared.
+ */
+export function offendersIn(file: string): { colour: string[]; pictograph: string[] } {
+  const strings = stringsIn(join(FRONTEND, file));
+  return {
+    colour: strings
+      .filter((found) => RAW_HEX.test(found.text) || NAMED_COLOUR.test(found.text))
+      .map((found) => `${file}:${String(found.line)} ${found.text.trim().slice(0, 48)}`),
+    pictograph: strings.flatMap((found) => {
+      const hit = [...found.text].filter((character) => PICTOGRAPH.test(character));
+      return hit.length === 0 ? [] : [`${file}:${String(found.line)} ${[...new Set(hit)].join(' ')}`];
+    }),
+  };
 }
 
 /**

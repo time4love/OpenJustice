@@ -1,10 +1,10 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { CopyableCode } from '@/components/CopyableCode';
+import { Sheet } from '@/components/Sheet';
 import { domainOf, formatCaptureDate } from '@/lib/format';
 import type { Citation, EvidenceCitation, TrajectoryCitation } from '@/types/thesis';
 import { PlatformMark } from './PlatformMark';
@@ -58,7 +58,7 @@ function EvidenceSheet({ citation, pageId, source, locale }: { citation: Evidenc
   const verified = 'notEvaluable' in verdict ? null : verdict;
   return (
     <>
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-ink-muted">
         <bdi dir="ltr">{domainOf(citation.record.url)}</bdi> · <Interval record={citation.record} locale={locale} />
       </p>
       {citation.content.kind === 'CAPTURE' ? (
@@ -67,16 +67,16 @@ function EvidenceSheet({ citation, pageId, source, locale }: { citation: Evidenc
         <div className="space-y-2">
           {citation.content.chunks.map((chunk, index) => (
             <div key={`${chunk.side}-${String(index)}`}>
-              <p className="text-xs font-semibold text-slate-500">{chunk.side === 'before' ? t('before') : t('after')}</p>
+              <p className="text-xs font-semibold text-ink-muted">{chunk.side === 'before' ? t('before') : t('after')}</p>
               <ResearcherWords className="text-sm leading-relaxed">{chunk.text}</ResearcherWords>
             </div>
           ))}
         </div>
       )}
       {verified === null ? (
-        <p className="text-sm text-slate-600">{t('notEvaluable', { reason: 'notEvaluable' in verdict ? verdict.notEvaluable : '' })}</p>
+        <p className="text-sm text-ink-muted">{t('notEvaluable', { reason: 'notEvaluable' in verdict ? verdict.notEvaluable : '' })}</p>
       ) : (
-        <ul className="space-y-1 text-sm text-slate-600">
+        <ul className="space-y-1 text-sm text-ink-muted">
           {verified.captures.map((capture) => (
             <li key={capture.capture}>
               <bdi dir="ltr">{formatCaptureDate(capture.capture, locale)}</bdi> ·{' '}
@@ -87,13 +87,13 @@ function EvidenceSheet({ citation, pageId, source, locale }: { citation: Evidenc
         </ul>
       )}
       {citation.flag.flagged ? (
-        <ul className="space-y-1 text-sm text-amber-700">
+        <ul className="space-y-1 text-sm text-amber">
           {citation.flag.reasons.map((reason) => (
             <li key={reason}>{t(`flag.${reason}`)}</li>
           ))}
         </ul>
       ) : null}
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-ink-muted">
         {citation.argued ? t('argued') : null}
         {citation.argued ? ' · ' : ''}
         {t('overObjection', { answer: citation.overObjection ? t('yes') : t('no') })}
@@ -116,11 +116,11 @@ function EvidenceSheet({ citation, pageId, source, locale }: { citation: Evidenc
 function TrajectorySheet({ citation, source, locale }: { citation: TrajectoryCitation; source: string; locale: string }) {
   const t = useTranslations('theses.sheet');
   const marks = useTranslations('theses.marks');
-  if (!citation.resolves) return <p className="text-sm text-slate-600">{marks('trajectoryUnresolved')}</p>;
+  if (!citation.resolves) return <p className="text-sm text-ink-muted">{marks('trajectoryUnresolved')}</p>;
   return (
     <>
       <ResearcherWords className="text-sm leading-relaxed">{citation.claimText}</ResearcherWords>
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-ink-muted">
         <bdi dir="ltr">{domainOf(citation.url)}</bdi> · {t('transitions', { count: citation.transitions })}
       </p>
       <PlatformMark kind={citation.current ? 'trajectoryCurrent' : 'trajectoryStale'} />
@@ -163,11 +163,12 @@ export function CitationChip({ kind, name, source, citation, pageId, locale }: C
     <span data-chip={name} data-chip-kind={kind} className="inline-flex items-center">
       <button
         type="button"
+        id={`${id}-chip`}
         disabled={!openable}
         onClick={() => setOpen((was) => !was)}
         aria-expanded={openable ? open : undefined}
         aria-controls={openable ? id : undefined}
-        className="mx-0.5 inline-flex items-center gap-1 rounded border border-slate-300 px-1.5 py-0.5 text-xs text-slate-700 disabled:text-slate-500"
+        className="mx-0.5 inline-flex items-center gap-1 rounded border border-line px-1.5 py-0.5 text-xs text-ink disabled:text-ink-muted"
       >
         {label}
       </button>
@@ -182,25 +183,27 @@ export function CitationChip({ kind, name, source, citation, pageId, locale }: C
       {kind === 'trajectory' && isTrajectory(citation) && citation.resolves ? (
         <PlatformMark kind={citation.current ? 'trajectoryCurrent' : 'trajectoryStale'} />
       ) : null}
-      {/* PORTALLED to the document: the chip is INLINE inside a paragraph of the researcher's text, and a sheet
-          rendered there would be a block inside a `<p>` — which the browser re-parents and React then cannot
-          hydrate. It is also where a sheet over the page belongs (§4 :157–:158). */}
-      {/* A server render has no document; `open` is false until the reader presses, which is after hydration. */}
-      {open && citation !== undefined && typeof document !== 'undefined'
-        ? createPortal(
-            <div id={id} role="dialog" aria-modal="true" className="sheet space-y-2 p-4">
-              {isEvidence(citation) ? (
-                <EvidenceSheet citation={citation} pageId={pageId} source={source} locale={locale} />
-              ) : (
-                <TrajectorySheet citation={citation} source={source} locale={locale} />
-              )}
-              <button type="button" onClick={() => setOpen(false)} className="rounded border border-slate-300 px-2 py-1 text-xs">
-                {sheet('close')}
-              </button>
-            </div>,
-            document.body,
-          )
-        : null}
+      {/* ON THE ONE PRIMITIVE (UI-4b, §9 :1074–:1075). The portal, the `role`/`aria-modal`, Escape, the focus
+          trap, return-focus and the scroll lock are all `components/Sheet.tsx`' — this file keeps only WHAT
+          the sheet says. Until UI-4b the markup here claimed a modality it did not implement (R56's F1). */}
+      {/* The sheet is NAMED BY THE CHIP THAT OPENED IT — „corona.health.gov.il · 5.8.2022” — which is both what
+          a reader recognises and the one naming that adds no string: UI-4b's approved copy is eight labels for
+          the shell, and a sheet title is not among them. */}
+      <Sheet
+        id={id}
+        open={open && citation !== undefined}
+        onClose={() => setOpen(false)}
+        labelledBy={`${id}-chip`}
+      >
+        {citation === undefined ? null : isEvidence(citation) ? (
+          <EvidenceSheet citation={citation} pageId={pageId} source={source} locale={locale} />
+        ) : (
+          <TrajectorySheet citation={citation} source={source} locale={locale} />
+        )}
+        <button type="button" onClick={() => setOpen(false)} className="rounded border border-line px-2 py-1 text-xs">
+          {sheet('close')}
+        </button>
+      </Sheet>
     </span>
   );
 }

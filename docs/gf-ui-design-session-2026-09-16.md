@@ -26,7 +26,7 @@ compared against its predictions.
    ציטוטים · פערים · ניתוח · מסגור · פניות לציבור (§11's state segments become tabs). `/corpus` and `/corpus/search`: the
    stream or the results in the centre, the record opened from a row on the right.
 3. **The dove and the light animation live in the centre's EMPTY state** — the door, when nothing is selected — and never
-   in the sidebar, whose top is the name as text. The dove logo also heads `/about`, without the glow.
+   in the sidebar, whose top is the name as text. The dove logo also heads `/about`, without the glow. **AMENDED 2026-09-17: the door's field is DARK, not paper — the researcher, reading the built shell beside board A: „נראה טוב, שמור את הכחול והאנימציה כתיקון לעיצוב”. The warm light reads as light BECAUSE the field is dark, so the animation and the field are one decision, not two.**
 4. **„צילום”, never „לכידה”** — the researcher: „השתמש במילה ״צילום״ במקום במילה ״לכידה״ שנשמעת לא טבעית בעברית”. One
    landed string still says it (`theses.sheet.capture`); every corpus and record label says „צילום” from the start.
 5. **The preface is FOLDED.** The public-interest statement and the full disclaimer stay the first two elements of `<main>`
@@ -39,7 +39,7 @@ compared against its predictions.
    sheet on the phone, and ONE Sheet primitive with Escape, a focus trap and return-focus serves every sheet and modal.
 7. **The research stream** renders each of §11's eleven kinds as one row and one sheet; the gap decision has both shapes,
    REQUESTED and CALLED. The published body of run B carries `appeals.call = []` — the CALLED shape is drawn from the design.
-8. **The system:** paper `#FAF7F1` · sidebar `#F3EEE4` · surface `#FFFFFF` · ink `#1F1B16` · muted `#6B6157` · line `#E4DCCF`;
+8. **The system:** paper `#FAF7F1` · sidebar `#F3EEE4` · surface `#FFFFFF` · ink `#1F1B16` · muted `#6B6157` · line `#E4DCCF`; **AMENDED 2026-09-17: and ONE field colour, the door's alone — `--door-field` `#0F172A`. It is a SURFACE, not a meaning: it joins none of the four below, and no record, mark or state is ever drawn in it. It lands as a TOKEN in `globals.css` at UI-6, never as a utility class.**
    colour only for meaning — olive `#4F6B3A` verified·added·present, gold `#B08D3B` anchor·seal·publication, amber `#B7791F`
    flagged·missing·draft, seal red `#A8322A` removed·absent·withdrawal; actions are ink on paper. Frank Ruhl Libre (already in
    the repo, unused) for the researcher's words and headings, Heebo for the chrome and the marks; the claim 24/22 px, the

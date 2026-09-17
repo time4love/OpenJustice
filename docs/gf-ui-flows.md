@@ -812,7 +812,7 @@ THE NAV        public, in this order: הבית · הארכיון (`/corpus`) · 
 THE LOCALE     he default, en beside it, one control; the same URL under the other prefix (`routing.ts`).
 THE FOOTER     the open-source link · nothing that names a person. The disclaimer's short form is the LAST
                element of each page that renders a thesis or an appeal (§17.8, §20.6, §33.5), never the
-               footer's: a layout cannot know the page without a second list (UI plan UI-4, 2026-09-15).
+               footer's: a layout cannot know the page without a second list (UI plan UI-4, 2026-09-15). **AMENDED 2026-09-17: there is no footer element from UI-4b — the shell has no place for one. The open-source link moves to the SIDEBAR'S FOOT, beside אודות · לחוקרים · the locale control, and `nav-is-the-map`'s two footer cases move with it; the rule is unchanged, only its home.**
 THE BANNER     staging only: the environment named, as today (`StagingBanner`), because a reader on
                staging must never mistake it for the public site; production has none.
 RETIRED        the floating chat widget (§3) · the mission statistics (`/api/stats`, §6) · every nav
@@ -822,7 +822,7 @@ RETIRED        the floating chat widget (§3) · the mission statistics (`/api/s
 **Robots.** Staging disallows all, as today; production allows all. A public page's share metadata (title,
 description, image) is composed from the body — the claim, the statement — and names no person (§21).
 
-## 33. THE DOOR `/` — **AMENDED 2026-09-16:** the centre's empty state, the dove and the glow above the paragraph (docs/gf-ui-design-session-2026-09-16.md §1.3).
+## 33. THE DOOR `/` — **AMENDED 2026-09-16:** the centre's empty state, the dove and the glow above the paragraph (docs/gf-ui-design-session-2026-09-16.md §1.3). **AMENDED 2026-09-17:** the door's field is the dark `--door-field`, the one surface that is not paper; the light animation is the door's and stays.
 
 **The door is the published theses and one sentence about what this is.** `GET /api/thesis` (A4 :1427):
 each thesis a card — the claim as the heading · the provision · the author's handle · published <date> —
@@ -919,7 +919,7 @@ is a research act.
 |---|---|---|
 | every row of the corpus, evidence, thesis and document designs | their own writers, unchanged | any page, any route of this design — a route is a READ (§5) |
 | the marking DRAFT | the marking page (interaction A6) | any other page; it is CACHE, never a decision (thesis §2 :128–:132) |
-| a per-viewer convenience — the locale, the `mine`/`all` switch, a collapsed VERIFY, a scroll position | the browser, locally | the backend; no flow reads it, and a page renders correctly without it |
+| a per-viewer convenience — the locale, the `mine`/`all` switch, a collapsed VERIFY, a scroll position **— AMENDED 2026-09-17: and the shell's own, from UI-4b: the recents list under one `localStorage` key, the sidebar's and the right pane's widths, the collapsed flag and the active tab. The row's subject is the CATEGORY and these are instances of it; :925's "nothing else exists" governs SERVER state, which none of these is** | the browser, locally | the backend; no flow reads it, and a page renders correctly without it |
 | the staging cookie | `/unlock` (OAuth plan §7.0b) | — |
 
 **Nothing else exists.** No page holds a preference on the server, no page records that it was viewed, no route

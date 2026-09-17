@@ -3,20 +3,27 @@
     "appName": "Justice for the People — The Covid Case",
     "operational": "Operational",
     "nav": {
-      "home": "Home",
       "corpus": "Archive",
       "about": "About",
       "safety": "Protection",
       "researchers": "For researchers",
       "research": "Research",
       "admin": "Admin",
-      "figures": "Figures"
+      "figures": "Figures",
+      "theses": "Theses"
     },
     "chrome": {
       "navLabel": "Main navigation",
       "openNav": "Open menu",
       "closeNav": "Close menu",
-      "otherLocale": "עברית"
+      "otherLocale": "עברית",
+      "search": "Search the archive",
+      "sidebarResize": "Resize the sidebar",
+      "paneResize": "Resize the side panel",
+      "collapse": "Collapse the sidebar",
+      "expand": "Expand the sidebar",
+      "panelLabel": "Side panel tabs",
+      "back": "Back"
     },
     "footer": {
       "source": "This site's source code is public"
