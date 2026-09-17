@@ -143,14 +143,47 @@ function named(row: {
   };
 }
 
+/**
+ * Which page a row belongs to. The select always asks for `trackedUrlId`, so in production it is always
+ * there; a row that arrives without it when exactly ONE page was asked for belongs to that page, because the
+ * query's own `where` constrained it. Without this the grouping DROPS such a row silently, which is how the
+ * first spelling of these plurals returned an empty timeline for every page.
+ */
+function pageOfRow(row: { trackedUrlId?: string | null }, asked: readonly string[]): string | null {
+  if (typeof row.trackedUrlId === 'string') return row.trackedUrlId;
+  return asked.length === 1 ? (asked[0] ?? null) : null;
+}
+
+/**
+ * Every ACQUIRED capture of THESE pages, by page id — ONE query whatever the number of pages.
+ *
+ * THE PLURAL IS THE IMPLEMENTATION and the singular below delegates to it. The order, the `named` filter and
+ * the select live here, once: a second place that built the same list would be a second answer to "what has
+ * this page got", which is the shape `storedAttributionFor` already states as "ONE QUERY FOR THE WHOLE PAGE".
+ *
+ * The map has an entry for EVERY id asked for, so a caller's lookup is total and a page with no captures is
+ * an empty list rather than an `undefined` that reads like a missing page.
+ */
+export async function capturesByPage(trackedUrlIds: readonly string[]): Promise<Map<string, TimelineCapture[]>> {
+  const byPage = new Map<string, TimelineCapture[]>(trackedUrlIds.map((id) => [id, []]));
+  if (trackedUrlIds.length === 0) return byPage;
+  const rows = await prisma.urlSnapshot.findMany({
+    where: { trackedUrlId: { in: [...trackedUrlIds] }, waybackTimestamp: { not: null } },
+    orderBy: { waybackTimestamp: 'asc' },
+    select: { ...CAPTURE_SELECT, trackedUrlId: true },
+  });
+  for (const row of rows) {
+    const capture = named(row);
+    if (capture === null) continue;
+    const page = pageOfRow(row, trackedUrlIds);
+    if (page !== null) byPage.get(page)?.push(capture);
+  }
+  return byPage;
+}
+
 /** Every ACQUIRED capture of a page, in TIMESTAMP order. */
 export async function loadCaptures(trackedUrlId: string): Promise<TimelineCapture[]> {
-  const rows = await prisma.urlSnapshot.findMany({
-    where: { trackedUrlId, waybackTimestamp: { not: null } },
-    orderBy: { waybackTimestamp: 'asc' },
-    select: CAPTURE_SELECT,
-  });
-  return rows.map(named).filter((c): c is TimelineCapture => c !== null);
+  return (await capturesByPage([trackedUrlId])).get(trackedUrlId) ?? [];
 }
 
 /**
@@ -162,32 +195,46 @@ export async function loadCaptures(trackedUrlId: string): Promise<TimelineCaptur
  * any other (§7).
  */
 export async function loadDiffs(trackedUrlId: string): Promise<TimelineDiff[]> {
+  return (await diffsByPage([trackedUrlId])).get(trackedUrlId) ?? [];
+}
+
+/**
+ * Every diff of THESE pages, by page id — ONE query whatever the number of pages. The plural is the
+ * implementation; `loadDiffs` above delegates to it, and the one spelling of timestamp order lives here.
+ */
+export async function diffsByPage(trackedUrlIds: readonly string[]): Promise<Map<string, TimelineDiff[]>> {
+  const byPage = new Map<string, TimelineDiff[]>(trackedUrlIds.map((id) => [id, []]));
+  if (trackedUrlIds.length === 0) return byPage;
   const rows = await prisma.urlVersionDiff.findMany({
-    where: { trackedUrlId },
+    where: { trackedUrlId: { in: [...trackedUrlIds] } },
     select: {
       id: true,
+      trackedUrlId: true,
       beforeSnapshot: { select: CAPTURE_SELECT },
       afterSnapshot: { select: CAPTURE_SELECT },
       contentVersions: { select: VERSION_SELECT },
     },
   });
-  const diffs: TimelineDiff[] = [];
   for (const row of rows) {
     const before = named(row.beforeSnapshot);
     const after = named(row.afterSnapshot);
     if (before === null || after === null) continue;
-    diffs.push({ id: row.id, before, after, versions: row.contentVersions });
+    const page = pageOfRow(row, trackedUrlIds);
+    if (page !== null) byPage.get(page)?.push({ id: row.id, before, after, versions: row.contentVersions });
   }
   // ONE SPELLING OF TIMESTAMP ORDER. A wayback timestamp is fourteen
   // fixed-width digits, so `<` IS chronological order — the same comparison
   // `intervening` makes over the same values. `localeCompare` was a second
   // spelling of it here: same answer today, a different one under any locale
   // that collates digits differently, and two rules where the design has one.
-  return diffs.sort((a, b) => {
-    if (a.after.capture !== b.after.capture) return a.after.capture < b.after.capture ? -1 : 1;
-    if (a.before.capture === b.before.capture) return 0;
-    return a.before.capture < b.before.capture ? -1 : 1;
-  });
+  for (const diffs of byPage.values()) {
+    diffs.sort((a, b) => {
+      if (a.after.capture !== b.after.capture) return a.after.capture < b.after.capture ? -1 : 1;
+      if (a.before.capture === b.before.capture) return 0;
+      return a.before.capture < b.before.capture ? -1 : 1;
+    });
+  }
+  return byPage;
 }
 
 // ---------------------------------------------------------------------------
@@ -447,43 +494,119 @@ export interface ResolvedRecord {
  * `documentHash`, with a write path that can mis-write it."
  */
 export async function resolveRecordByName(fileHash: string): Promise<ResolvedRecord | null> {
-  const promoted = await prisma.evidence.findUnique({
-    where: { fileHash },
+  return (await recordsByName([fileHash])).get(fileHash) ?? null;
+}
+
+/**
+ * RECORDS BY NAME — ONE pass over the corpus for the WHOLE set, however many names are asked for.
+ *
+ * THIS IS THE IMPLEMENTATION and `resolveRecordByName` above delegates to it. A published thesis body asks
+ * for every record it cites at once; asking one name at a time made the corpus pass run once per citation,
+ * which is four queries per mention for an answer the same four queries give for all of them.
+ *
+ * IT FOLDS THE READS, IT DOES NOT CACHE THE PREDICATE. `recomputable` is still asked of every (name ×
+ * candidate) pair, in memory, exactly as before — evidence A3 :1060–:1063 licenses caching an OBSERVATION and
+ * never a predicate, and nothing here stores a verdict. What is shared is the ROWS, which are the same rows
+ * for every name.
+ *
+ * The map has an entry for every name asked for; a name the corpus cannot derive maps to `null`, which is
+ * A4's `NOT_A_RECORD` and not an absence to be confused with a missing key.
+ */
+export async function recordsByName(fileHashes: readonly string[]): Promise<Map<string, ResolvedRecord | null>> {
+  const wanted = [...new Set(fileHashes)];
+  const resolved = new Map<string, ResolvedRecord | null>(wanted.map((name) => [name, null]));
+  if (wanted.length === 0) return resolved;
+
+  // The promoted names' own pages first — one indexed lookup for the whole set rather than one each.
+  const promoted = await prisma.evidence.findMany({
+    where: { fileHash: { in: wanted } },
     select: {
+      fileHash: true,
       kind: true,
       snapshot: { select: { trackedUrlId: true } },
       urlVersionDiff: { select: { trackedUrlId: true } },
     },
   });
-  const pageId =
-    promoted?.snapshot?.trackedUrlId ?? promoted?.urlVersionDiff?.trackedUrlId ?? null;
-  if (pageId !== null) {
-    const resolved = await searchPage(pageId, fileHash);
-    if (resolved !== null) return resolved;
+  const promotedPage = new Map<string, string>();
+  for (const row of promoted) {
+    const pageId = row.snapshot?.trackedUrlId ?? row.urlVersionDiff?.trackedUrlId ?? null;
+    if (pageId !== null) promotedPage.set(row.fileHash, pageId);
   }
 
+  // Every page the set could resolve against. A promoted name's page is already among them, so the corpus is
+  // walked ONCE and not once per name: the pass is linear in the corpus, and it now runs a single time.
   const pages = await prisma.trackedUrl.findMany({ select: { id: true, url: true } });
-  for (const page of pages) {
-    if (page.id === pageId) continue; // already searched
-    const resolved = await searchPage(page.id, fileHash);
-    if (resolved !== null) return resolved;
+  const searchable = pages.length === 0 ? [] : pages;
+  const ids = searchable.map((page) => page.id);
+  const captures = await capturesByPage(ids);
+  const diffs = await diffsByPage(ids);
+
+  for (const name of wanted) {
+    // The promoted name's own page first, then the rest — the order the singular read had, preserved because
+    // a name is answered by the FIRST page whose record satisfies RECOMPUTABLE.
+    const first = promotedPage.get(name);
+    const order = first === undefined ? searchable : [...searchable.filter((p) => p.id === first), ...searchable.filter((p) => p.id !== first)];
+    for (const page of order) {
+      const found = matchInPage(name, page, captures.get(page.id) ?? [], diffs.get(page.id) ?? []);
+      if (found !== null) {
+        resolved.set(name, found);
+        break;
+      }
+    }
   }
-  return null;
+  return resolved;
 }
 
-/** Every record of one page, named, until one matches. */
-async function searchPage(pageId: string, fileHash: string): Promise<ResolvedRecord | null> {
-  const page = await prisma.trackedUrl.findUnique({
-    where: { id: pageId },
-    select: { id: true, url: true },
-  });
-  if (page === null) return null;
+/**
+ * THE TEXT EACH PIN NAMES, by `snapshotId` + `textHash` — TWO queries, whatever the number of pins, and ZERO
+ * when no CAPTURE is cited.
+ *
+ * A capture citation pins either the capture's CURRENT text (`urlSnapshot.text`) or a superseded extraction of
+ * it (`textVersion`), and the singular form asked one of those per citation. Both are asked once here for the
+ * whole set, and `pinnedContent` becomes a pure function over the answer.
+ *
+ * The key is `snapshotId + '\u0000' + textHash`: a text is identified by the capture it belongs to AND the
+ * extraction that produced it, and neither alone is unique.
+ */
+export async function heldTextsFor(pins: readonly { snapshotId: string; textHash: string }[]): Promise<Map<string, string>> {
+  const texts = new Map<string, string>();
+  if (pins.length === 0) return texts;
+  const snapshotIds = [...new Set(pins.map((pin) => pin.snapshotId))];
 
+  const current = await prisma.urlSnapshot.findMany({
+    where: { id: { in: snapshotIds } },
+    select: { id: true, textHash: true, text: true },
+  });
+  for (const row of current) texts.set(heldTextKey(row.id, row.textHash), row.text);
+
+  // Only the pins the current text did not answer need the superseded extractions.
+  const outstanding = pins.filter((pin) => !texts.has(heldTextKey(pin.snapshotId, pin.textHash)));
+  // THE KEPT EXTRACTIONS, by the compound key the schema declares (`@@unique([snapshotId, textHash])`) — one
+  // read per OUTSTANDING pin, which is the pins whose capture has since moved off the text they name. That is
+  // the rare arm: a citation normally pins the capture's current text, which the one read above answered for
+  // all of them. Reading them by key rather than by `snapshotId in` keeps the query the singular form made,
+  // and a superseded pin is the only thing that costs a round trip of its own.
+  for (const pin of outstanding) {
+    const kept = await prisma.textVersion.findUnique({
+      where: { snapshotId_textHash: { snapshotId: pin.snapshotId, textHash: pin.textHash } },
+      select: { text: true },
+    });
+    if (kept !== null) texts.set(heldTextKey(pin.snapshotId, pin.textHash), kept.text);
+  }
+  return texts;
+}
+
+/** The one spelling of the key `heldTextsFor` answers by. */
+export function heldTextKey(snapshotId: string, textHash: string): string {
+  return `${snapshotId}\u0000${textHash}`;
+}
+
+/** Every record of one page, named, until one matches — in memory, over rows already read. */
+function matchInPage(fileHash: string, page: Page, captures: readonly TimelineCapture[], diffs: readonly TimelineDiff[]): ResolvedRecord | null {
   // THROUGH THE PREDICATE, not through a private comparison. RECOMPUTABLE is
   // "e.fileHash = ID(the record it is keyed to)", and resolving a name is that
   // same equality asked of every record the corpus holds — so it is asked with
   // the same function, and a name that does not satisfy it does not resolve.
-  const captures = await loadCaptures(page.id);
   for (const capture of captures) {
     const { recomputable: matches, expected } = recomputable(fileHash, {
       kind: 'CAPTURE',
@@ -495,7 +618,6 @@ async function searchPage(pageId: string, fileHash: string): Promise<ResolvedRec
     }
   }
 
-  const diffs = await loadDiffs(page.id);
   for (const diff of diffs) {
     const { recomputable: matches, expected } = recomputable(fileHash, {
       kind: 'DIFF',

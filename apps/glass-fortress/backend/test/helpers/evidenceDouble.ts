@@ -677,12 +677,21 @@ export const db = {
     // PUBLISHED's apart, and a double that answered every row to `{ versionId }`
     // would let a head-only reading pass a case about the published version.
     findMany: jest.fn(
-      ask('thesisMention', 'findMany', (args: { where?: { versionId?: string; kind?: string } }) => {
+      ask('thesisMention', 'findMany', (args: { where?: { versionId?: string | { in?: string[] }; kind?: string } }) => {
         const where = args.where ?? {};
         if (where.versionId === undefined) return Promise.resolve(store.mentions);
+        // AND `{ in }`, which `carriedWhere` already honours for every other delegate — R57 chunk 3's
+        // `citationRefsByVersion` reads the mentions of EVERY published version in one query, so that a thesis
+        // published five times costs one round trip and not five. Without this the hand-rolled `where` here
+        // compared a row's id to the CONDITION OBJECT and answered nothing, which reads as "that version cites
+        // nothing" rather than as an unsupported query.
+        const wanted =
+          typeof where.versionId === 'object' && where.versionId !== null
+            ? (where.versionId.in ?? [])
+            : [where.versionId];
         return Promise.resolve(
           store.mentions.filter(
-            (m) => m['versionId'] === where.versionId && (where.kind === undefined || m['kind'] === where.kind),
+            (m) => wanted.includes(String(m['versionId'])) && (where.kind === undefined || m['kind'] === where.kind),
           ),
         );
       }),
@@ -924,13 +933,28 @@ export const db = {
         const wanted =
           typeof named === 'object' && named !== null && Array.isArray((named as Row)['in']) ? ((named as Row)['in'] as unknown[]) : null;
         const page = pageOfOr(args.where);
-        return Promise.resolve(
-          store.evidenceRows.filter((r) => {
+        // THE SAME SINGLE-ROW FALLBACK `findUnique` ABOVE HAS, and it is here for the same stated reason: to
+        // keep "every suite written against the single-row fixture green". R57 chunk 3 moved VERIFIED's read
+        // from `findUnique` to `findMany` (one query for a whole set instead of one per citation), and without
+        // this the two delegates disagreed about the SAME fixture — a case that set `store.evidence` answered
+        // a row through one and nothing through the other, so a predicate reported NOT_PROMOTED about a record
+        // the case had plainly promoted. The fallback fires only when a NAME was asked for and `evidenceRows`
+        // holds none of them, which is exactly the legacy shape; a case that sets `evidenceRows` is untouched.
+        const held = store.evidence;
+        const rows = store.evidenceRows.filter((r) => {
             if (wanted !== null && !wanted.includes(String(r['fileHash']))) return false;
             if (page === null) return true;
             const own = evidencePageOf(r);
             return own === undefined || own === page;
-          }),
+          });
+        if (rows.length === 0 && wanted !== null && held !== null) {
+          const its = held['fileHash'];
+          const matches = its === undefined || wanted.includes(String(its));
+          const ownPage = evidencePageOf(held);
+          if (matches && (page === null || ownPage === undefined || ownPage === page)) return Promise.resolve([held]);
+        }
+        return Promise.resolve(
+          rows,
         );
       }),
     ),

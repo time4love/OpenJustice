@@ -134,19 +134,67 @@ export function committed(): Write[] {
 }
 
 /**
+ * ONE WALK over the double's own delegates, read by both `delegatesCalled` and `delegateCalls`.
+ *
+ * It is a WALK and not a list because a list of delegates is an enumeration standing for a property —
+ * `test/helpers/evidenceDouble.ts` :471–:482 records that exact shape being rejected once already. A count
+ * built on a walk cannot go blind when a delegate is added: the `asked` log can, and did. `asked` is appended
+ * only by the opt-in `ask()` wrapper (`evidenceDouble.ts` :105–:108), and UI-2 added four delegates nobody
+ * wrapped — `trackedUrl.findUnique`, `trackedUrl.findMany`, `urlSnapshot.findMany`, `urlVersionDiff.findMany`
+ * — so a cost read from `asked` reports 15 where the body really makes 19.
+ */
+function eachDelegate(visit: (name: string, mock: jest.Mock) => void): void {
+  for (const [model, delegate] of Object.entries(db)) {
+    // `$transaction` is a function, not a delegate, and is never one of the queries a body COSTS — the same
+    // exclusion `evidenceDouble.ts`' `transactionClient()` states as "a function, not a delegate, and must
+    // never be wrapped". `delegatesCalled` kept it before this walk existed and keeps it now: it reports a
+    // NAME, and `$transaction` being named is a fact about the call, not a query counted twice. The divergence
+    // is deliberate and is why the two readers take different visitors rather than sharing one filter.
+    if (jest.isMockFunction(delegate)) {
+      visit(model, delegate);
+      continue;
+    }
+    if (typeof delegate !== 'object' || delegate === null) continue;
+    const methods: Readonly<Record<string, unknown>> = delegate;
+    for (const [op, method] of Object.entries(methods)) {
+      if (jest.isMockFunction(method)) visit(`${model}.${op}`, method);
+    }
+  }
+}
+
+/**
  * Every delegate method of the shared double called in this case, as `model.op` —
  * the jest config's `clearMocks` empties them before each case. The ORDER's property:
  * a call refused before any query leaves this empty, whichever delegates it would
  * have asked.
  */
 export function delegatesCalled(): string[] {
-  return Object.entries(db).flatMap(([model, delegate]) => {
-    if (jest.isMockFunction(delegate)) return delegate.mock.calls.length > 0 ? [model] : [];
-    const methods: Readonly<Record<string, unknown>> = delegate;
-    return Object.entries(methods).flatMap(([op, method]) =>
-      jest.isMockFunction(method) && method.mock.calls.length > 0 ? [`${model}.${op}`] : [],
-    );
+  const called: string[] = [];
+  eachDelegate((name, mock) => {
+    if (mock.mock.calls.length > 0) called.push(name);
   });
+  return called;
+}
+
+/**
+ * HOW MANY delegate calls the double has answered — the COMPLETE cost of a read, from the same walk
+ * `delegatesCalled` reports names from, so a delegate added tomorrow is counted without anyone editing this.
+ *
+ * `$transaction` is EXCLUDED here although `delegatesCalled` names it: it is one call that wraps others, and
+ * counting it would add one to the cost of every write path while adding no query. This read path opens no
+ * transaction at all — measured zero — so nothing in this chunk turns on it; the exclusion is stated because
+ * this file has 33 importers and the next caller may not be on a read path.
+ *
+ * Read it as a DIFFERENCE, before and after the act, rather than resetting anything: nothing else's mocks are
+ * disturbed, which is the `throughTransaction` marker shape (`evidenceDouble.ts` :462–:469).
+ */
+export function delegateCalls(): number {
+  let total = 0;
+  eachDelegate((name, mock) => {
+    if (name === '$transaction') return;
+    total += mock.mock.calls.length;
+  });
+  return total;
 }
 
 // --- reaching a handler --------------------------------------------------------
