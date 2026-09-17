@@ -12,7 +12,7 @@ export function WithdrawnNotice({ at, locale }: { at: string; locale: string }) 
   return (
     <main className="page-column py-8">
       <LegalDisclaimer form="full" />
-      <p className="mt-4 text-slate-700">{t('notice', { date: formatDate(at, locale) })}</p>
+      <p className="mt-4 text-ink">{t('notice', { date: formatDate(at, locale) })}</p>
     </main>
   );
 }

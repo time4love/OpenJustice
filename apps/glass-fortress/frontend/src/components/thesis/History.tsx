@@ -83,11 +83,11 @@ export function History({ thesisId, history, current, author, locale }: HistoryP
           return (
             <li key={entry.versionId} className="space-y-1">
               {isWithdrawn(entry) ? (
-                <p data-history-row="withdrawal" data-published-at={entry.withdrawnAt} className="text-sm text-amber-700">
+                <p data-history-row="withdrawal" data-published-at={entry.withdrawnAt} className="text-sm text-amber">
                   {t('withdrawn', { date: formatDate(entry.withdrawnAt, locale) })}
                 </p>
               ) : null}
-              <p data-history-row="version" data-published-at={entry.publishedAt} className="text-sm text-slate-700">
+              <p data-history-row="version" data-published-at={entry.publishedAt} className="text-sm text-ink">
                 <bdi dir="ltr">{formatDate(entry.publishedAt, locale)}</bdi> · <bdi>{author}</bdi>
                 {entry.versionId === current.versionId ? ` · ${t('current')}` : ''}
               </p>
@@ -96,7 +96,7 @@ export function History({ thesisId, history, current, author, locale }: HistoryP
                   type="button"
                   data-what-changed
                   onClick={() => void open(entry, newer)}
-                  className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700"
+                  className="rounded border border-line px-2 py-1 text-xs text-ink"
                 >
                   {t('whatChanged')}
                 </button>
@@ -105,23 +105,23 @@ export function History({ thesisId, history, current, author, locale }: HistoryP
           );
         })}
       </ol>
-      {failed ? <p className="text-sm text-amber-700">{t('diffUnavailable')}</p> : null}
+      {failed ? <p className="text-sm text-amber">{t('diffUnavailable')}</p> : null}
       {diff === null ? null : (
-        <div data-testid="version-diff" className="space-y-2 rounded-lg border border-slate-200 p-3">
-          <p className="text-sm text-slate-500">{t('diffHeading', { from: diff.from, to: diff.to })}</p>
+        <div data-testid="version-diff" className="space-y-2 rounded-lg border border-line p-3">
+          <p className="text-sm text-ink-muted">{t('diffHeading', { from: diff.from, to: diff.to })}</p>
           <p className="whitespace-pre-wrap text-sm leading-relaxed" dir="auto">
             {diff.runs.map((run, index) => (
               <span
                 key={`${run.kind}-${String(index)}`}
                 data-run={run.kind}
-                className={run.kind === 'removed' ? 'bg-rose-50 line-through' : run.kind === 'added' ? 'bg-emerald-50' : undefined}
+                className={run.kind === 'removed' ? 'bg-seal-tint line-through' : run.kind === 'added' ? 'bg-olive-tint' : undefined}
               >
                 {run.text}
               </span>
             ))}
           </p>
           {diff.moved.length === 0 ? null : (
-            <div className="text-sm text-slate-600">
+            <div className="text-sm text-ink-muted">
               <p className="font-semibold">{t('movedPins')}</p>
               <ul className="list-disc ps-6">
                 {diff.moved.map((pin) => (

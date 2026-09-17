@@ -9,7 +9,7 @@ import { Link } from '@/i18n/navigation';
 export function Banner({ thesisId }: { thesisId: string }) {
   const t = useTranslations('theses.version');
   return (
-    <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+    <p className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink">
       {t('banner')}{' '}
       <Link href={`/theses/${thesisId}`} className="underline">
         {t('toCurrent')}

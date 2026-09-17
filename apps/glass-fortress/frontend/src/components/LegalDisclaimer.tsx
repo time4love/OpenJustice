@@ -14,7 +14,7 @@ import { useTranslations } from 'next-intl';
 export function LegalDisclaimer({ form }: { form: 'full' | 'short' }) {
   const t = useTranslations('common.disclaimer');
   return (
-    <aside dir="auto" className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">
+    <aside dir="auto" className="rounded-xl border border-line bg-paper px-4 py-3 text-xs leading-relaxed text-ink-muted">
       {t(form)}
     </aside>
   );

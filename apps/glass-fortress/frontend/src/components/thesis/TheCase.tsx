@@ -12,7 +12,7 @@ export function TheCase({ rationale, overObjection, analysisRun }: { rationale: 
   return (
     <section>
       <h2 className="mb-2 text-lg font-semibold">{t('heading')}</h2>
-      <ResearcherWords className="leading-relaxed text-slate-800">{rationale}</ResearcherWords>
+      <ResearcherWords className="text-ink">{rationale}</ResearcherWords>
       <p className="mt-2 flex flex-wrap gap-2">
         {overObjection ? <PlatformMark kind="publishedOverObjection" /> : null}
         {analysisRun ? <PlatformMark kind="analysisRun" /> : null}

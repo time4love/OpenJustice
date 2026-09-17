@@ -596,7 +596,7 @@ is listed beneath it (T6 :900–:901), read from the two versions' resolved ment
   banner first — "a previous published version; the current one is here" — and, while the thesis is withdrawn
   or for a version a Withdrawal names, the NOTICE and never its text (A5 :1570, 2026-09-14).
 
-## 20. THE CALL PAGE `/call/[id]` — **AMENDED 2026-09-16:** the legacy shape, the letter in a dialog, also a right-pane tab beside the thesis (docs/gf-ui-design-session-2026-09-16.md §1.6, §3).
+## 20. THE CALL PAGE `/call/[id]` — **AMENDED 2026-09-16:** the legacy shape, the letter in a dialog, also a right-pane tab beside the thesis (docs/gf-ui-design-session-2026-09-16.md §1.6, §3). **AMENDED 2026-09-17 (the researcher):** the call is a SHAREABLE CALL TO ACTION, not a second reading of the thesis — what is being proved, WHAT IS MISSING, and what a reader can do; the evidentiary depth belongs to the thesis page alone. **THE OBJECTIONS ARE NEVER SHOWN:** what weakened the claim appears as what is MISSING, never as who objected — `overObjection` stays the fact §17 :550–:552 allows, and no objection text reaches a public page (§16 :517–:521; §21 :621). Nothing new is read: `whatIsNeeded` on a CALLED item IS what is missing (thesis flows A5 :1567). The right-pane TAB is board 3A MINUS the folded preface and the full disclaimer, which the centre already carries; the PAGE keeps both, being neither.
 
 **The appeals alone, shareable.** Two reads, both public and identity-free: `GET /api/thesis/:id` for the
 statement, the disclaimer's place, the claim and the provision (A5 :1569 — "the one source of the public-interest
@@ -604,11 +604,11 @@ statement a call page shows"; step-23 Live-13), and `GET /api/thesis/:id/call` f
 with the intake instruction (A4 :1501–:1504).
 
 ```
-1  FIRST     the statement · the disclaimer (COMPLIANCE.md :92 — "every /call/[thesisId] page")
-2  THE CLAIM one line, and the link back to the thesis page
-3  THE CALL  each CALLED item as §17's card: what is needed · who would have seen it · unit · window
+1  FIRST     the statement · the disclaimer (COMPLIANCE.md :92 — the PAGE always; the right-pane TAB never)
+2  THE THESIS what is being proved: the claim in one line, and the link back to the thesis page for the depth
+3  WHAT IS MISSING  each CALLED item as §17's card: what is needed · who would have seen it · unit · window
 4  REQUESTS  each REQUESTED item as §17's card, the request ready to send, one COPY
-5  HOW       the intake instruction, the body's text, no link until the door exists (§17)
+5  HOW       the intake instruction, the body's text; the CTA behind `DOORS_OPEN`, NOT DRAWN until step 32
 6  LAST      the disclaimer, short form
 ```
 

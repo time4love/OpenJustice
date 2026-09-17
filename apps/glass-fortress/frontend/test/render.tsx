@@ -1,8 +1,9 @@
-import type { ComponentType, ReactElement, ReactNode } from 'react';
+import { createElement, type ComponentType, type ReactElement, type ReactNode } from 'react';
 import { render, type RenderResult } from '@testing-library/react';
 import { NextIntlClientProvider, createTranslator, type AbstractIntlMessages } from 'next-intl';
 import type { ResearcherProfile } from '@/context/AuthContext';
 import { routing } from '@/i18n/routing';
+import { TabsProvider } from '@/components/shell/RightPane';
 import { messageCatalogs, requireSubjects } from './scan';
 
 // ---------------------------------------------------------------------------
@@ -134,6 +135,25 @@ export async function renderServer(component: () => Promise<ReactElement | null>
   const locale = options.locale ?? routing.defaultLocale;
   const element = await serverElement(component, { locale });
   return renderWithIntl(element ?? <></>, { ...options, locale });
+}
+
+/**
+ * THE SHELL'S TAB REGISTRY, AROUND EVERY PAGE RENDER — because a page is never rendered without it.
+ *
+ * `app/[locale]/layout.tsx` mounts `<Shell>` once (UI-4b §9 :1058) and `TabsProvider` is inside it, so
+ * in the running application every page already sits in the registry. From UI-5 a page DECLARES its
+ * right-pane tabs (§10 :1124), and `usePaneTabs` throws outside the provider ON PURPOSE — "the right
+ * pane is only reachable inside the shell" — so that a page cannot declare tabs into nothing.
+ *
+ * A harness that rendered a page bare would be rendering something Next never renders. The provider is
+ * added HERE, once, rather than making the shell's context optional: tolerating its absence would turn
+ * a deliberate throw into a silent no-op, which is the "green over an unexercised property" shape this
+ * suite exists to catch.
+ */
+function withTabsProvider(wrapper: ComponentType<{ children: ReactNode }> | undefined): ComponentType<{ children: ReactNode }> {
+  return function PageEnvelope({ children }: { children: ReactNode }) {
+    return createElement(TabsProvider, null, wrapper === undefined ? children : createElement(wrapper, null, children));
+  };
 }
 
 /**
@@ -373,7 +393,10 @@ export async function renderPage<P extends Record<string, string>>(
   options: RenderOptions = {},
 ): Promise<PageRender> {
   try {
-    const rendered = await renderServer(async () => page({ params: Promise.resolve(params) }), options);
+    const rendered = await renderServer(async () => page({ params: Promise.resolve(params) }), {
+      ...options,
+      wrapper: withTabsProvider(options.wrapper),
+    });
     return { notFound: false, ...rendered };
   } catch (error) {
     if (isNotFound(error)) return { notFound: true };

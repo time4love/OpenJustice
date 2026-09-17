@@ -652,7 +652,8 @@
       "openPage": "Everything kept from this page",
       "openRecord": "The record's page",
       "copyToken": "Copy the citation for a conversation",
-      "transitions": "{count, plural, one {one transition} other {# transitions}}"
+      "transitions": "{count, plural, one {one transition} other {# transitions}}",
+      "andMore": "…and {count} more"
     },
     "appeals": {
       "heading": "Appeals to the public",
@@ -666,7 +667,8 @@
       "whatIsNeeded": "What is needed",
       "whoWouldHaveSeenIt": "Who would have seen it",
       "unit": "Unit",
-      "window": "Period"
+      "window": "Period",
+      "prepareLetter": "Prepare the letter"
     },
     "case": {
       "heading": "Why this version was published"
@@ -698,7 +700,8 @@
     "version": {
       "banner": "This is a previous published version.",
       "toCurrent": "The current version"
-    }
+    },
+    "foiaNameFallback": "[the requester's name]"
   },
   "call": {
     "heroLabel": "Call for Witnesses",

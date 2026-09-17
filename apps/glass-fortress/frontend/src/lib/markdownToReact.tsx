@@ -65,7 +65,7 @@ function inlineNodes(children: readonly Token[], key: string, options: MarkdownO
         break;
       case 'code_inline':
         push(
-          <code key={at} dir="ltr" className="rounded bg-slate-100 px-1 text-sm">
+          <code key={at} dir="ltr" className="rounded bg-paper-deep px-1 text-sm">
             {token.content}
           </code>,
         );
@@ -148,8 +148,16 @@ function blocks(tokens: readonly Token[], options: MarkdownOptions): ReactNode[]
         const closed = stack.pop();
         if (closed === undefined) return;
         const Tag = (HEADING[closed.tag] ?? 'p') as 'h2' | 'h3' | 'h4' | 'p';
+        // NO `leading-relaxed` ON A PARAGRAPH. It is Tailwind's 1.625, and it OVERRODE the reading
+        // region's 1.75 (§1.8): measured in the local run as 17/27.625 where the design says 17/29.75.
+        // The REGION owns the leading (`.reading`); a paragraph that re-states it can only disagree.
+        //
+        // The comment sits ABOVE the call and not inside its argument list: a `//` comment between
+        // `push(` and a JSX element is accepted by tsc and was reported by the dev server's SWC as
+        // `Expected ',', got 'ident'`. Whether that error was live or a stale buffer I could not settle
+        // from the console, so the ambiguity is removed rather than argued with.
         push(
-          <Tag key={key} className={Tag === 'p' ? 'leading-relaxed' : 'font-semibold'}>
+          <Tag key={key} className={Tag === 'p' ? undefined : 'font-semibold'}>
             {closed.children}
           </Tag>,
         );
@@ -158,7 +166,7 @@ function blocks(tokens: readonly Token[], options: MarkdownOptions): ReactNode[]
     }
     if (token.type === 'fence' || token.type === 'code_block') {
       push(
-        <pre key={key} dir="ltr" className="overflow-x-auto rounded bg-slate-100 p-3 text-sm">
+        <pre key={key} dir="ltr" className="overflow-x-auto rounded bg-paper-deep p-3 text-sm">
           <code>{token.content}</code>
         </pre>,
       );

@@ -6,7 +6,7 @@ import { formatDate } from '@/lib/format';
  */
 export function Byline({ author, at, locale }: { author: string; at: string | null; locale: string }) {
   return (
-    <p className="text-sm text-slate-600">
+    <p className="text-sm text-ink-muted">
       <bdi>{author}</bdi>
       {at === null ? null : (
         <>

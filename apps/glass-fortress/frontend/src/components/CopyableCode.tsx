@@ -55,7 +55,7 @@ export function CopyableCode({ value, label, showValue = false }: { value: strin
   return (
     <span data-copy className="inline-flex items-center gap-2">
       {showValue ? (
-        <code data-copy-value={value} dir="ltr" className="min-w-0 overflow-x-auto rounded bg-slate-900 px-2 py-1 text-xs text-emerald-400">
+        <code data-copy-value={value} dir="ltr" className="min-w-0 overflow-x-auto rounded bg-ink px-2 py-1 font-mono text-value text-paper">
           {value}
         </code>
       ) : null}
@@ -65,7 +65,7 @@ export function CopyableCode({ value, label, showValue = false }: { value: strin
         aria-label={label}
         title={label}
         {...(showValue ? {} : { 'data-copy-value': value })}
-        className="inline-flex items-center gap-1 rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
+        className="inline-flex items-center gap-1 rounded border border-line px-2 py-1 text-xs text-ink hover:bg-paper-deep"
       >
         {state === 'copied' ? <CheckIcon /> : <CopyIcon />}
         {label}

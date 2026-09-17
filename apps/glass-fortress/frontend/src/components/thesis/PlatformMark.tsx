@@ -20,7 +20,7 @@ export type MarkKind =
 export function PlatformMark({ kind }: { kind: MarkKind }) {
   const t = useTranslations('theses.marks');
   return (
-    <span data-mark={kind} className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-600">
+    <span data-mark={kind} className="rounded-full border border-line px-2 py-0.5 text-xs text-ink-muted">
       {t(kind)}
     </span>
   );

@@ -2,14 +2,7 @@
   "live": true,
   "thesisId": "cmfxthesisone000000000000",
   "publishedVersionId": "cmfxversioncurrent0000000",
-  "call": [
-    {
-      "whatIsNeeded": "ההנחיה הפנימית שלפיה נוסחה ההודעה על תופעות הלוואי",
-      "whoWouldHaveSeenIt": "מי שערך את העמוד הציבורי באותה תקופה",
-      "unit": "היחידה לפרסומי אינטרנט",
-      "window": "1.3.2021 – 30.4.2021"
-    }
-  ],
+  "call": [],
   "requests": [
     {
       "text": "תאריך: {{DATE}}\n\nאני, {{REQUESTER_NAME}}, מבקש/ת בהתאם לחוק חופש המידע את ההנחיה שעל פיה נוסח העמוד בין התאריכים האמורים.\n\n{{REQUESTER_NAME}}\n{{DATE}}",

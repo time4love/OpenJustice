@@ -24,7 +24,7 @@ export function ContextLine({ claim, watch }: { claim: string; watch: string }) 
 
   if (!past) return null;
   return (
-    <p data-context-line dir="auto" className="sticky-line overflow-hidden text-ellipsis whitespace-nowrap border-b border-slate-200 bg-white py-1 text-sm text-slate-600">
+    <p data-context-line dir="auto" className="sticky-line overflow-hidden text-ellipsis whitespace-nowrap border-b border-line bg-surface py-1 text-sm text-ink-muted">
       {claim}
     </p>
   );

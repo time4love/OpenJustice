@@ -632,7 +632,7 @@
     },
     "sheet": {
       "close": "סגירה",
-      "capture": "לכידה של העמוד מ־{date}",
+      "capture": "צילום של העמוד מ־{date}",
       "diff": "שינוי בעמוד בין {before} ל־{after}",
       "before": "לפני",
       "after": "אחרי",
@@ -652,7 +652,8 @@
       "openPage": "כל מה שנשמר מהעמוד",
       "openRecord": "עמוד הרשומה",
       "copyToken": "העתקת הציטוט לשיחה",
-      "transitions": "{count, plural, one {מעבר אחד} other {# מעברים}}"
+      "transitions": "{count, plural, one {מעבר אחד} other {# מעברים}}",
+      "andMore": "…ועוד {count}"
     },
     "appeals": {
       "heading": "פניות לציבור",
@@ -666,7 +667,8 @@
       "whatIsNeeded": "מה דרוש",
       "whoWouldHaveSeenIt": "מי עשוי היה לראות אותו",
       "unit": "יחידה",
-      "window": "תקופה"
+      "window": "תקופה",
+      "prepareLetter": "להכנת המכתב"
     },
     "case": {
       "heading": "נימוקי הפרסום"
@@ -698,7 +700,8 @@
     "version": {
       "banner": "זו גרסה קודמת שפורסמה.",
       "toCurrent": "לגרסה הנוכחית"
-    }
+    },
+    "foiaNameFallback": "[שם מגיש/ת הבקשה]"
   },
   "call": {
     "heroLabel": "קריאה לעדים פנימיים",

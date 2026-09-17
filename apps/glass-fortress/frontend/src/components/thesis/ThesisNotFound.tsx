@@ -8,7 +8,7 @@ export function ThesisNotFound() {
   const t = useTranslations('theses.page');
   return (
     <main className="page-column py-8">
-      <p className="text-slate-700">{t('notFound')}</p>
+      <p className="text-ink">{t('notFound')}</p>
     </main>
   );
 }

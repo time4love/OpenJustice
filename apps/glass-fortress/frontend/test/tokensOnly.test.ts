@@ -25,13 +25,32 @@ const GLOBALS = 'src/app/globals.css';
 /** §1.8's ten colours — the values the token block must define, once each. */
 const SYSTEM_COLOURS = ['#FAF7F1', '#F3EEE4', '#FFFFFF', '#1F1B16', '#6B6157', '#E4DCCF', '#4F6B3A', '#B08D3B', '#B7791F', '#A8322A'];
 
-/** Files UI-4b itself wrote or rewrote: none of them may ever be excused by the list. */
+/**
+ * Files THIS STEP writes or rewrites: none of them may ever be excused by the list. Re-pointed at
+ * UI-5's surface — the three public pages, everything under `components/thesis/`, and the four
+ * modules the re-brief rewrites with them. A step that excused its OWN work would turn a shrinking
+ * list into a place to put the files it did not want to finish.
+ */
 const THIS_STEPS_OWN = [
-  'src/components/Sheet.tsx',
-  'src/components/glyphs.tsx',
-  'src/lib/recents.ts',
-  'src/app/[locale]/layout.tsx',
-  'src/components/thesis/CitationChip.tsx',
+  'src/app/[locale]/theses/[id]/page.tsx',
+  'src/app/[locale]/theses/[id]/versions/[v]/page.tsx',
+  'src/app/[locale]/call/[thesisId]/page.tsx',
+  'src/components/LegalDisclaimer.tsx',
+  'src/components/CopyableCode.tsx',
+  'src/lib/markdownToReact.tsx',
+  'src/components/thesis/Appeals.tsx',
+  'src/components/thesis/Banner.tsx',
+  'src/components/thesis/Byline.tsx',
+  'src/components/thesis/ContextLine.tsx',
+  'src/components/thesis/History.tsx',
+  'src/components/thesis/PlatformMark.tsx',
+  'src/components/thesis/ProvisionName.tsx',
+  'src/components/thesis/PublicInterestStatement.tsx',
+  'src/components/thesis/TheCase.tsx',
+  'src/components/thesis/ThePages.tsx',
+  'src/components/thesis/ThesisNotFound.tsx',
+  'src/components/thesis/VerifyDisclosure.tsx',
+  'src/components/thesis/WithdrawnNotice.tsx',
 ];
 
 function subjects(): string[] {
@@ -64,9 +83,14 @@ describe('tokens-only', () => {
     expect(stale).toEqual([]);
   });
 
-  it('the allow-list never names a file UI-4b itself writes: nothing under components/shell, and not the chip', () => {
-    const shellsOwn = NOT_YET_REWRITTEN.filter((file) => file.startsWith('src/components/shell/') || THIS_STEPS_OWN.includes(file));
-    expect(shellsOwn).toEqual([]);
+  it('the allow-list never names a file THIS STEP writes: nothing under components/shell or components/thesis, and none of UI-5’s own', () => {
+    const ownWork = NOT_YET_REWRITTEN.filter(
+      (file) =>
+        file.startsWith('src/components/shell/') ||
+        file.startsWith('src/components/thesis/') ||
+        THIS_STEPS_OWN.includes(file),
+    );
+    expect(ownWork).toEqual([]);
   });
 
   it("globals.css defines §1.8's ten colours, each exactly once, as the ONE place a raw colour belongs", () => {

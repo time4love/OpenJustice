@@ -6,7 +6,7 @@
 export function ProvisionName({ title }: { title: string | null }) {
   if (title === null || title === '') return null;
   return (
-    <p dir="auto" className="text-sm text-slate-600">
+    <p dir="auto" className="text-sm text-ink-muted">
       {title}
     </p>
   );
