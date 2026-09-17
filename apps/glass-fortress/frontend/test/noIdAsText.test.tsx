@@ -3,6 +3,7 @@ jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>
 
 import { ancestorsOf, renderPage, setAuthState, setPathname, setPublicBodies, textNodes, type Locale, type PageRender } from './render';
 import { ID_SHAPES, requireSubjects } from './scan';
+import { RightPane, TabsProvider } from '../src/components/shell/RightPane';
 import published from './fixtures/thesis/published.json';
 import callLive from './fixtures/thesis/call-live.json';
 import versionPrevious from './fixtures/thesis/version-previous.json';
@@ -100,6 +101,63 @@ describe('no-id-as-text', () => {
       published.citations[1].pin,
       published.citations[2].name,
     ]);
+  });
+
+  // -------------------------------------------------------------------------
+  // THE TWO THE RE-BRIEF ADDS (docs/gf-ui-refactor-plan.md §10 :1126, "`no-id-as-text` gains the tick
+  // and the tabs"). A citation in the text is now a DATED TICK, and a record, the call page and a
+  // previous version open as RIGHT-PANE TABS — two new places a 64-hex, a cuid or a 14-digit stamp
+  // could reach a reader, and neither existed when the four cases above were written.
+  // -------------------------------------------------------------------------
+
+  it('every dated tick renders a DATE, an interval or a claim’s words — never a stamp, a name or a cuid', async () => {
+    const problems: string[] = [];
+    for (const locale of LOCALES) {
+      for (const { name, container } of await everyPage(locale)) {
+        const ticks = [...container.querySelectorAll('[data-tick]')];
+        // A page that cites something and renders no tick has not been read by this case at all.
+        if (name === 'notice') continue;
+        requireSubjects(`dated ticks on the ${name} page (${locale})`, ticks);
+        problems.push(
+          ...ticks
+            .flatMap((tick) => textNodes(tick))
+            .filter((node) => ID_SHAPES.some((shape) => shape.pattern.test(node.data)))
+            .map((node) => `${locale}/${name}: ${node.data.trim().slice(0, 40)}`),
+        );
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it('every right-pane tab LABEL is free of the three shapes — the label is the page’s to compose', async () => {
+    const problems: string[] = [];
+    for (const locale of LOCALES) {
+      setPublicBodies({
+        [`/api/thesis/${published.thesisId}`]: { status: 200, body: published },
+        [`/api/thesis/${published.thesisId}/call`]: { status: 200, body: callLive },
+      });
+      const page = (await thesisPage()).default;
+      // Rendered INSIDE the shell's registry with the pane beside it, so the tabs read here are the
+      // ones a reader would see — the page's own declaration, through the real `DeclareTabs` path.
+      const rendered = await renderPage(page, { locale, id: published.thesisId }, {
+        locale,
+        wrapper: ({ children }) => (
+          <TabsProvider>
+            {children}
+            <RightPane />
+          </TabsProvider>
+        ),
+      });
+      if (rendered.notFound) throw new Error('the thesis page answered the one 404, not a body');
+      const labels = [...rendered.container.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent ?? '');
+      requireSubjects(`right-pane tabs declared by the thesis page (${locale})`, labels);
+      problems.push(
+        ...labels
+          .filter((label) => ID_SHAPES.some((shape) => shape.pattern.test(label)))
+          .map((label) => `${locale}: ${label.trim().slice(0, 40)}`),
+      );
+    }
+    expect(problems).toEqual([]);
   });
 
   it("a request's restsOn renders each record as its chip, never the name as text (§17 :541)", async () => {

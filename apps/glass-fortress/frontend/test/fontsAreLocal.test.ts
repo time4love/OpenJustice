@@ -123,6 +123,31 @@ describe('fonts-are-local', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('the serif is APPLIED, not only declared — a rule outside :root names it, and the reading region is one of them', () => {
+    // F8's whole lesson: `--font-serif` was defined, self-hosted and correct, and 182 elements under
+    // `main` resolved to the sans, 7 to the mono and ZERO to the serif, because NO RULE OUTSIDE :root
+    // named it. Every case above was green over that page. This one asks the next question.
+    //
+    // WHAT IT CANNOT SEE, and the reason it is not the whole of F8's repair: jsdom has no
+    // `document.fonts` and no font matching, so no case here can know a GLYPH rendered in the face.
+    // `document.fonts.check` for both Frank Ruhl Libre faces, on a page that uses them, is read in the
+    // browser — the step's local run and its staging exercise — and is owed by §10's amendment.
+    // BOTH the `:root` token block AND the `@theme inline` map are stripped first, because both are
+    // DECLARATIONS. `@theme inline` carries `--font-serif: var(--font-serif)`, which makes a Tailwind
+    // utility available and applies the face to nothing — F8's exact shape, and a case that counted it
+    // would be green over the very page F8 was found on.
+    const css = globalsSource();
+    const root = /:root\s*\{[\s\S]*?\n\}/.exec(css)?.[0] ?? '';
+    const theme = /@theme inline\s*\{[\s\S]*?\n\}/.exec(css)?.[0] ?? '';
+    const applying = css.replace(root, '').replace(theme, '');
+    const applied = [...applying.matchAll(/--font-serif|font-serif/g)].length;
+    const readingRegionCarriesIt = /\.reading\s*\{[^}]*--font-serif/.test(applying);
+    expect({ appliedOutsideRoot: applied > 0, readingRegionCarriesIt }).toEqual({
+      appliedOutsideRoot: true,
+      readingRegionCarriesIt: true,
+    });
+  });
+
   it('the Geist variables are gone from the layout and from globals.css', () => {
     const remaining = ['--font-geist-sans', '--font-geist-mono'].filter(
       (name) => layoutSource().includes(name) || globalsSource().includes(name),

@@ -4,6 +4,7 @@ jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>
 import { join, relative } from 'node:path';
 import { renderWithIntl, setAuthState, setPathname } from './render';
 import { FRONTEND, SRC, importsOf, requireSubjects, sourceFiles } from './scan';
+import { DeclareTabs, TabsProvider } from '@/components/shell/RightPane';
 
 // ---------------------------------------------------------------------------
 // shell-mounted-once and two-centres-by-url — docs/gf-ui-refactor-plan.md §9 :1058–:1061, :1071–:1072,
@@ -57,6 +58,34 @@ describe('two-centres-by-url', () => {
         .map((found) => `${file} imports ${found.specifier}`),
     );
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('the right pane is only reachable inside the shell', () => {
+  // S5-1. `usePaneTabs` THROWS outside `TabsProvider` on purpose (`RightPane.tsx` :53), so a page cannot
+  // declare right-pane tabs into nothing. Until UI-5 nothing exercised it — and then UI-5 made it worse
+  // rather than better: `test/render.tsx` now mounts the registry around every page render (D14,
+  // correctly, because `app/[locale]/layout.tsx` mounts the shell once and Next never renders a page
+  // bare), which removed the ONLY thing that had ever hit the throw — a 31-case cascade that was the
+  // throw doing its job. After that, making the context optional would have broken nothing.
+  //
+  // THAT IS THE EXACT SHAPE THIS SUITE EXISTS TO CATCH: a guard whose absence no case would notice. So
+  // the throw gets a case of its own, rendered deliberately OUTSIDE the provider.
+  it('a tab-declaring subject rendered OUTSIDE the provider throws, naming the shell', () => {
+    // Rendered bare, which is the one thing `renderPage` no longer does.
+    expect(() => renderWithIntl(<DeclareTabs tabs={[{ id: 'x', label: 'x', content: null }]} />)).toThrow(
+      'usePaneTabs: the right pane is only reachable inside the shell',
+    );
+  });
+
+  it('and INSIDE the provider the same subject renders without throwing — the control', () => {
+    expect(() =>
+      renderWithIntl(
+        <TabsProvider>
+          <DeclareTabs tabs={[{ id: 'x', label: 'x', content: null }]} />
+        </TabsProvider>,
+      ),
+    ).not.toThrow();
   });
 });
 

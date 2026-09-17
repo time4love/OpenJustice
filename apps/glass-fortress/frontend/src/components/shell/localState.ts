@@ -95,4 +95,6 @@ export const SHELL_KEYS = {
   paneWidth: 'gf.shell.paneWidth.v1',
   sidebarCollapsed: 'gf.shell.sidebarCollapsed.v1',
   activeTab: 'gf.shell.activeTab.v1',
+  /** The phone's full-screen pane layer: open or closed (§9 :1070). One flag, read by the pane and by whatever opens it. */
+  paneOpenOnPhone: 'gf.shell.paneOpenOnPhone.v1',
 } as const;

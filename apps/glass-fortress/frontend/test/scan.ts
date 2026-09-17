@@ -290,8 +290,10 @@ export function packageNameOf(specifier: string): string | null {
  * rewrites or UI-10 retires. Every entry is asserted to EXIST and to still be an OFFENDER, so a file that is
  * deleted, or that stops offending, forces its line out rather than decorating the list forever.
  *
- * IT ONLY SHRINKS. It is emptied at UI-10. `components/thesis/CitationChip.tsx` is the first entry to leave,
- * at this step, because this step rewrites it.
+ * IT ONLY SHRINKS. It is emptied at UI-10. `components/thesis/CitationChip.tsx` left at UI-4b, which rewrote it;
+ * at UI-5 SEVENTEEN more leave — the three public thesis pages' surface — because the re-briefed step rewrites
+ * every one of them. 75 → 58. A file leaves when it STOPS OFFENDING, never because a step wants it gone: the
+ * ratchet's second case asks each remaining entry whether it still offends, and it is what forces this list down.
  *
  * The subject set is `src/**` + `.ts`/`.tsx` and therefore EXCLUDES `src/app/globals.css`, which is the token
  * block's own home and the one place a raw colour belongs.
@@ -307,7 +309,6 @@ export const NOT_YET_REWRITTEN: readonly string[] = [
   'src/app/[locale]/admin/page.tsx',
   'src/app/[locale]/article-rules/[trackedUrlId]/[capture]/MarkingClient.tsx',
   'src/app/[locale]/auth/callback/page.tsx',
-  'src/app/[locale]/call/[thesisId]/page.tsx',
   'src/app/[locale]/call/page.tsx',
   'src/app/[locale]/evidence/[id]/page.tsx',
   'src/app/[locale]/evidence/page.tsx',
@@ -334,7 +335,6 @@ export const NOT_YET_REWRITTEN: readonly string[] = [
   'src/components/AuthShell.tsx',
   'src/components/CategoryBadges.tsx',
   'src/components/ClaimBlock.tsx',
-  'src/components/CopyableCode.tsx',
   'src/components/DebugConsolePanel.tsx',
   'src/components/DiffCard.tsx',
   'src/components/EmptyState.tsx',
@@ -344,7 +344,6 @@ export const NOT_YET_REWRITTEN: readonly string[] = [
   'src/components/FoiaModal.tsx',
   'src/components/GuideStatusBadge.tsx',
   'src/components/HeroSection.tsx',
-  'src/components/LegalDisclaimer.tsx',
   'src/components/PublicationBadge.tsx',
   'src/components/SkeletonRows.tsx',
   'src/components/StagingBanner.tsx',
@@ -359,24 +358,10 @@ export const NOT_YET_REWRITTEN: readonly string[] = [
   'src/components/TipTapRenderer.tsx',
   'src/components/TrajectoryPanel.tsx',
   'src/components/WhistleblowerModal.tsx',
-  'src/components/thesis/Appeals.tsx',
-  'src/components/thesis/Banner.tsx',
-  'src/components/thesis/Byline.tsx',
-  'src/components/thesis/ContextLine.tsx',
-  'src/components/thesis/History.tsx',
-  'src/components/thesis/PlatformMark.tsx',
-  'src/components/thesis/ProvisionName.tsx',
-  'src/components/thesis/PublicInterestStatement.tsx',
-  'src/components/thesis/TheCase.tsx',
-  'src/components/thesis/ThePages.tsx',
-  'src/components/thesis/ThesisNotFound.tsx',
-  'src/components/thesis/VerifyDisclosure.tsx',
-  'src/components/thesis/WithdrawnNotice.tsx',
   'src/lib/debugCapture.ts',
   'src/lib/evidencePerspective.ts',
   'src/lib/guide.ts',
   'src/lib/investigativeCategories.ts',
-  'src/lib/markdownToReact.tsx',
   'src/lib/reportEvidenceTiers.ts',
 ];
 

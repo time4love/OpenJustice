@@ -16,28 +16,28 @@ import type { Citation } from '@/types/thesis';
 export function VerifyDisclosure({ contentHash, citations }: { contentHash: string; citations: readonly Citation[] }) {
   const t = useTranslations('theses.verify');
   return (
-    <details data-verify className="rounded-lg border border-slate-200 p-3 text-sm">
-      <summary className="cursor-pointer text-slate-700">{t('summary')}</summary>
+    <details data-verify className="rounded-lg border border-line p-3 text-sm">
+      <summary className="cursor-pointer text-ink">{t('summary')}</summary>
       <div className="mt-2 space-y-2">
         <p className="flex flex-wrap items-center gap-2">
-          <span className="text-slate-500">{t('versionHash')}</span>
+          <span className="text-ink-muted">{t('versionHash')}</span>
           <CopyableCode value={contentHash} label={t('copyValue')} showValue />
         </p>
         {citations.map((citation) => (
           <div key={`${citation.kind}:${citation.name}`} className="space-y-1">
             <p className="flex flex-wrap items-center gap-2">
-              <span className="text-slate-500">{citation.kind === 'EVIDENCE' ? t('recordName') : t('trajectoryId')}</span>
+              <span className="text-ink-muted">{citation.kind === 'EVIDENCE' ? t('recordName') : t('trajectoryId')}</span>
               <CopyableCode value={citation.name} label={t('copyValue')} showValue />
             </p>
             {citation.kind === 'EVIDENCE' && citation.pin !== null ? (
               <p className="flex flex-wrap items-center gap-2">
-                <span className="text-slate-500">{t('pin')}</span>
+                <span className="text-ink-muted">{t('pin')}</span>
                 <CopyableCode value={citation.pin} label={t('copyValue')} showValue />
               </p>
             ) : null}
           </div>
         ))}
-        <p className="text-slate-600">{t('how')}</p>
+        <p className="text-ink-muted">{t('how')}</p>
       </div>
     </details>
   );

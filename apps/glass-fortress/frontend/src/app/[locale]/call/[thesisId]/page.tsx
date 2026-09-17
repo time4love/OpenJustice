@@ -7,7 +7,8 @@ import { parseCallBody, parseThesisBody } from '@/lib/thesisBody';
 import type { PublishedThesis, ThesisBody, WhistleblowerCall } from '@/types/thesis';
 import { Appeals } from '@/components/thesis/Appeals';
 import { ContextLine } from '@/components/thesis/ContextLine';
-import { PublicInterestStatement } from '@/components/thesis/PublicInterestStatement';
+import { NoteRecent } from '@/components/thesis/NoteRecent';
+import { PrefaceFold } from '@/components/thesis/PrefaceFold';
 import { WithdrawnNotice } from '@/components/thesis/WithdrawnNotice';
 import { LegalDisclaimer } from '@/components/LegalDisclaimer';
 
@@ -72,8 +73,10 @@ interface Labels {
 function Live({ thesis, call, locale, t }: { thesis: PublishedThesis; call: WhistleblowerCall; locale: string; t: Labels }) {
   return (
     <main className="page-column space-y-6 py-8">
-      <PublicInterestStatement statement={thesis.publicInterestStatement} />
-      <LegalDisclaimer form="full" />
+      {/* WHAT THIS BROWSER HAS OPENED (§9 :1084–:1085). The label is the page's — a thesis by its
+          claim's first words — because only the page knows what a person recognises it by. */}
+      <NoteRecent kind="thesis" href={`/theses/${thesis.thesisId}`} label={thesis.claim} />
+      <PrefaceFold statement={thesis.publicInterestStatement} />
       <header className="space-y-2">
         <p id="claim" dir="auto" className="text-lg font-semibold leading-snug">
           {thesis.claim}
@@ -94,7 +97,7 @@ function Live({ thesis, call, locale, t }: { thesis: PublishedThesis; call: Whis
           headings={{ call: t.callHeading, requests: t.requestsHeading, how: t.howHeading }}
         />
       ) : (
-        <p className="text-slate-700">{t.notLive}</p>
+        <p className="text-ink">{t.notLive}</p>
       )}
       <LegalDisclaimer form="short" />
     </main>

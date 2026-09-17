@@ -13,7 +13,7 @@ export function ThePages({ pages }: { pages: readonly { trackedUrlId: string; ur
   return (
     <section>
       <h2 className="mb-2 text-lg font-semibold">{t('heading')}</h2>
-      <p className="mb-2 text-sm text-slate-600">{t('counterweight')}</p>
+      <p className="mb-2 text-sm text-ink-muted">{t('counterweight')}</p>
       <ul className="list-disc ps-6">
         {pages.map((page) => (
           <li key={page.trackedUrlId}>

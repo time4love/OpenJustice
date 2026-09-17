@@ -2,6 +2,7 @@ jest.mock('../src/lib/api', () => jest.requireActual<typeof import('./render')>(
 jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>('./render').navigationDouble());
 
 import { join, relative } from 'node:path';
+import { RightPane, TabsProvider } from '@/components/shell/RightPane';
 import { renderPage, setAuthState, setPathname, setPublicBodies, textNodes, type Locale, type PageRender } from './render';
 import { FRONTEND, PUBLIC_THESIS_PAGES, importClosureOf, importsOf, publicThesisModules, requireSubjects, sourceFiles, SRC } from './scan';
 import withAnalysis from './fixtures/thesis/published-with-analysis.json';
@@ -54,6 +55,33 @@ async function pages(locale: Locale): Promise<string> {
 }
 
 describe('no-model-voice-public', () => {
+  it('THE RECORD PANE, RENDERED: the marks\' words are there and rule 3\'s label is not — the region a page render never reaches', async () => {
+    // A decoy found this: planting rule 3's AI label INSIDE `RecordPane` reddened nothing, because the
+    // pane's content only exists when the shell renders it and every case here read the page alone. The
+    // record is where UI-5 MOVED the platform's words (§10 :1122), so it is exactly the region that must
+    // not also acquire the model's.
+    setPublicBodies({ [`/api/thesis/${withAnalysis.thesisId}`]: { status: 200, body: withAnalysis } });
+    const page = (await thesisPage()).default;
+    const rendered = await renderPage(page, { locale: 'he', id: withAnalysis.thesisId }, {
+      locale: 'he',
+      wrapper: ({ children }) => (
+        <TabsProvider>
+          {children}
+          <RightPane />
+        </TabsProvider>
+      ),
+    });
+    if (rendered.notFound) throw new Error('the thesis page answered the one 404');
+    const record = rendered.container.querySelector('[data-record]');
+    if (record === null) throw new Error('no record pane rendered — the page declared no tab');
+    const text = record.textContent ?? '';
+    expect({
+      carriesTheMarksWords: text.includes('מאומת מול העוגן'),
+      carriesRule3Label: text.includes('ניתוח AI'),
+      carriesAnalysisProse: PLANTED.some((planted) => text.includes(planted)),
+    }).toEqual({ carriesTheMarksWords: true, carriesRule3Label: false, carriesAnalysisProse: false });
+  });
+
   it('a planted analysis renders nothing — not one of its strings, on the thesis page or the call page, in either locale', async () => {
     for (const locale of LOCALES) {
       const text = await pages(locale);

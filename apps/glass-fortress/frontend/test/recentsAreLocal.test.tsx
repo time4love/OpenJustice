@@ -3,6 +3,7 @@ jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>
 
 import { join, relative } from 'node:path';
 import { renderWithIntl, setAuthState, setPathname, textNodes } from './render';
+import { readFileSync } from 'node:fs';
 import { FRONTEND, ID_SHAPES, SRC, importsOf, requireSubjects, sourceFiles, stringsIn } from './scan';
 import threeKinds from './fixtures/shell/recents-three-kinds.json';
 import empty from './fixtures/shell/recents-empty.json';
@@ -131,12 +132,48 @@ describe('recents-are-local', () => {
     }).toEqual({ theses: true, archive: true, items: 0 });
   });
 
-  it('NOTHING under src/ writes the list at this step — the writer is UI-5\'s, and this case is what says so', () => {
-    const writers = requireSubjects('source files under src/', sourceFiles(SRC, ['.ts', '.tsx']))
-      .filter((file) => relative(FRONTEND, file) !== RECENTS)
-      .filter((file) => importsOf(file).some((found) => found.module === RECENTS))
+  it('ONE WRITER MODULE AND ONE READER, and the three public pages are what render the writer', () => {
+    // INVERTED AT UI-5 (§9 :1084–:1085). At UI-4b `lib/recents.ts` shipped a READER AND NO CALLER and
+    // this case said exactly that; the re-brief lands the writer, so the same property is stated the
+    // other way round.
+    //
+    // MY STEP-1 SPELLING OF THIS CASE WAS ARCHITECTURALLY WRONG AND THE CODE IS WHAT CORRECTED IT: it
+    // asserted that each of the three PAGES imports `lib/recents` and calls `noteRecent`. The three
+    // public pages are SERVER components and `localStorage` is the browser's, so a page cannot write
+    // the list during its own render. The write is a CLIENT COMPONENT the page renders — the shape
+    // `<DeclareTabs>` already uses to take a declaration from a server page. The property is unchanged;
+    // where it is satisfied is not.
+    //
+    // THE LIST IS EXACT IN BOTH DIRECTIONS. An importer missing from it is a writer nobody declared; a
+    // page missing from the renderers is a category that silently stays empty.
+    const WRITER = 'src/components/thesis/NoteRecent.tsx';
+    const READER = 'src/components/shell/Sidebar.tsx';
+    const PAGES = [
+      'src/app/[locale]/theses/[id]/page.tsx',
+      'src/app/[locale]/theses/[id]/versions/[v]/page.tsx',
+      'src/app/[locale]/call/[thesisId]/page.tsx',
+    ];
+    const importers = requireSubjects('source files under src/', sourceFiles(SRC, ['.ts', '.tsx']))
       .map((file) => relative(FRONTEND, file))
-      .filter((file) => file !== 'src/components/shell/Sidebar.tsx');
-    expect(writers).toEqual([]);
+      .filter((file) => file !== RECENTS)
+      .filter((file) => importsOf(join(FRONTEND, file)).some((found) => found.module === RECENTS))
+      .sort();
+    const renderers = PAGES.filter((page) => readFileSync(join(FRONTEND, page), 'utf8').includes('<NoteRecent'));
+    expect({ importers, renderers }).toEqual({ importers: [WRITER, READER].sort(), renderers: PAGES });
+  });
+
+  it('the THESIS kind is the one UI-5 writes — `page` and `record` wait for the pages that render them', () => {
+    // Stated rather than left to be noticed. `lib/recents.ts` holds three kinds; UI-5 lands the pages
+    // that render a THESIS, and `/pages/[id]/captures/[capture]` and `/records/[hash]` are UI-7's
+    // (A1 :972–:979). So two of the sidebar's three categories stay empty on a live route after this
+    // step, exactly as both stayed empty after UI-4b — and this case is what says so out loud.
+    const written = [...new Set(
+      ['src/components/thesis/NoteRecent.tsx', ...[
+        'src/app/[locale]/theses/[id]/page.tsx',
+        'src/app/[locale]/theses/[id]/versions/[v]/page.tsx',
+        'src/app/[locale]/call/[thesisId]/page.tsx',
+      ]].flatMap((file) => [...readFileSync(join(FRONTEND, file), 'utf8').matchAll(/kind="(thesis|page|record)"/g)].map((m) => m[1])),
+    )];
+    expect(written).toEqual(['thesis']);
   });
 });

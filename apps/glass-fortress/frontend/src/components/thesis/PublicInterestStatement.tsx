@@ -7,5 +7,5 @@ import { ResearcherWords } from './ResearcherWords';
  */
 export function PublicInterestStatement({ statement }: { statement: string | null }) {
   if (statement === null || statement.trim() === '') return null;
-  return <ResearcherWords className="text-base leading-relaxed text-slate-800">{statement}</ResearcherWords>;
+  return <ResearcherWords className="text-ink">{statement}</ResearcherWords>;
 }

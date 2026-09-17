@@ -99,13 +99,33 @@ describe('bidi-isolated', () => {
     expect(problems).toEqual([]);
   });
 
-  it("a chip's date and domain are isolated left-to-right", async () => {
+  it("a chip's DATE or INTERVAL is isolated left-to-right — and a trajectory's words correctly are not", async () => {
+    // RE-POINTED AT UI-5, because the chip's subject changed under §10 :1121: the DOMAIN moved out of
+    // every chip and up to the TICK LINE, which heads the page with it once instead of repeating it at
+    // each citation. What is left in an evidence chip is a date or an interval, which must still be
+    // isolated; what is left in a TRAJECTORY chip is the claim's first words (§17 :535–:536 asks for
+    // exactly that and for no domain), which are Hebrew and must NOT be forced left-to-right.
+    // The old title said "date and domain" because every chip carried both. Splitting the two is not a
+    // weakening: the domain is now asserted on the tick line, in the case below, and the trajectory's
+    // own url is still in its record.
     const [thesis] = await allPages('he');
     const chips = [...(thesis?.container.querySelectorAll('[data-chip]') ?? [])];
     requireSubjects('chips on /theses/[id]', chips);
-    const problems = chips
+    const dated = chips.filter((chip) => /\d/.test(chip.textContent ?? ''));
+    requireSubjects('chips carrying a date or an interval', dated);
+    const problems = dated
       .filter((chip) => chip.querySelectorAll('bdi[dir="ltr"], [dir="ltr"]').length === 0)
       .map((chip) => (chip.textContent ?? '').slice(0, 40));
+    expect(problems).toEqual([]);
+  });
+
+  it("the TICK LINE's domain is isolated left-to-right — the half the re-point above would otherwise lose", async () => {
+    const [thesis] = await allPages('he');
+    const lines = [...(thesis?.container.querySelectorAll('[data-tick-line]') ?? [])];
+    requireSubjects('tick lines on /theses/[id]', lines);
+    const problems = lines
+      .filter((line) => (line.querySelector('bdi[dir="ltr"]')?.textContent ?? '') === '')
+      .map((line) => (line.textContent ?? '').slice(0, 40));
     expect(problems).toEqual([]);
   });
 

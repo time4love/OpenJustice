@@ -9,7 +9,10 @@ import { Byline } from '@/components/thesis/Byline';
 import { ContextLine } from '@/components/thesis/ContextLine';
 import { History } from '@/components/thesis/History';
 import { ProvisionName } from '@/components/thesis/ProvisionName';
-import { PublicInterestStatement } from '@/components/thesis/PublicInterestStatement';
+import { PaneTabs } from '@/components/thesis/PaneTabs';
+import { TickLine } from '@/components/thesis/TickLine';
+import { NoteRecent } from '@/components/thesis/NoteRecent';
+import { PrefaceFold } from '@/components/thesis/PrefaceFold';
 import { TheCase } from '@/components/thesis/TheCase';
 import { ThePages } from '@/components/thesis/ThePages';
 import { ThesisText } from '@/components/thesis/ThesisText';
@@ -66,44 +69,100 @@ export async function generateMetadata({ params }: PageParams, parent: Resolving
   };
 }
 
-function Published({ thesis, locale, copyLabel }: { thesis: PublishedThesis; locale: string; copyLabel: string }) {
+/**
+ * `<main>` HAS FIVE CHILDREN AND `children[1]` IS THE CLAIM — the researcher's ruling of 2026-09-17.
+ *
+ *   [0] the folded preface   the statement and the full disclaimer, one element that grows
+ *   [1] the CLAIM            §17 :529; A2 :1268
+ *   [2] <header>             the provision · the byline with the COPY · the TICK LINE (§10 :1121)
+ *   [3] <article>            the read: the context line, the text, the call card, the four folds
+ *   [4] the short disclaimer LAST (§17 :561; §32 :813–:815)
+ *
+ * REGION 4 IS GONE — the appeals leave the thesis page entirely (§10 :1122–:1123; R56's ruling;
+ * design session §3 :73–:75). One card leads to the call page, where they still live.
+ *
+ * THE CONTEXT LINE SITS INSIDE [3], not beside it. `position: sticky` resolves against the nearest
+ * scrolling ancestor and its stuck range is its own parent's box: as a child of `<main>` beside a
+ * 3,000px article it would leave the top the moment `<main>`'s box ended. Inside the article it holds
+ * for the whole read, which is what §17 :531 asks — and it keeps `<main>` at five.
+ */
+function Published({ thesis, locale, copyLabel, headings }: { thesis: PublishedThesis; locale: string; copyLabel: string; headings: Headings }) {
+  // §17 :549 — a thesis with no CALLED and no REQUESTED gap shows no appeals section, so it declares no
+  // call tab either. THE PRESENCE IS THE COUNTS AND NEVER THE ELEMENT: `<Appeals>` returns null when both
+  // lists are empty, but a React element is never `undefined`, so a page that passed it unconditionally
+  // would declare a tab that draws nothing. `pane-tabs-declared` holds this on `published-no-appeals.json`.
+  const hasAppeals = thesis.appeals.call.length + thesis.appeals.requests.length > 0;
   return (
     <main className="page-column space-y-6 py-8">
-      <PublicInterestStatement statement={thesis.publicInterestStatement} />
-      <LegalDisclaimer form="full" />
+      {/* WHAT OPENS BESIDE THE READ (§10 :1124; §20 as amended): every cited record, and the call. The page
+          declares; the shell renders. A tick's press makes one active.
+
+          NO SECOND READ (§8 :331–:333). The call panel is built from THIS body's own `appeals` —
+          `{ call, requests, intake }`, thesis A5 :1567 — which `types/thesis.ts` :276 types with the very
+          `CallItem[]` / `RequestItem[]` / `intake` the `/call` route's own body carries at :304. Nothing is
+          derived that the body does not hold, and `GET /api/thesis/:id/call` is the CALL PAGE's read alone.
+
+          THE TAB IS BOARD 3A MINUS THE FOLDED PREFACE AND THE FULL DISCLAIMER (§20 as amended): the centre
+          already carries the statement and the disclaimer, and COMPLIANCE.md :92 names "every thesis page ·
+          every /call/[thesisId] page" — a tab is neither. */}
+      <PaneTabs
+        citations={thesis.citations}
+        pages={thesis.pages}
+        locale={locale}
+        call={
+          hasAppeals ? (
+            <Appeals
+              call={thesis.appeals.call}
+              requests={thesis.appeals.requests}
+              intake={thesis.appeals.intake}
+              citations={thesis.citations}
+              pages={thesis.pages}
+              locale={locale}
+              headings={headings}
+            />
+          ) : undefined
+        }
+      />
+      {/* WHAT THIS BROWSER HAS OPENED (§9 :1084–:1085). The label is the page's — a thesis by its
+          claim's first words — because only the page knows what a person recognises it by. */}
+      <NoteRecent kind="thesis" href={`/theses/${thesis.thesisId}`} label={thesis.claim} />
+      <PrefaceFold statement={thesis.publicInterestStatement} />
+      <h1 id="claim" dir="auto" className="font-serif text-claim font-bold">
+        {thesis.claim}
+      </h1>
       <header className="space-y-2">
-        <h1 id="claim" dir="auto" className="text-2xl font-semibold leading-snug">
-          {thesis.claim}
-        </h1>
         <ProvisionName title={thesis.provisionTitle} />
         <Byline author={thesis.version.author} at={thesis.version.publishedAt} locale={locale} />
         {/* The COPY of `thesis <id>` — the chat-ready form, labelled by what it is FOR (§4 :172–:174; run B, Live-31). */}
         <CopyableCode value={`thesis ${thesis.thesisId}`} label={copyLabel} />
+        {/* THE TICK LINE, under the byline (§10 :1121): the cited records of each page, in the body's
+            order, before the reader walks through them. */}
+        <TickLine citations={thesis.citations} locale={locale} />
       </header>
-      <ContextLine claim={thesis.claim} watch="claim" />
-      <ThesisText text={thesis.version.text} citations={thesis.citations} pages={thesis.pages} locale={locale} />
-      <Appeals
-        call={thesis.appeals.call}
-        requests={thesis.appeals.requests}
-        intake={thesis.appeals.intake}
-        citations={thesis.citations}
-        pages={thesis.pages}
-        locale={locale}
-        headings={null}
-      />
-      <TheCase rationale={thesis.rationale} overObjection={thesis.overObjection} analysisRun={thesis.analysisRun} />
-      <History
-        thesisId={thesis.thesisId}
-        history={thesis.history}
-        current={{ versionId: thesis.version.versionId, text: thesis.version.text, citations: thesis.citations.map((citation) => ({ kind: citation.kind, name: citation.name, pin: citation.kind === 'EVIDENCE' ? citation.pin : null })) }}
-        author={thesis.version.author}
-        locale={locale}
-      />
-      <ThePages pages={thesis.pages} />
-      <VerifyDisclosure contentHash={thesis.version.contentHash} citations={thesis.citations} />
+      <article className="reading space-y-6">
+        <ContextLine claim={thesis.claim} watch="claim" />
+        <ThesisText text={thesis.version.text} citations={thesis.citations} pages={thesis.pages} locale={locale} />
+        <TheCase rationale={thesis.rationale} overObjection={thesis.overObjection} analysisRun={thesis.analysisRun} />
+        <History
+          thesisId={thesis.thesisId}
+          history={thesis.history}
+          current={{ versionId: thesis.version.versionId, text: thesis.version.text, citations: thesis.citations.map((citation) => ({ kind: citation.kind, name: citation.name, pin: citation.kind === 'EVIDENCE' ? citation.pin : null })) }}
+          author={thesis.version.author}
+          locale={locale}
+        />
+        <ThePages pages={thesis.pages} />
+        <VerifyDisclosure contentHash={thesis.version.contentHash} citations={thesis.citations} />
+      </article>
       <LegalDisclaimer form="short" />
     </main>
   );
+}
+
+/** The call area's three region headings — §20's rows 3, 4 and 5 — resolved on the server, as the call page does. */
+interface Headings {
+  call: string;
+  requests: string;
+  how: string;
 }
 
 export default async function ThesisPage({ params }: PageParams) {
@@ -111,5 +170,15 @@ export default async function ThesisPage({ params }: PageParams) {
   const thesis = await body(id);
   if ('withdrawn' in thesis) return <WithdrawnNotice at={thesis.withdrawnAt} locale={locale} />;
   const t = await getTranslations({ locale, namespace: 'theses.page' });
-  return <Published thesis={thesis} locale={locale} copyLabel={t('copyThesis')} />;
+  // The same approved strings the call page passes, from the same namespace: the call area reads one way
+  // wherever it is drawn, and no string is added for the tab (§10 :1127's copy rule).
+  const labels = await getTranslations({ locale, namespace: 'call.page' });
+  return (
+    <Published
+      thesis={thesis}
+      locale={locale}
+      copyLabel={t('copyThesis')}
+      headings={{ call: labels('callHeading'), requests: labels('requestsHeading'), how: labels('howHeading') }}
+    />
+  );
 }

@@ -6,7 +6,9 @@ import { parseThesisBody, parseVersionBody } from '@/lib/thesisBody';
 import type { ThesisBody, VersionBody } from '@/types/thesis';
 import { Banner } from '@/components/thesis/Banner';
 import { Byline } from '@/components/thesis/Byline';
-import { PublicInterestStatement } from '@/components/thesis/PublicInterestStatement';
+import { NoteRecent } from '@/components/thesis/NoteRecent';
+import { PaneTabs } from '@/components/thesis/PaneTabs';
+import { PrefaceFold } from '@/components/thesis/PrefaceFold';
 import { ThesisText } from '@/components/thesis/ThesisText';
 import { VerifyDisclosure } from '@/components/thesis/VerifyDisclosure';
 import { WithdrawnNotice } from '@/components/thesis/WithdrawnNotice';
@@ -61,8 +63,32 @@ export default async function VersionPage({ params }: PageParams) {
   if ('withdrawn' in thesis) return <WithdrawnNotice at={thesis.withdrawnAt} locale={locale} />;
   return (
     <main className="page-column space-y-6 py-8">
-      <PublicInterestStatement statement={thesis.publicInterestStatement} />
-      <LegalDisclaimer form="full" />
+      {/* WHAT OPENS BESIDE THE READ (§10 :1124; §22 as amended — "at width the record is a right-pane tab,
+          not a margin panel"). THE RECORDS ONLY, AND NO CALL: the appeals belong to the thesis as it stands,
+          not to a version that has been superseded, and this page's own body (A5 :1570) carries none — which
+          is what `PaneTabs`' `call` prop means by "absent on the version page". Nothing is fetched for the
+          tabs (§8 :331–:333): both lists are already read above.
+
+          THE SET IS THE INTERSECTION, and the page reads two bodies to get it. The VERSION names what THIS
+          text cited (`version.citations`, A5 :1570); the THESIS resolves each record's facts and marks
+          (A5 :1569). Declaring the thesis's list would open a tab for a record this version never cited,
+          and none for one it did.
+
+          A RECORD THIS VERSION CITES THAT THE CURRENT BODY NO LONGER CARRIES GETS NO TAB, and that is the
+          right answer rather than a gap: there is no resolved record to open, so `<ThesisText>` renders it
+          as a `not-current` chip (`ThesisText.tsx` :27) and the pane agrees with the text instead of
+          contradicting it. */}
+      <PaneTabs
+        citations={thesis.citations.filter((citation) =>
+          version.citations.some((ref) => ref.kind === citation.kind && ref.name === citation.name),
+        )}
+        pages={thesis.pages}
+        locale={locale}
+      />
+      {/* WHAT THIS BROWSER HAS OPENED (§9 :1084–:1085). The label is the page's — a thesis by its
+          claim's first words — because only the page knows what a person recognises it by. */}
+      <NoteRecent kind="thesis" href={`/theses/${thesis.thesisId}`} label={thesis.claim} />
+      <PrefaceFold statement={thesis.publicInterestStatement} />
       <Banner thesisId={thesis.thesisId} />
       <Byline author={thesis.version.author} at={version.publishedAt} locale={locale} />
       <ThesisText

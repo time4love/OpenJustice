@@ -27,6 +27,11 @@
   --amber: #B7791F;          /* flagged · missing · draft */
   --seal-red: #A8322A;       /* removed · absent · withdrawal */
 
+  /* A SURFACE, named for where it is drawn — `--door-field`'s precedent. It marks a value the platform
+     filled into the letter, joins none of the four meaning colours above, and no record, mark or state
+     is ever drawn in it. Ruled with the `--line` underline beside it (the researcher, Q5 „א+ג”). */
+  --letter-fill: #FBEFC9;
+
   /* The two in-text tints, for a changed passage */
   --olive-tint: #dee8d3;
   --seal-tint: #f5dad7;
@@ -84,9 +89,36 @@
   --color-gold: var(--gold);
   --color-amber: var(--amber);
   --color-seal-red: var(--seal-red);
+  --color-olive-tint: var(--olive-tint);
+  --color-seal-tint: var(--seal-tint);
   --font-sans: var(--font-sans);
   --font-serif: var(--font-serif);
   --font-mono: var(--font-mono);
+
+  /* THE TYPE SCALE JOINS THE THEME, which is what gives it utilities at all. The ten colours and the
+     three font stacks were mapped here at UI-4b and the scale was not, so `--text-claim` lived in
+     `:root` with no `text-claim` utility and no consumer, and the claim fell back to Tailwind's own
+     `--text-2xl`. That is F8's other half: a token block complete, and nothing able to use it.
+
+     THE SELF-REFERENCE IS THE MECHANISM, not a typo — `--font-serif: var(--font-serif)` has worked
+     here since UI-4b for the same reason. Tailwind emits this block into `:root,:host` FIRST and the
+     author's own `:root` AFTER, so the real definition wins and the utility resolves to it.
+
+     `--text-x--line-height` is Tailwind v4's paired form: `text-claim` then sets size AND leading
+     together, so no page can take one and forget the other. */
+  --text-claim: var(--text-claim);
+  --text-claim--line-height: var(--leading-claim);
+  --text-claim-compact: var(--text-claim-compact);
+  --text-claim-compact--line-height: var(--leading-claim);
+  --text-words: var(--text-words);
+  --text-words--line-height: var(--leading-words);
+  --text-words-compact: var(--text-words-compact);
+  --text-words-compact--line-height: var(--leading-words);
+  --text-record: var(--text-record);
+  --text-record--line-height: var(--leading-record);
+  --text-label: var(--text-label);
+  --text-mark: var(--text-mark);
+  --text-value: var(--text-value);
 }
 
 body {
@@ -360,6 +392,23 @@ html, body {
     overflow-y: auto;
   }
 
+  /* THE PHONE'S FULL-SCREEN LAYER (docs/gf-ui-refactor-plan.md §9 :1070, "the pane's content opens
+     full-screen with a back control, ONE LAYER AT A TIME"). Below `md` the pane is not a third column:
+     it is either absent or the whole screen. Without this it would sit as an ordinary flex child of the
+     column shell and STACK BELOW the centre — the base rule at :166 gives it `display: flex` and nothing
+     lifts it out of flow, which UI-4b could not see because no page declared a tab. */
+  @media (width < 48rem) {
+    .shell-pane {
+      display: none;
+    }
+    .shell-pane[data-pane-open='true'] {
+      display: flex;
+      position: fixed;
+      inset: 0;
+      z-index: 45;
+    }
+  }
+
   /* From `md` the three panes sit side by side and the phone's chrome disappears. */
   @media (width >= 48rem) {
     .shell {
@@ -383,6 +432,271 @@ html, body {
     }
     .shell-topbar {
       display: none;
+    }
+  }
+
+  /* -------------------------------------------------------------------------
+     THE TWO VOICES, APPLIED (F8; docs/gf-ui-refactor-plan.md §10's 2026-09-17 amendment;
+     docs/gf-ui-design-session-2026-09-16.md §1.8).
+
+     `--font-serif` was self-hosted, correct and APPLIED TO NOTHING: measured on the published page,
+     182 elements under `main` resolved to the sans, 7 to the mono and ZERO to the serif, and no rule
+     outside `:root` named it. These are the rules that name it.
+
+     THE FACE BELONGS TO THE VOICE AND THE SIZE BELONGS TO THE REGION, which is why there are two
+     rules and not one. `ResearcherWords` appears at three sizes — the statement, the rationale and
+     the text, a record's pinned text — so a size on the component would need a prop every caller has
+     to get right; the reading region opts in ONCE and the chrome around it is untouched.
+     ------------------------------------------------------------------------- */
+
+  /* -------------------------------------------------------------------------
+     THE FOLDED PREFACE (design session §1.5; canvas page 2 board C; the researcher's ruling „אפשרות ב”).
+     ONE bordered container that GROWS. Closed and open hold the same DOM: the statement is shortened
+     HERE, in CSS, over the whole string, and the disclaimer is hidden by a class rather than unmounted.
+     ------------------------------------------------------------------------- */
+  .preface {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+  }
+
+  .preface-trigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    min-height: var(--touch-target);
+    background: transparent;
+    border: 0;
+    text-align: start;
+    cursor: pointer;
+    color: var(--ink);
+  }
+
+  .preface-statement {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--text-label);
+    line-height: 1.6;
+  }
+
+  /* The one line. The FULL string is in the element; only its rendering is cut. */
+  .preface-clamped {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .preface-chevron {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    color: var(--ink-muted);
+    transform: rotate(-90deg);
+  }
+
+  .preface[data-preface-open='true'] .preface-chevron {
+    transform: rotate(90deg);
+  }
+
+  .preface-panel {
+    padding: 0 10px 10px;
+    border-top: 1px solid var(--line);
+    margin-top: 8px;
+  }
+
+  /* IN THE DOCUMENT, not on the screen. `display: none` keeps it in `textContent` and in find-in-page's
+     reach while it is folded away — which is what makes "first two elements in document order" true of
+     the bytes. Unmounting it would make the contract true only when a reader had already opened it. */
+  .preface-shut {
+    display: none;
+  }
+
+  /* -------------------------------------------------------------------------
+     THE DATED TICK AND THE TICK LINE (canvas `build.mjs` `.tick` / `.tickline`; §10 :1121–:1122).
+     The mark a citation wears in the body, and the line of them under the byline. The dot is the ONLY
+     thing that carries a status here; the marks' words are in the record.
+     ------------------------------------------------------------------------- */
+  .tick {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 1px 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    background: var(--surface);
+    font-family: var(--font-sans);
+    font-size: var(--text-mark);
+    line-height: 1.5;
+    color: var(--ink);
+    white-space: nowrap;
+    vertical-align: baseline;
+  }
+
+  .tick-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex: none;
+  }
+
+  /* §1.8's meaning colours and the absence of one — never a fifth. */
+  .tick-dot-verified { background: var(--olive); }
+  .tick-dot-flagged { background: var(--amber); }
+  .tick-dot-neutral { background: var(--ink-muted); }
+
+  .tick-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+  }
+
+  .tick-line-domain {
+    font-size: var(--text-mark);
+    color: var(--ink-muted);
+    flex: none;
+  }
+
+  .tick-line-rail {
+    flex: 1;
+    min-width: 1rem;
+    height: 1px;
+    background: var(--line);
+  }
+
+  /* -------------------------------------------------------------------------
+     THE CALL PAGE'S CARDS AND THE LETTER (design session §1.6; canvas page 3 boards A and B).
+     ------------------------------------------------------------------------- */
+  .appeal-heading {
+    margin: 6px 0 0;
+    font-size: var(--text-label);
+    font-weight: 600;
+    color: var(--ink-muted);
+  }
+
+  .appeal-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+  }
+
+  /* DECISION 5: drawn muted, and not an anchor. */
+  .appeal-card-muted {
+    border-style: dashed;
+    background: var(--paper);
+  }
+
+  .appeal-card-muted .appeal-card-title { color: var(--ink-muted); }
+  .appeal-card-title { margin: 0; font-size: var(--text-record); font-weight: 600; }
+  .appeal-field { font-size: var(--text-label); }
+  .appeal-field-label { color: var(--ink-muted); }
+  .appeal-rests-on { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: var(--text-label); }
+  .appeal-intake { font-size: var(--text-label); color: var(--ink-muted); }
+
+  .appeal-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: var(--touch-target);
+    padding: 8px 16px;
+    border: 1px solid var(--ink);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: var(--text-label);
+    font-weight: 600;
+  }
+
+  /* The letter: a dialog at width, a full-screen sheet on the phone — ONE primitive for both, so this
+     rule sets size and nothing about modality, focus or scroll, which are `components/Sheet.tsx`'. */
+  .letter-dialog { max-width: 40rem; margin-inline: auto; }
+  .letter-authority { margin: 0; font-size: var(--text-mark); color: var(--ink-muted); }
+  .letter-field { display: flex; flex-direction: column; gap: 4px; }
+  .letter-field-label { font-size: var(--text-mark); font-weight: 600; color: var(--ink-muted); }
+  .letter-field-hint { font-size: var(--text-mark); color: var(--ink-muted); }
+
+  .letter-input {
+    height: var(--touch-target);
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    font-size: var(--text-label);
+    color: var(--ink);
+  }
+
+  .letter-body {
+    padding: 18px 20px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--paper);
+    font-family: var(--font-serif);
+    font-size: var(--text-label);
+    line-height: 1.8;
+    max-height: 40dvh;
+    overflow-y: auto;
+  }
+
+  .letter-body p { margin: 0 0 0.7em; }
+
+  /* BOTH CUES ON THE SAME SPAN (Q5 „א+ג”): the fill works by hue and the underline by luminance, so a
+     greyscale reader sees the second where the first is 1.074:1 against paper. */
+  .letter-fill {
+    background: var(--letter-fill);
+    border-bottom: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 0 3px;
+    color: inherit;
+  }
+
+  .letter-addresses { margin: 0; font-size: var(--text-mark); color: var(--ink-muted); }
+  .letter-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+
+  .letter-button {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--touch-target);
+    padding: 8px 16px;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: var(--ink);
+    color: var(--paper);
+    font-size: var(--text-label);
+    font-weight: 600;
+  }
+
+  .letter-button-quiet { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+
+  /* The researcher's words, wherever they appear: their FACE, and nothing else. */
+  [data-researcher-words] {
+    font-family: var(--font-serif);
+  }
+
+  /* The read itself — the region that opts in to the reading size. The chrome keeps the sans at
+     `--text-label`, which is why `body` is left alone: 13px is right for a shell and wrong for a page,
+     and only the page can say so. */
+  .reading {
+    font-family: var(--font-serif);
+    font-size: var(--text-words-compact);
+    line-height: var(--leading-words);
+  }
+
+  @media (width >= 48rem) {
+    .reading {
+      font-size: var(--text-words);
     }
   }
 
