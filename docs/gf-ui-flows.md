@@ -535,7 +535,7 @@ registers apply with the middle one removed; the same components, one fewer.
                        and its date or interval; for #tr_ the claim's first words and "removed <date>, never
                        restored" or the trajectory's own state; for #doc_ (reserved, document §7) the
                        commitment's short form. A chip carries its marks: VERIFIED · FLAGGED · argued.
-                       Tap → THE CITATION SHEET (§18).
+                       Tap → THE CITATION SHEET (§18). **AMENDED 2026-09-18 (the researcher): the text renders EVERY Markdown capability the researcher's drafting produces — emphasis, strikethrough, lists, quotes and TABLES — because the text is written with a model in claude.ai and a capability silently dropped is a sentence the researcher wrote and no reader sees. "One column" governs the READING MEASURE, not the block types: a table keeps the measure by scrolling inside its own box, never by widening the page (§6 :963's `scrollWidth <= 375` stands). `html: false` STAYS — raw HTML in the researcher's text renders as the text it is, and "every capability" never means markup — and `linkify` stays off, so a bare URL remains isolated text rather than a link nobody chose.**
 4  THE APPEALS         one section, two kinds, each an item card (T5 :819–:821; T4):   — REMOVED 2026-09-16 (R56 ruling; docs/gf-ui-design-session-2026-09-16.md §3): one card leads to the call page
      REQUESTED gap     the request READY TO SEND: text · the authority · legal basis · addresses · the records
                        it rests on (chips) · the instruction: send it under your own name; if you receive an

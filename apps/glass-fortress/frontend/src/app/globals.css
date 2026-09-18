@@ -53,12 +53,17 @@
   --text-words: 1.0625rem;       /* 17px, Frank Ruhl Libre 400, 1.75 — the researcher's words */
   --text-words-compact: 1rem;    /* 16px */
   --text-record: 0.9375rem;      /* 15px, 1.7 — a sheet's and a record's body */
+  /* THE RESEARCHER'S OWN HEADING inside their text (`build.mjs` :81's `.words h2`). It is LARGER and HEAVIER
+     than the words it divides, and larger than any furniture the page adds — the page's four regions are
+     14px fold triggers. The structure a reader meets first must be the ARGUMENT'S, not the platform's. */
+  --text-words-heading: 1.125rem;/* 18px, 700, 1.4 */
   --text-label: 0.8125rem;       /* 13px — section headings (600), labels, meta, the context line */
   --text-mark: 0.75rem;          /* 12px — marks, chips, tabs, the disclaimer */
   --text-value: 0.71875rem;      /* 11.5px — a checkable value, LTR */
 
   --leading-claim: 1.35;
   --leading-words: 1.75;
+  --leading-words-heading: 1.4;
   --leading-record: 1.7;
   --leading-disclaimer: 1.55;
 
@@ -618,13 +623,25 @@ html, body {
      it is stated here rather than chosen again later. `theses.sheet.andMore` („…ועוד {count}") is the
      COMPARISON REGISTER's overflow catch, per the approved copy freeze: a diff's chunks are COUNTED
      and the tail is named. A capture's text is one run of prose with nothing to count, so board 3A
-     resolves it with height and overflow and no counted tail. Two shapes, two answers, each the
-     board's own.
+     resolves it with height and no counted tail. Two shapes, two answers, each the board's own.
+
+     THE HEIGHT IS THE BOARD'S; THE SCROLL IS THE DESIGN'S (R59 · S-4). This rule first took BOTH of
+     the board's declarations — `max-height: 420px` AND `overflow: hidden` — and the second one was
+     wrong. `docs/gf-ui-flows.md` §18 :569 says it outright: *"long content scrolls inside the sheet,
+     the header stays."* A CANVAS BOARD IS A GROUND FOR LAYOUT AND NOTHING ELSE: the height is layout
+     and the board governs it; SCROLLABILITY IS BEHAVIOUR and §18 governs that. The board is a static
+     mockup carrying short sample text, so its `overflow` was never a decision about a 4,822px capture.
+     Measured on the deployed page before the fix: `clientHeight 418` against `scrollHeight 4822` —
+     **4,404px, 91% of the capture, unreachable to a reader**, over the very evidence the citation
+     exists to show. `overflow-y: auto` keeps the board's height and satisfies §18 at the same time.
      ------------------------------------------------------------------------- */
   .record-captured {
     display: block;
     max-height: 420px;
-    overflow: hidden;
+    /* The Y axis scrolls (§18 :569); the X axis never does — a long unbroken URL must wrap or clip,
+       never push the pane sideways (§6 :963, no horizontal scroll at any width). */
+    overflow-y: auto;
+    overflow-x: hidden;
     padding: 14px 16px;
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
@@ -762,6 +779,94 @@ html, body {
     .reading {
       font-size: var(--text-words);
     }
+  }
+
+  /* -------------------------------------------------------------------------
+     THE RESEARCHER'S OWN HEADINGS, inside their published text (`build.mjs` :81's `.words h2`).
+
+     THE HIERARCHY WAS INVERTED and the reading test found it. Measured on the deployed page: a `##`
+     in the researcher's Markdown rendered at 17px/600 — the SAME SIZE as the body it divides, told
+     apart by weight alone — while the page's own three region headings sat ABOVE them at 18px/600.
+     The platform's furniture was louder than the argument it frames.
+
+     Both halves move: the three regions become 14px fold triggers (`.fold-summary`, §10 :1123) and
+     leave the read, and the researcher's structure rises to the board's 18 / 700 / 1.4. It is scoped
+     to `[data-thesis-text]` and NOT to `.reading`, because the version page renders the same text
+     outside that region and the researcher's structure is theirs wherever it is drawn.
+     ------------------------------------------------------------------------- */
+  [data-thesis-text] h2 {
+    font-size: var(--text-words-heading);
+    font-weight: 700;
+    line-height: var(--leading-words-heading);
+  }
+
+  /* -------------------------------------------------------------------------
+     THE FOUR FOLDS OF THE READ (`docs/gf-ui-refactor-plan.md` §10 :1123, "the case, the history, the
+     pages and VERIFY as folds, closed"; canvas `build.mjs` :89's `.fold`).
+
+     ONE RULE AND ONE COMPONENT for all four — `components/thesis/Fold.tsx`. VERIFY was the only fold
+     the build had, and spelling `<details>` three more times beside it is how four regions come to
+     disagree about what a fold is.
+     ------------------------------------------------------------------------- */
+  .fold {
+    border-top: 1px solid var(--line);
+  }
+
+  .fold-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 2px;
+    font-family: var(--font-sans);
+    font-size: 0.875rem;          /* 14px, the board's `.fold` */
+    font-weight: 500;
+    line-height: 1.5;
+    color: var(--ink);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  /* Safari draws its own disclosure triangle through this pseudo-element; the chevron is ours. */
+  .fold-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .fold-chevron {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    color: var(--ink-muted);
+    transform: rotate(-90deg);
+    transition: transform 120ms ease;
+  }
+
+  .fold[open] > .fold-summary .fold-chevron {
+    transform: rotate(90deg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fold-chevron {
+      transition: none;
+    }
+  }
+
+  .fold-body {
+    padding: 0 2px 12px;
+  }
+
+  /* -------------------------------------------------------------------------
+     THE LEGAL DISCLAIMER (COMPLIANCE.md :88–:99; canvas `build.mjs` :68's `.disc`).
+
+     THE REGION OWNS THE LEADING. The element carried Tailwind's `leading-relaxed`, which is 1.625
+     against the board's 1.55 — the one divergence the whole canvas comparison found, and the same
+     shape as R58's two local-run defects: a LOCAL utility quietly beating the token. It states the
+     token now, so the two can no longer disagree.
+     ------------------------------------------------------------------------- */
+  .disclaimer {
+    font-size: var(--text-mark);
+    line-height: var(--leading-disclaimer);
+    color: var(--ink-muted);
   }
 
   /* One column at any width, at the reading measure. */

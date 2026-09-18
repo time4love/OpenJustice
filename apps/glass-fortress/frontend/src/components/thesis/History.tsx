@@ -7,6 +7,7 @@ import { formatDate } from '@/lib/format';
 import { movedPins, textDiff, type DiffRun, type MovedPin } from '@/lib/textDiff';
 import { parseVersionBody } from '@/lib/thesisBody';
 import type { CitationRef, HistoryEntry } from '@/types/thesis';
+import { Fold } from './Fold';
 
 // ---------------------------------------------------------------------------
 // HISTORY, AND THE ONE THING THE FRONTEND DERIVES — docs/gf-ui-flows.md §17 :553–:555, §18 :583–:586;
@@ -74,8 +75,7 @@ export function History({ thesisId, history, current, author, locale }: HistoryP
   }
 
   return (
-    <section className="space-y-2">
-      <h2 className="text-lg font-semibold">{t('heading')}</h2>
+    <Fold summary={t('heading')}>
       <ol className="space-y-2">
         {rows.map((entry, index) => {
           const newer = rows[index - 1];
@@ -134,6 +134,6 @@ export function History({ thesisId, history, current, author, locale }: HistoryP
           )}
         </div>
       )}
-    </section>
+    </Fold>
   );
 }

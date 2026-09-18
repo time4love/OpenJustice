@@ -1,6 +1,7 @@
 import { useTranslations } from 'next-intl';
 import { CopyableCode } from '@/components/CopyableCode';
 import type { Citation } from '@/types/thesis';
+import { Fold } from './Fold';
 
 // ---------------------------------------------------------------------------
 // VERIFY — docs/gf-ui-flows.md §4 :174–:176, §17 :559–:561; A6 :1097 (closed by default). One of the two homes an
@@ -16,9 +17,8 @@ import type { Citation } from '@/types/thesis';
 export function VerifyDisclosure({ contentHash, citations }: { contentHash: string; citations: readonly Citation[] }) {
   const t = useTranslations('theses.verify');
   return (
-    <details data-verify className="rounded-lg border border-line p-3 text-sm">
-      <summary className="cursor-pointer text-ink">{t('summary')}</summary>
-      <div className="mt-2 space-y-2">
+    <Fold summary={t('summary')} verify>
+      <div className="space-y-2 text-sm">
         <p className="flex flex-wrap items-center gap-2">
           <span className="text-ink-muted">{t('versionHash')}</span>
           <CopyableCode value={contentHash} label={t('copyValue')} showValue />
@@ -39,6 +39,6 @@ export function VerifyDisclosure({ contentHash, citations }: { contentHash: stri
         ))}
         <p className="text-ink-muted">{t('how')}</p>
       </div>
-    </details>
+    </Fold>
   );
 }
