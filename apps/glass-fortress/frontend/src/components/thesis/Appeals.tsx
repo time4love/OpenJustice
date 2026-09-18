@@ -6,6 +6,7 @@ import { DOORS_OPEN } from '@/lib/doors';
 import type { CallItem, Citation, RequestItem } from '@/types/thesis';
 import { CitationChip } from './CitationChip';
 import { LetterDialog } from './LetterDialog';
+import { evidenceChipKind } from './Tick';
 import { ResearcherWords } from './ResearcherWords';
 
 // ---------------------------------------------------------------------------
@@ -114,7 +115,7 @@ function RequestCard({ request, citations, pages, locale }: { request: RequestIt
           return (
             <CitationChip
               key={name}
-              kind={citation === undefined ? 'unresolved' : citation.kind === 'EVIDENCE' && citation.record.capture === undefined ? 'diff' : 'capture'}
+              kind={evidenceChipKind(citation)}
               name={name}
               source={`#ev_${name}`}
               citation={citation}

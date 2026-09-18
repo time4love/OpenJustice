@@ -62,6 +62,19 @@ export function domainOfCitation(citation: Citation): string | null {
   return citation.kind === 'EVIDENCE' ? domainOf(citation.record.url) : null;
 }
 
+/**
+ * Which chip an EVIDENCE citation wears: a DIFF names the pair it spans, a CAPTURE one timestamp
+ * (§18 :567), and a name the body resolved nothing for is a statement rather than a control.
+ *
+ * ONE SPELLING, TWO CALLERS — the tick line and a request's `restsOn`. It sat inline in `Appeals.tsx`
+ * until the tick line needed the same answer, and a second copy of a three-branch ternary is how two
+ * regions of one page come to disagree about what a record is.
+ */
+export function evidenceChipKind(citation: Citation | undefined): 'capture' | 'diff' | 'unresolved' {
+  if (citation === undefined) return 'unresolved';
+  return citation.kind === 'EVIDENCE' && citation.record.capture === undefined ? 'diff' : 'capture';
+}
+
 /** The mark itself. Presentational: it computes nothing and decides nothing. */
 export function Tick({ label, tone, ltr }: TickFace) {
   return (
