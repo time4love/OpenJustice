@@ -174,7 +174,9 @@ token `#ev_…` or `#tr_…` on a record or a trajectory (T2 :368–:376: what a
 thesis as `thesis <id>` for a new conversation's state message (run B, Live-31), the command on an owed
 entry — labelled by what it is FOR, never by what it is; and **a VERIFY disclosure** on a record page and on
 the thesis page, closed by default, holding the full values (document hash, text hash, version hash, registry
-index) with copy, for the reader who came to check (T5 :795–:796; evidence §5 :428–:430). A URL may carry an
+index) with copy, for the reader who came to check (T5 :795–:796; evidence §5 :428–:430) — **and, from
+2026-09-18, on a CAPTURE record the ARCHIVE'S RAW URL beside the document hash, because that is the one fetch
+whose bytes hash to it (§26). The open page carries a reading link and no instruction to hash (§26's amendment).** A URL may carry an
 id; the page never reads it aloud. This amends §11, §17, §18, §24 and §26 where a hash or an id was named as
 displayed; each is rewritten below to a recognisable name plus the two homes.
 
@@ -679,11 +681,20 @@ and `no-model-prose-public` (§9) is written to allow exactly this field and not
                       `pages` facet at `public` (§28); `list_pages` and the facet at `all` are the §9.5 leak.
                       ONE component, two scopes: §27 renders it at `all` with the NOT PUBLIC mark.
 
-                      ANY QUERY PARAMETER MEANS THE STREAM, and that rule is forced rather than chosen: the
-                      thesis page's `/corpus?page=<trackedUrlId>` must land on the stream filtered to that
-                      page, and it is a link already specified in four places. So the bare URL is the list,
-                      `?page=` · `?since=` · `?until=` · `?kind=` · `?cited=1` are the stream, and no link
-                      that exists today changes meaning.
+                      ANY OF THE FIVE READ PARAMETERS MEANS THE STREAM — `page` · `since` · `until` ·
+                      `kind` · `cited` — and that rule is forced rather than chosen: the thesis page's
+                      `/corpus?page=<trackedUrlId>` must land on the stream filtered to that page, and it is
+                      a link already specified in four places. So the bare URL is the list, those five carry
+                      it to the stream, and no link that exists today changes meaning.
+
+                      **CORRECTED 2026-09-18, the same day, by a cold read.** This clause first said "ANY
+                      QUERY PARAMETER" and then enumerated exactly five in its next sentence — two rules in
+                      one paragraph. Taken literally the broad one is a defect: `?utm_source=` or a locale
+                      switcher's leftover would turn the list into an EMPTY STREAM, a page changing its
+                      identity because something appended a tracking parameter. **A PARAMETER THE PAGE DOES
+                      NOT KNOW IS NOT A FILTER**, and it does not suppress one either — `?utm_source=x&page=y`
+                      is the stream filtered to that page. An empty value (`?page=`) is not a filter, and
+                      neither is a value the page cannot parse.
 1  THE CONTEXT LINE   sticky: the scope (opened pages · every page) · the active filters as chips · the count
                       the read returned so far · the LENS control: PAGES · STREAM · CLAIMS · RECORDS
 2  THE FILTERS        one row of chips, horizontally scrolling: PAGE (a picker from the read's own `pages`
@@ -733,8 +744,24 @@ document hash, text hash, extraction version and registry index; a CHAIN CHECK o
 demand — one button whose moment is defined by the reader's doubt — calling `check_on_chain_status` (A4
 :1111–:1115) and showing isRegistered · ATTRIBUTED · anchored = document · the stored verdict and its version,
 or CHAIN_UNAVAILABLE as a statement about the check; the SECOND WITNESS: a link to the archive at this URL and
-timestamp, composed deterministically (evidence §5 :428–:430), with the one line on how to verify — fetch,
-hash, compare.
+timestamp, composed deterministically (evidence §5 :428–:430), **with one line saying the archive holds this page
+at this date and the link opens it — AND NO INSTRUCTION TO HASH ANYTHING.**
+
+**AMENDED 2026-09-18 (the researcher): „הקוראים לא יבינו את ההוראה לגבב את הקובץ. זה טכני מאוד ולא נדרש.”** The
+line had read *"fetch, hash, compare"*, and it was WRONG as well as technical — wrong in a way only a measurement
+showed. Wayback serves two forms of a capture: the VIEWER form `/web/<ts>/<url>`, which is what a reader should
+open, and the RAW form `/web/<ts>id_/<url>`. Measured on the 2021-12-23 capture of the ministry's vaccine page:
+the viewer form returns **54,180 bytes** hashing to `1b108bb2…f7e043a`; the raw form returns **47,731 bytes**
+hashing to `5887afdf…b19b0c1`, **which is the `documentHash` the platform anchored, exactly**. The 6,449-byte
+difference is the archive's own toolbar. So a reader who followed the instruction on the link they were given
+would have got a MISMATCH and concluded the evidence was fabricated.
+
+**THE CAPABILITY DOES NOT MOVE — ONLY THE INSTRUCTION DOES.** `gf-evidence-flows.md` §5 :428–:430 says an outsider
+"fetches, hashes and compares", and that remains true and unamended: it is a statement about what is POSSIBLE, not
+about what a page tells a reader to do. **The RAW form joins the VERIFY DISCLOSURE** (§4 :175–:177) — closed by
+default, beside the document hash it matches, "for the reader who came to check". That is where someone who came
+to verify already is, and it is the only place the raw form is named. **A reader is never sent to it and never
+told to hash anything.**
 
 **`/pages/[id]/diffs/[before]/[after]`** — a diff, whole (`get_diff_input`, A4 :1095–:1099): the two texts as
 an inline diff at phone width and side by side when wide, the CURRENT chunks listed by side beneath, the
