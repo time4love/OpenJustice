@@ -142,7 +142,8 @@ above; none needs a new region.
 | RETIRED | `/submit` | document A5 :1513; plan :342–:346 |
 | RETIRED | `/guide`, `/guide/[slug]` | triage ruling 2 :31–:34, restated here as this design's: the tutorial is in the chat (thesis A4 `start_tutorial`) |
 | RETIRED | `/theses/[id]/history` | history is ON the page (T6 :898–:901) |
-| RETIRED | `/theses` (public list) · `/call` (list) | `/` carries the published list; `list_theses`' anonymous answer has no "has appeals" field (A4 :1427), so a call list would need what the contract does not give — THE RESEARCHER'S |
+| **UN-RETIRED 2026-09-18 — THE RESEARCHER'S** | `/theses` (public list) | **The ground it was retired on no longer holds.** It was retired because "`/` carries the published list"; the researcher has since ruled that `/` is the HOME, that it shows the latest and not all, and that it is redesigned LAST. A home that shows a selection is not a list, and until this the sidebar's תזות had no destination at all while הארכיון had one — an asymmetry with no reason behind it. `/theses` is every PUBLISHED thesis, one row each, newest first, and it is the public half of a pair whose gated half §29 already specifies. |
+| RETIRED | `/call` (list) | `list_theses`' anonymous answer has no "has appeals" field (A4 :1427), so a call list would need what the contract does not give — THE RESEARCHER'S. **Unaffected by `/theses`' un-retirement: that was a ground about the DOOR, this is a ground about the CONTRACT.** |
 | RETIRED | the floating chat widget (every page) | `/api/chat`, owned by no design (triage :74) |
 | REBUILT | `/theses/[id]` · `/call/[id]` | against T5 / A5 |
 | KEPT | `/article-rules/…` · `/login` · `/auth/callback` · `/oauth/interaction/[uid]` · `/unlock` · `/profile` · `/admin` · `/reports/new` · `/reports/patterns` · `/researchers` | as above |
@@ -650,7 +651,7 @@ T5's, and a wider screen does not reorder it.
 
 ---
 
-## 24. THE CHRONOLOGY — one stream, two doors — **AMENDED 2026-09-16:** the page card with the time strip is the first region and the scrubber; a search page `/corpus/search` exists (docs/gf-ui-design-session-2026-09-16.md §3).
+## 24. THE CHRONOLOGY — one stream, two doors — **AMENDED 2026-09-16:** the page card with the time strip is the first region and the scrubber; a search page `/corpus/search` exists (docs/gf-ui-design-session-2026-09-16.md §3). **AMENDED 2026-09-18 (the researcher): `/corpus` OPENS ON A PAGES LIST, and the SEARCH PAGE IS DEFERRED.** The corpus had no public door of its own — the sidebar's הארכיון entries are `lib/recents.ts`, browser-local, and empty for a reader who has opened nothing. So `/corpus` opens on **one row per page url — the url, the interval, the record count — and no time strip on a row**: a strip is ONE page's shape over time and reads as a heading, which is the home it already has at the top of `/corpus?page=<id>`. **No search and no count over the list**, by §33's own reasoning for the door: few by design and added slowly. The STREAM is one tap away, as a lens beside CLAIMS and RECORDS. **THE LIST'S ONLY LEGAL SOURCE IS THE `pages` FACET AT `public`** (§28) — never `list_pages` and never the facet at `all`, either of which would list SURVEYED pages and tell a stranger what is under investigation before it is published (§9.5). It is ONE component at two scopes: public here, and at `all` in §27 with the NOT PUBLIC mark on the rows no published thesis has cited yet. The search page returns when the corpus is large enough to need it; `GET /api/corpus/search` stays mounted meanwhile.
 
 **`/corpus` and `/research/corpus` are ONE page rendered from one read at two scopes** (§6.1): `list_corpus` at
 `public` over the opened pages, at `all` over every surveyed page. The page is the same component; the gated
@@ -824,10 +825,17 @@ description, image) is composed from the body — the claim, the statement — a
 
 ## 33. THE DOOR `/` — **AMENDED 2026-09-16:** the centre's empty state, the dove and the glow above the paragraph (docs/gf-ui-design-session-2026-09-16.md §1.3). **AMENDED 2026-09-17:** the door's field is the dark `--door-field`, the one surface that is not paper; the light animation is the door's and stays.
 
-**The door is the published theses and one sentence about what this is.** `GET /api/thesis` (A4 :1427):
-each thesis a card — the claim as the heading · the provision · the author's handle · published <date> —
-tap → `/theses/[id]`. Newest first. That is the whole list; there is no search, no filter and no count,
-because the published theses are few by design and each is a commitment (T5 :729–:730).
+**The door is the LATEST published theses and one sentence about what this is. AMENDED 2026-09-18 (the
+researcher): it is no longer THE WHOLE LIST — `/theses` is.** `GET /api/thesis` (A4 :1427): each thesis a card —
+the claim as the heading · the provision · the author's handle · published <date> — tap → `/theses/[id]`. Newest
+first, and the door shows the latest of them with one entry onward to `/theses`.
+
+**WHY THE LIST LEFT THE DOOR.** The old text made `/` the whole list and gave it "no search, no filter and no
+count, because the published theses are few by design and each is a commitment". The reasoning about FEWNESS
+stands and moves with the list to `/theses`, which likewise carries no search, no filter and no count. What did
+not stand is the door DOUBLING as the index: the home is where a reader arrives and learns what this is, and the
+page built at `/` has always shown a selection (`theses.slice(1, 5)`), so the design and the build disagreed and
+the sidebar's תזות had nowhere to go. One page cannot be both the welcome and the catalogue.
 
 ```
 1  the name and one paragraph: what the platform is — the archive's captures of the ministry's pages,
