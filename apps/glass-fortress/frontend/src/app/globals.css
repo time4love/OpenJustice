@@ -424,7 +424,9 @@ html, body {
     position: fixed;
     /* LEFT, physically — not `inset-inline-start`, which resolves to the RIGHT in a Hebrew document and put
        the drawer at x=75 on a 375px phone (measured in the local run). The shell is left-anchored by design
-       at every width and in both locales, which is the same reason `.shell` itself is `direction: ltr`. */
+       at every width and in both locales. `.shell` is `direction: ltr` for the SAME reason, but only from
+       `md` (:459) — at this width it is not, which is why the value here is `left` and not a logical
+       property borrowed from the shell's direction. */
     left: 0;
     top: 0;
     bottom: 0;
