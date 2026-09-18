@@ -32,7 +32,7 @@ function chipKind(piece: TokenPiece, citation: Citation | undefined, pins: reado
 
 export function ThesisText({ text, citations, pins, pages, locale }: ThesisTextProps) {
   return (
-    <div data-thesis-text className="space-y-3">
+    <div data-thesis-text className="md-prose">
       {markdownToReact(text, {
         chip: (piece, key) => {
           // A `#doc_` token is RESERVED: the renderer knows the kind and draws nothing until the document plan's

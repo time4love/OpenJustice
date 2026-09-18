@@ -29,5 +29,11 @@ import { ResearcherWords } from './ResearcherWords';
  * decision about a construct the contract does not give these fields, not a silently dropped capability.
  */
 export function ResearcherProse({ text, className, links }: { text: string; className?: string; links?: 'anchor' | 'text' }) {
-  return <ResearcherWords className={className}>{markdownToReact(text, { chip: () => null, links })}</ResearcherWords>;
+  // `md-prose` carries the SPACING between the blocks the parser produced. Without it four
+  // paragraphs render flush and read as one block — the structure right and invisible.
+  return (
+    <ResearcherWords className={className === undefined ? 'md-prose' : `md-prose ${className}`}>
+      {markdownToReact(text, { chip: () => null, links })}
+    </ResearcherWords>
+  );
 }

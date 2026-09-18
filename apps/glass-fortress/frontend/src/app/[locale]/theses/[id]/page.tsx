@@ -127,7 +127,7 @@ function Published({ thesis, locale, copyLabel, headings }: { thesis: PublishedT
           claim's first words — because only the page knows what a person recognises it by. */}
       <NoteRecent kind="thesis" href={`/theses/${thesis.thesisId}`} label={thesis.claim} />
       <PrefaceFold statement={thesis.publicInterestStatement} />
-      <h1 id="claim" dir="auto" className="font-serif text-claim font-bold">
+      <h1 id="claim" dir="auto" className="text-claim font-bold">
         {thesis.claim}
       </h1>
       <header className="space-y-2">

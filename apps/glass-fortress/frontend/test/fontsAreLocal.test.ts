@@ -123,7 +123,7 @@ describe('fonts-are-local', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('the serif is APPLIED, not only declared — a rule outside :root names it, and the reading region is one of them', () => {
+  it('the serif is APPLIED, not only declared — a rule outside :root names it, and the ARCHIVE is one of them', () => {
     // F8's whole lesson: `--font-serif` was defined, self-hosted and correct, and 182 elements under
     // `main` resolved to the sans, 7 to the mono and ZERO to the serif, because NO RULE OUTSIDE :root
     // named it. Every case above was green over that page. This one asks the next question.
@@ -139,12 +139,22 @@ describe('fonts-are-local', () => {
     const css = globalsSource();
     const root = /:root\s*\{[\s\S]*?\n\}/.exec(css)?.[0] ?? '';
     const theme = /@theme inline\s*\{[\s\S]*?\n\}/.exec(css)?.[0] ?? '';
+    //
+    // RE-POINTED 2026-09-18, a DECLARED edit with the authority named: §1.8 as amended moved the
+    // researcher's words and headings to `--font-sans` and gave the serif a narrower job, A DOCUMENT
+    // BROUGHT VERBATIM THAT THE PLATFORM DID NOT AUTHOR. F8's lesson is UNCHANGED and is the half that
+    // matters — a face that is declared and applied to nothing is a face nobody reads. What moved is
+    // WHICH region must carry it: `.reading` before, `.record-captured` now. The second clause is
+    // re-pointed rather than dropped, because dropping it would leave only `applied > 0`, which any
+    // stray mention would satisfy — and that is the vacuity F8 was found inside.
     const applying = css.replace(root, '').replace(theme, '');
     const applied = [...applying.matchAll(/--font-serif|font-serif/g)].length;
-    const readingRegionCarriesIt = /\.reading\s*\{[^}]*--font-serif/.test(applying);
-    expect({ appliedOutsideRoot: applied > 0, readingRegionCarriesIt }).toEqual({
+    const archiveCarriesIt = /\.record-captured\s*\{[^}]*--font-serif/.test(applying);
+    const readIsNoLongerSerif = !/\.reading\s*\{[^}]*--font-serif/.test(applying);
+    expect({ appliedOutsideRoot: applied > 0, archiveCarriesIt, readIsNoLongerSerif }).toEqual({
       appliedOutsideRoot: true,
-      readingRegionCarriesIt: true,
+      archiveCarriesIt: true,
+      readIsNoLongerSerif: true,
     });
   });
 
@@ -153,5 +163,62 @@ describe('fonts-are-local', () => {
       (name) => layoutSource().includes(name) || globalsSource().includes(name),
     );
     expect(remaining).toEqual([]);
+  });
+});
+
+describe('fonts-are-local · WHICH VOICE GETS WHICH FACE (§1.8 as amended 2026-09-18)', () => {
+  // THE RULE, in the words the amendment uses: the researcher's words and headings are `--font-sans`;
+  // `--font-serif` is NOT retired and NOT applied to nothing — that was R57's F8 and it cost a round —
+  // but takes a narrower job, A DOCUMENT BROUGHT VERBATIM THAT THE PLATFORM DID NOT AUTHOR. Exactly two
+  // members: the archive's captured text and the drafted letter's body.
+  //
+  // IT IS A SOURCE SCAN because jsdom computes no cascade; which face actually DRAWS is measured in a
+  // browser and recorded in the step's dated doc. What is held here is the declaration, BY VALUE, and the
+  // membership of the serif's list — the half a later tidy-up could silently move.
+  const cssText = (): string => readFileSync(join(FRONTEND, 'src/app/globals.css'), 'utf8');
+
+  /** Every selector in `globals.css` that APPLIES a font family, paired with the family it applies. */
+  function applications(family: string): string[] {
+    const css = cssText();
+    const lines = css.split('\n');
+    const found: string[] = [];
+    lines.forEach((line, index) => {
+      if (!line.includes(`font-family: var(--font-${family})`)) return;
+      for (let back = index - 1; back >= 0 && back > index - 40; back -= 1) {
+        const candidate = (lines[back] ?? '').trim();
+        if (candidate.endsWith('{')) {
+          found.push(candidate.slice(0, -1).trim());
+          return;
+        }
+      }
+      found.push(`(no selector found above line ${String(index + 1)})`);
+    });
+    return found;
+  }
+
+  it('the SERIF is applied to EXACTLY the two documents the platform did not author', () => {
+    const serif = requireSubjects('selectors applying --font-serif', applications('serif'));
+    // `:root`'s own `--font-serif: var(--font-serif)` is a definition, not an application, and the
+    // scan does not see it: it matches `font-family:`, which a custom-property line is not.
+    // `requireSubjects` answers a readonly array and `sort` mutates, so the copy is required rather
+    // than stylistic — `tsc` caught this where the suite could not, because jest transpiles types away.
+    expect([...serif].sort()).toEqual(['.letter-body', '.record-captured']);
+  });
+
+  it('the RESEARCHER’S VOICE and the READ carry the SANS — the value, not the property name', () => {
+    const sans = requireSubjects('selectors applying --font-sans', applications('sans'));
+    expect({
+      voice: sans.includes('[data-researcher-words]'),
+      read: sans.includes('.reading'),
+      // and neither of them may ALSO be in the serif's list
+      voiceIsNotSerif: !applications('serif').includes('[data-researcher-words]'),
+      readIsNotSerif: !applications('serif').includes('.reading'),
+    }).toEqual({ voice: true, read: true, voiceIsNotSerif: true, readIsNotSerif: true });
+  });
+
+  it('the CLAIM carries no local serif utility — the region owns the face', () => {
+    const page = readFileSync(join(SRC, 'app/[locale]/theses/[id]/page.tsx'), 'utf8');
+    const heading = page.split('\n').filter((line) => line.includes('id="claim"'));
+    expect(requireSubjects('the claim’s heading element', heading).some((line) => line.includes('font-serif'))).toEqual(false);
   });
 });

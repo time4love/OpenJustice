@@ -784,15 +784,19 @@ html, body {
   .letter-button-quiet { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
 
   /* The researcher's words, wherever they appear: their FACE, and nothing else. */
+  /* THE VOICE CARRIES THE SANS from 2026-09-18 (§1.8, the researcher, choosing on three rendered
+     options against the published text). It carried `--font-serif` from UI-5 until then. The serif did
+     not leave the project with it — it took a narrower job, a DOCUMENT BROUGHT VERBATIM THAT THE
+     PLATFORM DID NOT AUTHOR: `.record-captured` and `.letter-body`, which declare it themselves. */
   [data-researcher-words] {
-    font-family: var(--font-serif);
+    font-family: var(--font-sans);
   }
 
   /* The read itself — the region that opts in to the reading size. The chrome keeps the sans at
      `--text-label`, which is why `body` is left alone: 13px is right for a shell and wrong for a page,
      and only the page can say so. */
   .reading {
-    font-family: var(--font-serif);
+    font-family: var(--font-sans);
     font-size: var(--text-words-compact);
     line-height: var(--leading-words);
   }
@@ -820,6 +824,27 @@ html, body {
     font-size: var(--text-words-heading);
     font-weight: 700;
     line-height: var(--leading-words-heading);
+  }
+
+  /* -------------------------------------------------------------------------
+     THE SPACING OF THE RESEARCHER'S PROSE — one rule, wherever their Markdown is rendered
+     (docs/gf-ui-flows.md §16 :521).
+
+     THE PARSER MAKES THE PARAGRAPHS; ONLY CSS SAYS HOW FAR APART THEY SIT. This app's reset
+     takes the browser's own margin off every `<p>` — measured, not assumed: a `<p>` inside a
+     bare iframe computes 16px top and bottom, and here it computes 0 — so rendered Markdown has
+     NO separation at all unless something restores it.
+
+     It was restored at exactly ONE call site, as `ThesisText`'s `space-y-3` utility. So the
+     published TEXT read as paragraphs, while the rationale, the statement and every appeal
+     field — the same parser, through `ResearcherProse` — rendered four `<p>` elements with a
+     ZERO gap between them and reached the reader as one run-on block. The structure was right
+     and invisible, which is why counting blocks could not see it.
+
+     The rule therefore belongs to the PROSE and travels with it, rather than to one container.
+     ------------------------------------------------------------------------- */
+  .md-prose > * + * {
+    margin-top: 0.75rem;
   }
 
   /* -------------------------------------------------------------------------

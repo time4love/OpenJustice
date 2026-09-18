@@ -94,10 +94,29 @@ function ShellFrame({ children }: { children: ReactNode }) {
           it, so the sidebar could be collapsed and never re-opened. jsdom has no layout and cannot see that;
           the local run found it. The structural half — that the control is a DIRECT child of the rail and the
           nav is gone with it — is what `test/shell.test.tsx` holds. */}
+      {/* FOLLOWING A LINK INSIDE THE DRAWER CLOSES IT (2026-09-18). Until this handler the drawer had
+          three ways out — Escape, the scrim and the toggle — and following a link inside it was not one
+          of them, so a reader who opened a thesis from the drawer arrived with the drawer still over it,
+          the body still locked to `overflow: hidden`, and the toggle underneath the drawer itself. Found
+          on a phone against the deployed page.
+
+          WHY A CLICK HANDLER AND NOT A ROUTE EFFECT, which was written first and removed: this shell
+          READS NO ROUTE by contract (`docs/gf-ui-refactor-plan.md` §9; `test/shell.test.tsx`'s
+          "nothing under components/shell reads a route or issues a request"), and a `usePathname` here
+          passed that case only because its assertion names two specifiers while its title names the
+          property. It would also have missed the commonest tap of all: the drawer lists what was opened
+          IN THIS BROWSER, so the entry a reader chooses is very often the page they are already on —
+          same route, no change, no effect. Measured at 390px: `aria-expanded` still `true` after the tap.
+
+          Scoped to `a` deliberately: the collapse control is a `<button>` inside this same element and
+          must NOT close the drawer, and neither must a splitter drag. */}
       <aside
         data-shell-region="sidebar"
         data-shell-collapsed={collapsed ? 'true' : undefined}
         className={`shell-sidebar ${collapsed ? 'shell-sidebar-rail' : ''} ${drawerOpen ? 'shell-drawer !flex' : ''}`.trim()}
+        onClick={(event) => {
+          if ((event.target as HTMLElement).closest('a') !== null) setDrawerOpen(false);
+        }}
       >
         {collapsed ? null : (
           <>
