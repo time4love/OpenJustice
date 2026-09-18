@@ -53,8 +53,8 @@ notice is 200; labels are the body's; never `/api/mcp` from a page; a filter is 
 
 | today | becomes | where ruled | step |
 |---|---|---|---|
-| `/` (`/api/evidence/latest`, `/api/stats`) | the door: the published theses, one paragraph, three entries | §33; the name leads here (ruled 2026-09-15, the §32 mark) | UI-6 |
-| `/theses` (public list) | nothing — `/` carries the published list | §3 :145; A4 :1427 | UI-10 |
+| `/` (`/api/evidence/latest`, `/api/stats`) | the door: the LATEST published theses, one paragraph, three entries, one entry onward to `/theses` — **amended 2026-09-18: it is the welcome, not the catalogue** | §33; the name leads here (ruled 2026-09-15, the §32 mark) | UI-6 |
+| `/theses` (public list) | **THE PUBLISHED LIST — un-retired 2026-09-18.** One row per published thesis, newest first; no search, no filter, no count. The gated half is §29's THESES region under `/research`. | §3 :145 (the un-retirement); §33 :826; A4 :1427 | **UI-7** |
 | `/theses/[id]` (TipTap, `/analyze`, gap resolve) | THE THESIS PAGE, T5's order, two voices | §16–§19; T5 :809–:829; A5 :1565 | UI-5 |
 | `/theses/[id]/edit` | nothing — the browser is not an editor | §3 :138; thesis A5 :1573; §2 :126–:132 | UI-10 |
 | `/theses/[id]/history` | history ON the thesis page; `/theses/[id]/versions/[v]` linkable | §3 :144; T6 :898–:901; A5 :1570 | UI-5 |
@@ -677,8 +677,11 @@ to the connector's; one diff page; `/records/<one cited fileHash>`; a surveyed p
 (`corona`, if still unopened — the id read from `list_pages` through the connector, never typed); no horizontal scroll on any
 of the five; the density of §41 recorded in rows per month.
 
-**STATUS:** OPEN. Closes with `docs/gf-ui-step-7-<date>.md`: the initial axis granularity and `limit`, the density measured, **RE-BRIEFED 2026-09-16** against the design canvas, page 4 — docs/gf-ui-design-session-2026-09-16.md §4.
-the composed page labels as they read, the exercise.
+**STATUS:** OPEN. **RE-BRIEFED 2026-09-16** against the design canvas, page 4 (docs/gf-ui-design-session-2026-09-16.md
+§4), and **RE-BRIEFED AGAIN 2026-09-18** — the ten rulings above, folded into this body. Closes with
+`docs/gf-ui-step-7-<date>.md`: the stream's initial `limit`, the density measured, the composed page labels as
+they read, the exercise. *(This line was SPLICED — the 2026-09-16 marker had landed inside the closing sentence,
+orphaning its second half. Found by a cold read, 2026-09-18; it pre-dates today's amendments.)*
 
 ### UI-8 · The read view — `/research`, the working view, the gated chronology
 
