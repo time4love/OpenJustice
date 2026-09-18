@@ -1,6 +1,7 @@
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { displayUrl } from '@/lib/format';
+import { Fold } from './Fold';
 
 /**
  * THE PAGES — docs/gf-ui-flows.md §17 :556–:558; thesis T5 :824–:825 as amended. One link per cited page to the
@@ -11,8 +12,7 @@ export function ThePages({ pages }: { pages: readonly { trackedUrlId: string; ur
   const t = useTranslations('theses.pages');
   if (pages.length === 0) return null;
   return (
-    <section>
-      <h2 className="mb-2 text-lg font-semibold">{t('heading')}</h2>
+    <Fold summary={t('heading')}>
       <p className="mb-2 text-sm text-ink-muted">{t('counterweight')}</p>
       <ul className="list-disc ps-6">
         {pages.map((page) => (
@@ -23,6 +23,6 @@ export function ThePages({ pages }: { pages: readonly { trackedUrlId: string; ur
           </li>
         ))}
       </ul>
-    </section>
+    </Fold>
   );
 }

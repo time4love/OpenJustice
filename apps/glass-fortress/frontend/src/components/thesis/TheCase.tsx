@@ -1,4 +1,5 @@
 import { useTranslations } from 'next-intl';
+import { Fold } from './Fold';
 import { PlatformMark } from './PlatformMark';
 import { ResearcherWords } from './ResearcherWords';
 
@@ -10,13 +11,12 @@ import { ResearcherWords } from './ResearcherWords';
 export function TheCase({ rationale, overObjection, analysisRun }: { rationale: string; overObjection: boolean; analysisRun: boolean }) {
   const t = useTranslations('theses.case');
   return (
-    <section>
-      <h2 className="mb-2 text-lg font-semibold">{t('heading')}</h2>
+    <Fold summary={t('heading')}>
       <ResearcherWords className="text-ink">{rationale}</ResearcherWords>
       <p className="mt-2 flex flex-wrap gap-2">
         {overObjection ? <PlatformMark kind="publishedOverObjection" /> : null}
         {analysisRun ? <PlatformMark kind="analysisRun" /> : null}
       </p>
-    </section>
+    </Fold>
   );
 }

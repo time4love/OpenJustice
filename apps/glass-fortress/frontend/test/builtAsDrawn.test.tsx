@@ -76,46 +76,134 @@ async function thesis(locale: Locale, withPane = false): Promise<HTMLElement> {
 }
 
 /**
- * The PROPERTIES one CSS rule declares, by selector, from `globals.css`.
+ * One CSS rule's declarations, by selector, from `globals.css` — as PROPERTY → VALUE.
  *
  * COMMENTS ARE STRIPPED BEFORE THE DECLARATIONS ARE SPLIT, and that is not tidiness: a rule in this file
  * carries its reasoning inside itself, and a parser that split the raw text on `;` would read a sentence
  * as a declaration and a declaration as part of a sentence. Measured while writing this: it reported
  * `white-space` missing and "collapsing them would edit the" present, on a rule that declares the first
  * and not the second.
+ *
+ * IT RETURNS THE VALUE, AND THAT IS R59 · CHUNK 3's CORRECTION OF THIS FILE. Chunk 2 asserted only that a
+ * property was DECLARED, and said so as a stated limit — the negative decoy G5 changed `max-height` from
+ * 420px to 300px and reddened nothing. Less than a day later that hole bit: `overflow: hidden` on the
+ * captured text locked 91% of the evidence behind a clamp, and the case stayed green over it because
+ * `overflow` was declared. **A STATED LIMIT ON A VALUE THE BOARD FIXES IS A DEBT, NOT A NOTE.**
  */
-function declarationsOf(selector: string): string[] {
+function declarationsOf(selector: string): Map<string, string> {
   const css = readFileSync(join(FRONTEND, 'src/app/globals.css'), 'utf8');
   const at = css.indexOf(`${selector} {`);
-  if (at === -1) throw new Error(`globals.css declares no \`${selector}\` rule at all — which is F1 itself`);
+  if (at === -1) throw new Error(`globals.css declares no \`${selector}\` rule at all`);
   const close = css.indexOf('}', at);
   if (close === -1) throw new Error(`globals.css's \`${selector}\` rule is not closed`);
-  return css
-    .slice(at + selector.length + 2, close)
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .split(';')
-    .map((line) => line.split(':')[0]?.trim() ?? '')
-    .filter((property) => property !== '');
+  const declared = new Map<string, string>();
+  for (const line of css.slice(at + selector.length + 2, close).replace(/\/\*[\s\S]*?\*\//g, '').split(';')) {
+    const colon = line.indexOf(':');
+    if (colon === -1) continue;
+    const property = line.slice(0, colon).trim();
+    if (property !== '') declared.set(property, line.slice(colon + 1).trim());
+  }
+  return declared;
 }
 
 describe('built-as-drawn', () => {
-  it('F1 · `.record-captured` HAS a rule and it CLAMPS — board 3A draws `.captured` at max-height 420, overflow hidden', () => {
+  it('F1 · `.record-captured` is the board`s nine properties BY VALUE — clamped at 420px and SCROLLING inside it', () => {
     // A SOURCE SCAN AND NOT A COMPUTED STYLE, deliberately (see the docblock): jsdom loads no stylesheet, so
-    // the only honest thing a case here can hold is that the rule EXISTS and carries the properties the board
-    // fixes. That it actually clips is the browser's reading, in the step's dated doc.
+    // the only honest thing a case here can hold is what the rule DECLARES. That it clips and that a reader
+    // can reach the rest are the browser's readings, in the step's dated doc.
     //
-    // THE CLAMP IS THE WHOLE POINT. `theses.sheet.andMore` („…ועוד {count}") is the COMPARISON REGISTER's
-    // overflow catch, per the approved copy freeze — board 3A resolves a CAPTURE's length with
-    // `max-height` + `overflow: hidden` and no counted tail. This case holds the board's answer, not a
-    // second one invented here.
-    const declared = requireSubjects('declarations of .record-captured', declarationsOf('.record-captured'));
-    console.log(`built-as-drawn: .record-captured declares ${String(declared.length)} properties — ${declared.join(', ')}`);
+    // THE HEIGHT IS THE BOARD'S; THE SCROLL IS THE DESIGN'S (R59 · S-4, T3). Board 3A draws `.captured` with
+    // `max-height: 420px; overflow: hidden`, and chunk 2 took both — citing the board over
+    // `docs/gf-ui-flows.md` §18 :569, *"long content scrolls inside the sheet, the header stays."* A BOARD IS
+    // A GROUND FOR LAYOUT AND NOTHING ELSE: the height is layout and the board governs it; SCROLLABILITY IS
+    // BEHAVIOUR and §18 governs that. Measured on the deployed page, `overflow: hidden` left `clientHeight
+    // 418` over `scrollHeight 4822` — 4,404px, 91% of the capture, behind a locked door. `overflow-y: auto`
+    // satisfies both sentences at once.
+    //
+    // AND THE VALUES ARE ASSERTED, NOT THE PROPERTY NAMES. See the docblock on `declarationsOf`: the
+    // name-only spelling this case used in chunk 2 was green over the very defect above.
+    const declared = declarationsOf('.record-captured');
+    requireSubjects('declarations of .record-captured', [...declared.keys()]);
+    console.log(
+      `built-as-drawn: .record-captured declares ${String(declared.size)} properties — ` +
+        [...declared].map(([property, value]) => `${property}: ${value}`).join(' · '),
+    );
     expect({
-      clamps: declared.includes('max-height') && declared.includes('overflow'),
-      readable: declared.includes('font-size') && declared.includes('line-height'),
-      boxed: declared.includes('padding') && declared.includes('background') && declared.includes('border'),
-      keepsTheLineBreaks: declared.includes('white-space'),
-    }).toEqual({ clamps: true, readable: true, boxed: true, keepsTheLineBreaks: true });
+      maxHeight: declared.get('max-height'),
+      overflowY: declared.get('overflow-y'),
+      fontSize: declared.get('font-size'),
+      lineHeight: declared.get('line-height'),
+      padding: declared.get('padding'),
+      whiteSpace: declared.get('white-space'),
+      background: declared.get('background'),
+      borderRadius: declared.get('border-radius'),
+    }).toEqual({
+      maxHeight: '420px',
+      overflowY: 'auto',
+      fontSize: 'var(--text-record)',
+      lineHeight: 'var(--leading-record)',
+      padding: '14px 16px',
+      whiteSpace: 'pre-line',
+      background: 'var(--paper)',
+      borderRadius: 'var(--radius-md)',
+    });
+  });
+
+  it("T2 · the RESEARCHER'S headings are the strongest thing in the read — board 2A draws `.words h2` at 18 / 700 / 1.4", () => {
+    // THE HIERARCHY WAS INVERTED, measured on the deployed page: the researcher's `##` rendered at 17px/600,
+    // the same size as the body it divides and separated from it by weight alone, while the PAGE's own three
+    // region headings sat above them at 18px/600. The page's furniture was louder than the argument.
+    //
+    // T1 IS MOST OF THIS FIX: the three region headings become 14px fold triggers and leave the read
+    // entirely. This case holds the other half — the researcher's own structure rising to the board's 18/700.
+    const declared = declarationsOf('[data-thesis-text] h2');
+    expect({
+      fontSize: declared.get('font-size'),
+      fontWeight: declared.get('font-weight'),
+      lineHeight: declared.get('line-height'),
+    }).toEqual({
+      fontSize: 'var(--text-words-heading)',
+      fontWeight: '700',
+      lineHeight: 'var(--leading-words-heading)',
+    });
+  });
+
+  it('T4 · the short disclaimer takes the board`s leading — `.disc` is 12 / 1.55, and `leading-relaxed` is 1.625', () => {
+    // The one divergence the whole canvas comparison found. It is the same shape as R58's two local-run
+    // defects — a LOCAL utility beating the REGION's token — and the same remedy: the region owns the
+    // leading, so the element states the token rather than a number of its own.
+    const declared = declarationsOf('.disclaimer');
+    expect({
+      fontSize: declared.get('font-size'),
+      lineHeight: declared.get('line-height'),
+    }).toEqual({ fontSize: 'var(--text-mark)', lineHeight: 'var(--leading-disclaimer)' });
+  });
+
+  it('T1 · FOUR folds in the read, every one CLOSED — §10 :1123, "the case, the history, the pages and VERIFY as folds, closed"', async () => {
+    // THE ONE DOM CASE OF THIS ROUND. Measured on the deployed page: `detailsElementsInTheRead: 1` — only
+    // VERIFY was a fold; the rationale, the versions and the pages were open `<h2>` sections, so a reader
+    // met the whole page at once where §10 :1123 fixes four closed folds.
+    //
+    // THE FLOOR IS NOT OPTIONAL, and it is the reason the count is printed: a case asserting "every fold is
+    // closed" is satisfied by a page with NO FOLD AT ALL — which is precisely the state this case exists to
+    // reject, and precisely what the page did before this round.
+    for (const locale of LOCALES) {
+      const container = await thesis(locale);
+      const read = container.querySelector('article.reading');
+      if (read === null) throw new Error(`the thesis page (${locale}) rendered no <article class="reading">`);
+      const folds = [...read.querySelectorAll('details')];
+      if (locale === 'he') {
+        console.log(
+          `built-as-drawn: ${String(folds.length)} folds in the read — ` +
+            folds.map((fold) => `"${(fold.querySelector('summary')?.textContent ?? '').trim()}" open=${String(fold.hasAttribute('open'))}`).join(' · '),
+        );
+      }
+      expect({
+        locale,
+        folds: folds.length,
+        open: folds.filter((fold) => fold.hasAttribute('open')).map((fold) => (fold.querySelector('summary')?.textContent ?? '').trim()),
+      }).toEqual({ locale, folds: 4, open: [] });
+    }
   });
 
   it('F2 · the COPY control sits INSIDE the byline row — board 3A draws `.by > .copy`, never a sibling of it', async () => {
