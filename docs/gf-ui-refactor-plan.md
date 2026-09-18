@@ -125,7 +125,8 @@ does"); §38 `name-never-glass-fortress`; §41 :963–:964 and A5 :1089–:1090 
   researcher as the `gh api` call before it runs.
 - **The browser exercise** is defined in §6 below and lands no file here: a session's browser tools against
   staging at 375 px, the staging cookie set, every state of A2 provoked, the checks read from the DOM (no
-  horizontal scroll: `document.documentElement.scrollWidth <= 375`; the context line in the viewport after a scroll),
+  horizontal scroll: `document.documentElement.scrollWidth <= 375`; **after 2026-09-18, NO element of the public read
+  reports `position: sticky` after a scroll — the context line is RETIRED, `gf-ui-flows.md` §4 :159**),
   recorded in the step's dated doc — the document plan's precedent (:491–:493). Not Playwright, not CI: an install
   needs the VPN and CI holds no staging cookie.
 
@@ -344,7 +345,7 @@ call page — each page repeats its short form last, never the footer). Frontend
   may not (AI as a ranker of evidence; a suit no design names). It becomes the name and one sentence, the researcher's,
   drafted for approval with the footer's; each page's own share metadata is that page's step (§32 :822–:823). `robots.ts`
   unchanged.
-- **`globals.css`**: the mobile-first base §4 needs — one column, the reading measure, the sheet and sticky-line primitives
+- **`globals.css`**: the mobile-first base §4 needs — one column, the reading measure and the sheet primitive
   every page step reuses; no page-specific style.
 
 **Files.** REWRITE: `app/layout.tsx` (metadata), `app/[locale]/layout.tsx`, `globals.css`, `components/SiteHeader.tsx`,
@@ -389,7 +390,8 @@ hazard: a page against a route not landed — UI-3 is landed). Frontend, and one
   (plan :506–:509); (5) the CASE — the rationale, and "over the assessor's objection" / "an analysis was run" as facts;
   (6) HISTORY, newest first, "what changed" opening the DIFF, a withdrawal between the versions it separates; (7) THE PAGES,
   one link per cited page to `/corpus?page=<trackedUrlId>` under the one sentence naming the counterweight; (8) LAST — the
-  short disclaimer and the VERIFY disclosure, closed. Sticky context line once scrolled past (§17 :531).
+  short disclaimer and the VERIFY disclosure, closed. **The sticky context line is RETIRED 2026-09-18 (§17 :531 as
+  amended; `gf-ui-flows.md` §4 :159) — this line asked for it and no longer does.**
 - **Two voices, two components** (§16 :517–:521): THE RESEARCHER'S (an act and its words, plain, first) and THE PLATFORM'S
   (a mark beside what it judges: VERIFIED, FLAGGED, argued, over objection). The third, the labelled opinion container, is
   NOT built here and no public page may import it when it exists (UI-7 builds it; `no-model-voice-public` holds the import).
@@ -432,8 +434,8 @@ hazard: a page against a route not landed — UI-3 is landed). Frontend, and one
 (the COPY control), `lib/format.ts` (`formatHash` :1 goes — §4 forbids what it formats; the date and interval forms stay), `lib/api.ts`
 (the :24–:28 comment), `messages/*.json` (`theses`, `call`). NEW: `app/[locale]/theses/[id]/versions/[v]/page.tsx`;
 `components/thesis/` — the researcher's-voice and platform's-mark components, the citation chip, the citation sheet, the
-trajectory sheet, the document-sheet stub, the appeals cards, the history and the diff view, the VERIFY disclosure, the
-context line; `lib/textDiff.ts`, `lib/doors.ts`, `lib/citationTokens.ts` (a token in the text → the body's resolved mention);
+trajectory sheet, the document-sheet stub, the appeals cards, the history and the diff view, the VERIFY disclosure;
+`lib/textDiff.ts`, `lib/doors.ts`, `lib/citationTokens.ts` (a token in the text → the body's resolved mention);
 `test/fixtures/thesis/` (a published body, a withdrawn body, a body with a planted `analysis` field, two consecutive versions,
 a call body, `{ live: false }` — each written from A5, none from the backend's answers); the eight instrument files. ORPHANED here,
 RETIRE at UI-10: `CitationSheet.tsx`, `TipTapRenderer.tsx`, `ThesisProvenancePanel.tsx`, `ThesisPublicationPanel.tsx`,
@@ -885,7 +887,7 @@ Three rules of this plan's own, each named where it bites:
   design's lists and approved by the researcher before the step's PR; a label that reached the tree unapproved is a finding,
   not a LOW.
 - **The exercise is read from the DOM, never from a screenshot alone** (§6). A dated doc records what was measured — the
-  scroll width, the context line's position, the state provoked — beside the picture.
+  scroll width, the state provoked, and — since the retirement — that the read reports NO sticky element, beside the picture.
 
 ## 5. THE TEST INVENTORY — EVERY INSTRUMENT, ITS FILE, ITS STEP, AND WHAT IT HOLDS **AMENDED 2026-09-16:** UI-4b's six instruments are named in §9 and join this table in the step's landing PR. **JOINED 2026-09-17, named here rather than as rows because a row added inside this table moves every `:line` citation below it:** `nav-is-the-map` re-pointed at the sidebar (`navIsTheMap.test.tsx`, UI-4b) · `recents-are-local` (`recentsAreLocal.test.tsx`) · `two-centres-by-url` and `shell-mounted-once` (`shell.test.tsx`) · `sheet-primitive` (`sheetPrimitive.test.tsx`) · `tokens-only` (`tokensOnly.test.ts`) · `no-emoji` (`noEmoji.test.ts`) · `fonts-are-local` (`fontsAreLocal.test.ts`) — SEVEN instruments in seven files, which §9 counts as six because `shell.test.tsx` holds two; and `no-id-as-text` gains the sidebar as a subject. **JOINED 2026-09-18 (UI-5), in the heading for the same reason — a row added inside the table moves every `:line` citation below it:** `statement-and-disclaimer-first` (`statementFirst.test.tsx`) · `no-model-voice-public` · `notice-only` · `no-door-before-it-exists` · `diff-consecutive-published` · `bidi-isolated` · `no-id-as-text` · `valid-nesting` · `public-read` · `text-diff` · `text-sources-only` · `letter-only-resolved` · `pane-tabs-declared` · `built-as-drawn` · `every-markdown-capability` · **`researchers-markdown`** · **`palette-is-the-system`** — SEVENTEEN instruments in seventeen files, the last two added 2026-09-18 with `built-as-drawn`’s ninth property, which a decoy that reddened NOTHING is what found.
 
@@ -924,7 +926,7 @@ touch, tagged as the thesis plan's §5 tags them. **Instruments, by file** (the 
 | `mcp-url-from-deployment` | `mcpUrlFromDeployment.test.tsx` | UI-9 | `/researchers` renders its deployment's origin; no literal host under `src` |
 | `messages-parity` (this plan's) | `messagesParity.test.ts` | UI-1 | `he.json` and `en.json` have equal key sets |
 | `retired-names` (this plan's) | `retiredNames.test.ts` | UI-10 | no retired module imported, no retired URL served, no retired route or page named |
-| the browser exercise | a dated doc per step; the A1 walk at UI-10 | UI-4 to UI-10 | every page of A1 at 375 px on staging: no horizontal scroll, the context line in view, A2's states provoked |
+| the browser exercise | a dated doc per step; the A1 walk at UI-10 | UI-4 to UI-10 | every page of A1 at 375 px on staging: no horizontal scroll, no sticky element in the public read (retired 2026-09-18), A2's states provoked |
 
 Twenty-eight of A5, two of this plan's, and the exercise. The helpers — `test/render.tsx`, `test/scan.ts`, `test/setup.ts` —
 hold nothing themselves and are exercised by the first instrument each serves.
@@ -960,8 +962,9 @@ the step lands, in the order A1 lists them:
 
 1. **Predict on record before reading** — what the page will show from the live body, which state, which links — the run B
    protocol; a prediction that fails is a finding, not a note.
-2. Navigate; read from the DOM, not the picture: `document.documentElement.scrollWidth <= 375`; the context line's bounding
-   rectangle inside the viewport after scrolling to the middle of the page; the first two content elements of `<main>` where
+2. Navigate; read from the DOM, not the picture: `document.documentElement.scrollWidth <= 375`; **after scrolling to the
+   middle of the page, ZERO elements of the public read compute `position: sticky`** (the context line is retired — the
+   reading that replaced it, and the one jsdom can never take); the first two content elements of `<main>` where
    §17 applies; the anchors present, against the step's expectation.
 3. Provoke the states of A2 that staging can provoke without a write — a made-up id, a filter that matches nothing, signed
    out on a gated page, `?since` on the working view — and say in the record which states were provoked in the fixture only
@@ -987,7 +990,7 @@ unsteered run's transcript, after this plan) — are recorded where they are fir
   MCP surface is A4's plus §6.1's three, with `mcpToolClassification` agreeing;
 - every RETIRE file is gone and every KEEP file unchanged: the backend's acceptance suites since UI-2, its two parity tests
   since UI-10, `reads.test.ts` :159 and :400 green and unedited;
-- every page of A1 has been rendered at 375 px on staging with no horizontal scroll and the context line in view, in one
+- every page of A1 has been rendered at 375 px on staging with no horizontal scroll and no sticky element in the read, in one
   walk, in UI-10's dated doc; each of the thirteen retired URLs answers the one sentence; `nav-is-the-map` is green;
 - the public thesis page has rendered a published thesis on staging and the reading test is recorded — thesis plan :327
   CLOSED, with its pointer;

@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { ICONS } from '@/components/glyphs';
 import { SHELL_KEYS, useLocalState } from './localState';
-import { RightPane, TabsProvider, usePaneTabs } from './RightPane';
+import { PHONE_QUERY, decideSwipe, pansHorizontally, type SwipePoint } from './paneSwipe';
+import { RightPane, TabsProvider, usePaneLayer, usePaneTabs } from './RightPane';
 import { Sidebar } from './Sidebar';
 import { Splitter } from './Splitter';
 
@@ -53,6 +54,27 @@ function ShellFrame({ children }: { children: ReactNode }) {
   const [paneWidth, setPaneWidth] = useLocalState<number>(SHELL_KEYS.paneWidth, 580);
   const [collapsed, setCollapsed] = useLocalState<boolean>(SHELL_KEYS.sidebarCollapsed, false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const shellRef = useRef<HTMLDivElement>(null);
+  const { tabs } = usePaneTabs();
+  const [paneOpen, setPaneOpen] = usePaneLayer();
+  // THE FLAG THE TOUCH HANDLER READS, kept current by its own effect rather than captured in the listener's
+  // closure. Two reasons, and the first is a defect the suite caught: listeners attached while the pane was
+  // shut would go on believing that, so the swipe back — the researcher's "swipe left returns to the thesis"
+  // — asked `decideSwipe` a question it had already answered and did nothing. The second is that the
+  // listeners now attach ONCE per page rather than being torn down and rebuilt every time the pane moves.
+  const paneOpenRef = useRef(paneOpen);
+  useEffect(() => {
+    paneOpenRef.current = paneOpen;
+  }, [paneOpen]);
+  // THE DRAWER IS A LAYER OVER THE PAGE AND OWNS ITS OWN TOUCHES. It is `.shell-sidebar` wearing
+  // `.shell-drawer` (below), rendered INSIDE the element the listeners are attached to — so without this a
+  // swipe inside an open nav drawer would reach the shell and open the pane behind it. That is the same
+  // class of defect as claiming the operating system's edge: a touch acted on by something other than what
+  // the reader is touching. Found by the DEV seat reading this cold, and a sixth refusal rather than a note.
+  const drawerOpenRef = useRef(drawerOpen);
+  useEffect(() => {
+    drawerOpenRef.current = drawerOpen;
+  }, [drawerOpen]);
 
   // The drawer is a layer over the page: Escape closes it and the body's scroll is locked while it is open,
   // the same two behaviours the Sheet primitive owns for a dialog.
@@ -70,8 +92,71 @@ function ShellFrame({ children }: { children: ReactNode }) {
     };
   }, [drawerOpen]);
 
+  // THE PHONE'S SWIPE INTO THE PANE (docs/gf-ui-flows.md §18 :564, amended 2026-09-18; the researcher): "on mobile the thesis view gives no easy
+  // way to reach what the desktop shows in the right pane — today only pressing a document's date bubble
+  // gets you there." A swipe right opens the pane, a swipe left returns to the read. The decision itself is
+  // `paneSwipe.ts`', which is pure; this effect only supplies the two points and applies the answer.
+  //
+  // IT LIVES IN THE SHELL AND NOT ON THE THESIS PAGE, because the pane is the shell's and the call page has
+  // one too — a page-level gesture would be one rule with two implementations. It is INERT wherever no tab
+  // is declared, which is exactly the set of pages with no pane, so no page opts in and none can forget to.
+  //
+  // THE LISTENERS ARE PASSIVE. This gesture never calls `preventDefault` — it must not, because the same
+  // finger may be scrolling the read, and a non-passive touch listener on the scroll container costs every
+  // scroll in the app its fast path. The pane opens on `touchend` or not at all.
+  useEffect(() => {
+    const shell = shellRef.current;
+    if (shell === null || tabs.length === 0) return undefined;
+
+    let from: SwipePoint | null = null;
+    let onAPanner = false;
+
+    const onStart = (event: TouchEvent) => {
+      // A second finger is a pinch, never a navigation — and it abandons any gesture already begun.
+      const touch = event.touches.length === 1 ? event.touches.item(0) : null;
+      if (touch === null) {
+        from = null;
+        return;
+      }
+      from = { x: touch.clientX, y: touch.clientY, t: event.timeStamp };
+      onAPanner = pansHorizontally(event.target instanceof Element ? event.target : null, shell);
+    };
+
+    const onEnd = (event: TouchEvent) => {
+      const start = from;
+      from = null;
+      if (start === null || onAPanner || drawerOpenRef.current) return;
+      // Asked at the moment of the gesture, not at mount: a rotation or a resized window changes the answer,
+      // and at `md` the pane is already beside the centre with nothing to open.
+      //
+      // A BROWSER WITHOUT `matchMedia` SIMPLY HAS NO GESTURE — it never throws inside a touch handler. This
+      // is the retired context line's own lesson, which it carried in its docblock and which outlived it:
+      // "a missing observer must never take the page down with it." The alternative, comparing `innerWidth`
+      // to a number, would spell the breakpoint a third time.
+      if (typeof globalThis.matchMedia !== 'function') return;
+      if (!globalThis.matchMedia(PHONE_QUERY).matches) return;
+      const touch = event.changedTouches.item(0);
+      if (touch === null) return;
+      const outcome = decideSwipe(start, { x: touch.clientX, y: touch.clientY, t: event.timeStamp }, globalThis.innerWidth, paneOpenRef.current);
+      if (outcome !== null) setPaneOpen(outcome === 'open');
+    };
+
+    const onCancel = () => {
+      from = null;
+    };
+
+    shell.addEventListener('touchstart', onStart, { passive: true });
+    shell.addEventListener('touchend', onEnd, { passive: true });
+    shell.addEventListener('touchcancel', onCancel, { passive: true });
+    return () => {
+      shell.removeEventListener('touchstart', onStart);
+      shell.removeEventListener('touchend', onEnd);
+      shell.removeEventListener('touchcancel', onCancel);
+    };
+  }, [tabs.length, setPaneOpen]);
+
   return (
-    <div className="shell" style={{ ['--sidebar-width' as string]: collapsed ? 'var(--touch-target)' : `${String(sidebarWidth)}px`, ['--pane-width' as string]: `${String(paneWidth)}px` }}>
+    <div ref={shellRef} className="shell" style={{ ['--sidebar-width' as string]: collapsed ? 'var(--touch-target)' : `${String(sidebarWidth)}px`, ['--pane-width' as string]: `${String(paneWidth)}px` }}>
       {/* THE PHONE'S TOP BAR: the menu control, the name as TEXT, the locale control. The name is a LINK once
           only, in the sidebar's head — a second anchor to `/` would be a second entry in the map. */}
       <div className="shell-topbar">
