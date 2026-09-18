@@ -315,3 +315,51 @@ describe('researchers-markdown · the intake marker', () => {
     }).toEqual({ tag: 'div', insideASpan: false, text: callLive.intake });
   });
 });
+
+describe('researchers-markdown · THE PARAGRAPHS ARE SEPARATED, not merely present', () => {
+  // THE DEFECT THIS EXISTS TO STOP WAS GREEN UNDER EVERY OTHER CASE IN THIS FILE, and the researcher
+  // found it on a phone against the deployed page: the rationale rendered FOUR `<p>` elements with a
+  // gap of ZERO between them and reached the reader as one run-on block. Every case above counts
+  // blocks; counting blocks is the PARSER's question, and separation is CSS's.
+  //
+  // WHY THERE IS NOTHING TO SEPARATE THEM BY DEFAULT, measured rather than assumed: a `<p>` inside a
+  // bare iframe computes a 16px margin top and bottom, and inside this app it computes 0 — the reset
+  // takes the browser's own spacing away. So rendered Markdown has NO separation unless a rule gives
+  // it some, and that rule had been written as a utility at ONE call site (`ThesisText`'s
+  // `space-y-3`), which the nine prose fields never passed through.
+  //
+  // IT IS A SOURCE SCAN AND NOT A RENDER ONE, deliberately: jsdom computes no cascade, so a rendered
+  // gap is 0 there whether the rule exists or not. What can be held here is that the rule EXISTS with
+  // a non-zero value, and that every prose block actually carries the class that invokes it. The
+  // pixel itself is held by the browser reading in the step's dated doc — the seam §6 names.
+  it('`.md-prose > * + *` declares a NON-ZERO margin — the value, not the property name', () => {
+    const declared = declarationsOf('.md-prose > * + *');
+    requireSubjects('declarations of `.md-prose > * + *`', [...declared.keys()]);
+    const margin = declared.get('margin-top');
+    expect({
+      declaresMarginTop: margin !== undefined,
+      // A rule that declares `0` would satisfy "the rule exists" and change nothing a reader sees.
+      isNonZero: margin !== undefined && !/^0(?:[a-z%]*)?$/.test(margin.trim()),
+      value: margin,
+    }).toEqual({ declaresMarginTop: true, isNonZero: true, value: margin });
+  });
+
+  it('EVERY prose block of both pages carries `md-prose`, so the rule reaches all of them', async () => {
+    const thesis = proseBlocks(await renderThesis(published), 'the thesis page’s prose blocks');
+    const call = proseBlocks(await renderCall(), 'the call page’s prose blocks');
+    const without = [...thesis, ...call].filter((element) => !element.classList.contains('md-prose'));
+    expect({ prose: thesis.length + call.length, missingTheRule: without.map((e) => e.className) }).toEqual({
+      prose: thesis.length + call.length,
+      missingTheRule: [],
+    });
+  });
+
+  it('the ARCHIVE does NOT carry it — the rule is the prose’s, and the archive is not prose', async () => {
+    const container = await renderThesis(published, true);
+    const captured = requireSubjects(
+      'captured record blocks',
+      [...container.querySelectorAll<HTMLElement>('[data-record] .record-captured')],
+    );
+    expect(captured.map((element) => element.classList.contains('md-prose'))).toEqual(captured.map(() => false));
+  });
+});

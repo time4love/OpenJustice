@@ -2,6 +2,7 @@ jest.mock('../src/context/AuthContext', () => jest.requireActual<typeof import('
 jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>('./render').navigationDouble());
 
 import { join, relative } from 'node:path';
+import { fireEvent } from '@testing-library/react';
 import { renderWithIntl, setAuthState, setPathname } from './render';
 import { FRONTEND, SRC, importsOf, requireSubjects, sourceFiles } from './scan';
 import { DeclareTabs, TabsProvider } from '@/components/shell/RightPane';
@@ -215,5 +216,66 @@ describe('shell-mounted-once', () => {
       mainsInTheDocument: container.querySelectorAll('main').length,
       mainIsInTheCentre: centre?.querySelector('main') !== null && centre?.querySelector('main') !== undefined,
     }).toEqual({ mainsInTheDocument: 1, mainIsInTheCentre: true });
+  });
+});
+
+describe('the phone drawer closes when a link inside it is followed', () => {
+  // THE DEFECT, found by the researcher on a phone against the deployed page (2026-09-18): the drawer had
+  // three ways out — Escape, the scrim and the toggle — and following a LINK INSIDE IT was not one of them.
+  // A reader who opened a thesis from the drawer arrived at that thesis with the drawer still over it, the
+  // body still locked to `overflow: hidden`, and the toggle underneath the drawer itself: "I cannot close
+  // the menu".
+  //
+  // AND IT IS THE SAME-ROUTE TAP THAT MATTERS, which is why a route effect was written first and removed:
+  // the drawer lists what was opened IN THIS BROWSER, so the entry a reader chooses is very often the page
+  // they are already on. `pathname` does not change, so nothing keyed on it can fire. This shell also READS
+  // NO ROUTE by contract — the case above says so in its title, and a `usePathname` here would have passed
+  // it while making that title false.
+  //
+  // THE ORDER OF THE TWO HALVES IS LOAD-BEARING, and the first draft had it wrong: the negative control
+  // clicks a BUTTON inside the same element, and the first button there is the COLLAPSE control, which
+  // sets `collapsed` and unmounts the whole `Sidebar` — links included. Asserting the link half afterwards
+  // read an empty subject set and `requireSubjects` refused it, correctly. The link half runs FIRST, on an
+  // untouched drawer.
+  it('a link inside the drawer closes it', async () => {
+    const { Shell } = await shellModule();
+    const page = (await noTabsPage()).default;
+    const rendered = renderWithIntl(<Shell>{page()}</Shell>, { locale: 'he' });
+
+    const toggle = rendered.container.querySelector<HTMLElement>('[aria-expanded]');
+    if (toggle === null) throw new Error('the shell rendered no drawer toggle');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toEqual('true');
+
+    const links = requireSubjects(
+      'links inside the drawer',
+      [...rendered.container.querySelectorAll<HTMLElement>('aside[data-shell-region="sidebar"] a[href]')],
+    );
+    const first = links[0];
+    if (first === undefined) throw new Error('the drawer rendered no link');
+    fireEvent.click(first);
+
+    expect(toggle.getAttribute('aria-expanded')).toEqual('false');
+  });
+
+  it('a BUTTON inside the drawer does NOT close it — the handler is scoped to links', async () => {
+    const { Shell } = await shellModule();
+    const page = (await noTabsPage()).default;
+    const rendered = renderWithIntl(<Shell>{page()}</Shell>, { locale: 'he' });
+
+    const toggle = rendered.container.querySelector<HTMLElement>('[aria-expanded]');
+    if (toggle === null) throw new Error('the shell rendered no drawer toggle');
+    fireEvent.click(toggle);
+
+    const buttons = requireSubjects(
+      'buttons inside the drawer',
+      [...rendered.container.querySelectorAll<HTMLElement>('aside[data-shell-region="sidebar"] button')],
+    );
+    const inside = buttons[0];
+    if (inside === undefined) throw new Error('the drawer rendered no button');
+    fireEvent.click(inside);
+
+    // It may change the sidebar (the first control there is the collapse one) — it may not close the drawer.
+    expect(toggle.getAttribute('aria-expanded')).toEqual('true');
   });
 });
