@@ -6,7 +6,6 @@ import { CopyableCode } from '@/components/CopyableCode';
 import { domainOf, formatCaptureDate } from '@/lib/format';
 import type { EvidenceCitation, TrajectoryCitation } from '@/types/thesis';
 import { PlatformMark } from './PlatformMark';
-import { ResearcherWords } from './ResearcherWords';
 
 // ---------------------------------------------------------------------------
 // THE RECORD, AS A RIGHT-PANE TAB — docs/gf-ui-flows.md §18 as amended 2026-09-16 ("the citation
@@ -70,13 +69,13 @@ export function EvidenceRecordPane({ citation, pageId, source, locale }: { citat
       ) : null}
 
       {citation.content.kind === 'CAPTURE' ? (
-        <ResearcherWords className="record-captured">{citation.content.text}</ResearcherWords>
+        <div dir="auto" className="record-captured">{citation.content.text}</div>
       ) : (
         <div className="space-y-2">
           {citation.content.chunks.map((chunk, index) => (
             <div key={`${chunk.side}-${String(index)}`}>
               <p className="record-register">{chunk.side === 'before' ? t('before') : t('after')}</p>
-              <ResearcherWords className="record-captured">{chunk.text}</ResearcherWords>
+              <div dir="auto" className="record-captured">{chunk.text}</div>
             </div>
           ))}
         </div>
@@ -106,7 +105,7 @@ export function TrajectoryRecordPane({ citation, source }: { citation: Trajector
       <p className="record-head">
         <bdi dir="ltr">{domainOf(citation.url)}</bdi>
       </p>
-      <ResearcherWords className="record-captured">{citation.claimText}</ResearcherWords>
+      <div dir="auto" className="record-captured">{citation.claimText}</div>
       <p className="record-meta">{t('transitions', { count: citation.transitions })}</p>
       <p className="record-marks">
         <PlatformMark kind={citation.current ? 'trajectoryCurrent' : 'trajectoryStale'} />

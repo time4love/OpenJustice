@@ -52,10 +52,17 @@ export interface LetterRun {
  * THE MARKING IS THE POINT, not decoration (the researcher's Q5, ruled „א+ג” 2026-09-17): a reader has
  * to be able to see WHICH words the platform put in their letter, because those are the two they may
  * want to change. Both cues ride on the same span — the `--letter-fill` surface AND a `--line`
- * underline — because the fill is 1.074:1 in luminance against paper (238 against 247 in greyscale) and
- * therefore works by HUE ALONE, while the underline is 26 greyscale steps but only 1 px. Neither alone
+ * underline — because the fill is 1.118:1 in luminance against paper (239 against 252 in greyscale) and
+ * therefore works by HUE ALONE, while the underline is 23 greyscale steps but only 1 px. Neither alone
  * serves both a colour reader and a greyscale one. The asymmetry that decided it: the NAME already
  * carries its square brackets as a second cue and the DATE carried none.
+ *
+ * RE-MEASURED 2026-09-18 and BOTH figures had gone stale, not one. The fill read 1.074:1 (238 against
+ * 247) against the OLD paper `#FAF7F1`, and the underline's 26 greyscale steps were against the OLD
+ * `--line` `#E4DCCF`; the palette moved the paper to `#FCFCFB` and the line to `#E6E5E2`, so the fill is
+ * now 1.118:1 and the underline 23 steps. The RULING is untouched — both cues still ride the same span,
+ * and the fill still works by hue alone — and `--letter-fill` itself does not move. Text on it stays
+ * legible: ink 14.91:1, `--ink-muted` 8.05:1 (§1.8 :42's amendment).
  */
 export function letterRuns(raw: string, name: string, today: string, fallback: string): LetterRun[] {
   const runs: LetterRun[] = [];
@@ -156,7 +163,7 @@ export function LetterDialog({ request, open, onClose, openerId, id, locale }: {
       </label>
 
       {/* DECISION 3: plain paragraphs. The resolved runs are marked with BOTH cues the researcher ruled
-          (Q5 „א+ג”): the `--letter-fill` surface AND a `--line` underline, because the fill is 1.074:1
+          (Q5 „א+ג”): the `--letter-fill` surface AND a `--line` underline, because the fill is 1.118:1
           against paper and works by hue alone, while the underline is 1 px. Neither alone serves both a
           colour reader and a greyscale one. */}
       <div data-letter className="letter-body">

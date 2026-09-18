@@ -1,4 +1,4 @@
-import { ResearcherWords } from './ResearcherWords';
+import { ResearcherProse } from './ResearcherProse';
 
 /**
  * FIRST, ALWAYS — COMPLIANCE.md rule 5 :82–:84; docs/gf-ui-flows.md §17 :526–:528, §20 :607. The researcher's
@@ -7,5 +7,5 @@ import { ResearcherWords } from './ResearcherWords';
  */
 export function PublicInterestStatement({ statement }: { statement: string | null }) {
   if (statement === null || statement.trim() === '') return null;
-  return <ResearcherWords className="text-ink">{statement}</ResearcherWords>;
+  return <ResearcherProse text={statement} className="text-ink" />;
 }

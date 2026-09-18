@@ -324,7 +324,7 @@ its computed proof from then on.
   and `audit-theses` has been observed to fail before going green there;
 - the public page serves text, resolved citations, the appeals and the notice, and no model prose,
   by a shape test;
-- the frontend's change landed before step 25, and the page rendered a published thesis after it.
+- the frontend's change landed before step 25, and the page rendered a published thesis after it — **CLOSED 2026-09-18 by UI-5** (`docs/gf-ui-step-5-2026-09-18.md`): the public page renders run B’s published thesis from its live body, and the three-voices reading test passed.
 
 ## 8. HAZARDS, NAMED
 

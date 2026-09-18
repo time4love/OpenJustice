@@ -7,7 +7,7 @@ import type { CallItem, Citation, RequestItem } from '@/types/thesis';
 import { CitationChip } from './CitationChip';
 import { LetterDialog } from './LetterDialog';
 import { evidenceChipKind } from './Tick';
-import { ResearcherWords } from './ResearcherWords';
+import { ResearcherProse } from './ResearcherProse';
 
 // ---------------------------------------------------------------------------
 // THE APPEALS — ON THE CALL PAGE ALONE. docs/gf-ui-flows.md §20 as amended 2026-09-16 (the legacy
@@ -73,9 +73,16 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function HowToReach({ intake, label }: { intake: string; label: string }) {
   return (
     <>
-      <ResearcherWords className="appeal-intake">
-        <span data-intake>{intake}</span>
-      </ResearcherWords>
+      {/* `data-intake` MARKS THE BLOCK CONTAINER, and it MOVED. It used to sit on a `<span>` INSIDE the
+          researcher's element, which was harmless while the intake was one raw string and is not now: the
+          instruction renders as the researcher's BLOCKS, and a `<p>` inside a `<span>` is the re-parenting
+          `valid-nesting` exists to stop. It marks the same line either way — it is what
+          `no-door-before-it-exists` reads — and it sits HERE rather than becoming a prop on
+          `ResearcherProse`, because one caller's marker on a shared component is exactly the shape `as`
+          was just retired for. */}
+      <div data-intake>
+        <ResearcherProse text={intake} className="appeal-intake" />
+      </div>
       {DOORS_OPEN ? (
         <p>
           <button type="button" data-intake-cta className="appeal-button">
@@ -96,10 +103,10 @@ function RequestCard({ request, citations, pages, locale }: { request: RequestIt
     <article className="appeal-card">
       <h3 className="appeal-card-title">{t('request')}</h3>
       <Field label={t('authority')}>
-        <ResearcherWords>{request.authority}</ResearcherWords>
+        <ResearcherProse text={request.authority} />
       </Field>
       <Field label={t('legalBasis')}>
-        <ResearcherWords>{request.legalBasis}</ResearcherWords>
+        <ResearcherProse text={request.legalBasis} />
       </Field>
       <Field label={t('addresses')}>
         {request.addresses.map((address) => (
@@ -169,16 +176,16 @@ export function Appeals({ call, requests, intake, citations, pages, locale, head
             <article key={index} className="appeal-card">
               <h3 className="appeal-card-title">{t('call')}</h3>
               <Field label={t('whatIsNeeded')}>
-                <ResearcherWords>{item.whatIsNeeded}</ResearcherWords>
+                <ResearcherProse text={item.whatIsNeeded} />
               </Field>
               <Field label={t('whoWouldHaveSeenIt')}>
-                <ResearcherWords>{item.whoWouldHaveSeenIt}</ResearcherWords>
+                <ResearcherProse text={item.whoWouldHaveSeenIt} />
               </Field>
               <Field label={t('unit')}>
-                <ResearcherWords>{item.unit}</ResearcherWords>
+                <ResearcherProse text={item.unit} />
               </Field>
               <Field label={t('window')}>
-                <ResearcherWords>{item.window}</ResearcherWords>
+                <ResearcherProse text={item.window} />
               </Field>
             </article>
           ))}

@@ -14,12 +14,12 @@
 
 :root {
   /* The surfaces and the text */
-  --paper: #FAF7F1;          /* the page */
-  --paper-deep: #F3EEE4;     /* the sidebar */
+  --paper: #FCFCFB;          /* the page */
+  --paper-deep: #F2F1EE;     /* the sidebar */
   --surface: #FFFFFF;        /* a card, a pane, a sheet */
   --ink: #1F1B16;            /* text, actions, the primary button */
-  --ink-muted: #6B6157;      /* labels, meta, the disclaimer */
-  --line: #E4DCCF;           /* every border and divider */
+  --ink-muted: #4E463F;      /* labels, meta, the disclaimer */
+  --line: #E6E5E2;           /* every border and divider */
 
   /* The four meaning colours */
   --olive: #4F6B3A;          /* verified against the anchor · added · present */
@@ -519,11 +519,16 @@ html, body {
     line-height: 1.6;
   }
 
-  /* The one line. The FULL string is in the element; only its rendering is cut. */
+  /* A SHORT PARAGRAPH, NOT ONE ELLIPSISED LINE — the researcher, 2026-09-18: „when collapsed I prefer
+     block, that they see a short paragraph and not inline of one line only" (docs/gf-ui-flows.md §16 :521).
+     The board drew the one line (`build2.mjs` :21's `.prefold .one`) and this ruling supersedes it: a board
+     grounds LAYOUT, and the researcher's later word on their own preface outranks the earlier drawing.
+     The FULL string is still in the element — only its rendering is cut, as it was before. */
   .preface-clamped {
-    white-space: nowrap;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   .preface-chevron {
@@ -637,6 +642,12 @@ html, body {
      ------------------------------------------------------------------------- */
   .record-captured {
     display: block;
+    /* THE FACE IS DECLARED HERE, and until 2026-09-18 it was INHERITED. This block wore
+       `[data-researcher-words]` — a marker whose meaning is "the researcher wrote this" (§16 :517–:521)
+       — and took its serif from that selector, while the text it holds is the ARCHIVE'S: a captured
+       page, a diff chunk, a trajectory's claim. The face does not change; what changes is that it is
+       now a stated decision about the record, not a side effect of the wrong voice's marker. */
+    font-family: var(--font-serif);
     max-height: 420px;
     /* The Y axis scrolls (§18 :569); the X axis never does — a long unbroken URL must wrap or clip,
        never push the pane sideways (§6 :963, no horizontal scroll at any width). */
@@ -734,7 +745,18 @@ html, body {
   .letter-body p { margin: 0 0 0.7em; }
 
   /* BOTH CUES ON THE SAME SPAN (Q5 „א+ג”): the fill works by hue and the underline by luminance, so a
-     greyscale reader sees the second where the first is 1.074:1 against paper. */
+     greyscale reader sees the second where the first is 1.118:1 against paper.
+
+     RE-MEASURED 2026-09-18, against the NEW paper (§1.8 :42's `--letter-fill` amendment). The figure was
+     1.074:1 and that was correct — of the OLD `--paper`. The palette moved `--paper` and left the
+     sentence behind, which is the shape a measurement written in prose always fails in: nothing
+     recomputes it. `--letter-fill` itself does NOT move. Text laid on the fill stays legible: ink reads
+     14.91:1 on it and `--ink-muted` 8.05:1.
+
+     THE VALUES ARE NAMED AS TOKENS HERE AND NOT AS HEXES ON PURPOSE: `tokens-only` counts each of §1.8's
+     ten colours in this file and requires EXACTLY ONE occurrence, comments included — a first draft of
+     this note quoted the new paper's hex and reddened that case, correctly. A colour is declared once and
+     referred to by name everywhere after, and a comment is no exception to the rule it explains. */
   .letter-fill {
     background: var(--letter-fill);
     border-bottom: 1px solid var(--line);

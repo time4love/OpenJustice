@@ -22,8 +22,16 @@ import { FRONTEND, NOT_YET_REWRITTEN, SRC, offendersIn, requireSubjects, sourceF
 // ---------------------------------------------------------------------------
 
 const GLOBALS = 'src/app/globals.css';
-/** §1.8's ten colours — the values the token block must define, once each. */
-const SYSTEM_COLOURS = ['#FAF7F1', '#F3EEE4', '#FFFFFF', '#1F1B16', '#6B6157', '#E4DCCF', '#4F6B3A', '#B08D3B', '#B7791F', '#A8322A'];
+/**
+ * §1.8's ten colours — the values the token block must define, once each.
+ *
+ * FOUR MOVED ON 2026-09-18 (§1.8 :42, the researcher): paper `#FAF7F1` -> `#FCFCFB`, sidebar
+ * `#F3EEE4` -> `#F2F1EE`, muted `#6B6157` -> `#4E463F`, line `#E4DCCF` -> `#E6E5E2`. THIS LIST IS NOT
+ * THE ALLOW-LIST and it did not grow: `NOT_YET_REWRITTEN` and `THIS_STEPS_OWN` are untouched. This one
+ * names §1.8's CURRENT values so that "each exactly once" keeps meaning what it says; it is
+ * `palette-is-the-system` that holds WHICH values, with the contrast floor beside them.
+ */
+const SYSTEM_COLOURS = ['#FCFCFB', '#F2F1EE', '#FFFFFF', '#1F1B16', '#4E463F', '#E6E5E2', '#4F6B3A', '#B08D3B', '#B7791F', '#A8322A'];
 
 /**
  * Files THIS STEP writes or rewrites: none of them may ever be excused by the list. Re-pointed at

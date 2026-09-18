@@ -1,10 +1,8 @@
 jest.mock('../src/lib/api', () => jest.requireActual<typeof import('./render')>('./render').apiDouble());
 jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>('./render').navigationDouble());
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { renderPage, setAuthState, setPathname, setPublicBodies, type Locale, type PageRender } from './render';
-import { FRONTEND, requireSubjects } from './scan';
+import { declarationsOf, requireSubjects } from './scan';
 import { RightPane, TabsProvider } from '../src/components/shell/RightPane';
 import published from './fixtures/thesis/published.json';
 
@@ -75,36 +73,6 @@ async function thesis(locale: Locale, withPane = false): Promise<HTMLElement> {
   );
 }
 
-/**
- * One CSS rule's declarations, by selector, from `globals.css` — as PROPERTY → VALUE.
- *
- * COMMENTS ARE STRIPPED BEFORE THE DECLARATIONS ARE SPLIT, and that is not tidiness: a rule in this file
- * carries its reasoning inside itself, and a parser that split the raw text on `;` would read a sentence
- * as a declaration and a declaration as part of a sentence. Measured while writing this: it reported
- * `white-space` missing and "collapsing them would edit the" present, on a rule that declares the first
- * and not the second.
- *
- * IT RETURNS THE VALUE, AND THAT IS R59 · CHUNK 3's CORRECTION OF THIS FILE. Chunk 2 asserted only that a
- * property was DECLARED, and said so as a stated limit — the negative decoy G5 changed `max-height` from
- * 420px to 300px and reddened nothing. Less than a day later that hole bit: `overflow: hidden` on the
- * captured text locked 91% of the evidence behind a clamp, and the case stayed green over it because
- * `overflow` was declared. **A STATED LIMIT ON A VALUE THE BOARD FIXES IS A DEBT, NOT A NOTE.**
- */
-function declarationsOf(selector: string): Map<string, string> {
-  const css = readFileSync(join(FRONTEND, 'src/app/globals.css'), 'utf8');
-  const at = css.indexOf(`${selector} {`);
-  if (at === -1) throw new Error(`globals.css declares no \`${selector}\` rule at all`);
-  const close = css.indexOf('}', at);
-  if (close === -1) throw new Error(`globals.css's \`${selector}\` rule is not closed`);
-  const declared = new Map<string, string>();
-  for (const line of css.slice(at + selector.length + 2, close).replace(/\/\*[\s\S]*?\*\//g, '').split(';')) {
-    const colon = line.indexOf(':');
-    if (colon === -1) continue;
-    const property = line.slice(0, colon).trim();
-    if (property !== '') declared.set(property, line.slice(colon + 1).trim());
-  }
-  return declared;
-}
 
 describe('built-as-drawn', () => {
   it('F1 · `.record-captured` is the board`s nine properties BY VALUE — clamped at 420px and SCROLLING inside it', () => {
@@ -129,6 +97,12 @@ describe('built-as-drawn', () => {
         [...declared].map(([property, value]) => `${property}: ${value}`).join(' · '),
     );
     expect({
+      // THE FACE IS THE NINTH, added 2026-09-18 with the ruling that moved it. Until this chunk the
+      // captured text took its serif by INHERITANCE from `[data-researcher-words]` — the researcher's
+      // voice marker, on the ministry's words. The marker is gone and the face is declared here; a decoy
+      // that deleted the declaration reddened NOTHING, because this case named eight properties and not
+      // this one. A face held by no case is the same shape as a property held by name and not by value.
+      fontFamily: declared.get('font-family'),
       maxHeight: declared.get('max-height'),
       overflowY: declared.get('overflow-y'),
       fontSize: declared.get('font-size'),
@@ -138,6 +112,7 @@ describe('built-as-drawn', () => {
       background: declared.get('background'),
       borderRadius: declared.get('border-radius'),
     }).toEqual({
+      fontFamily: 'var(--font-serif)',
       maxHeight: '420px',
       overflowY: 'auto',
       fontSize: 'var(--text-record)',

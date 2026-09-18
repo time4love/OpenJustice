@@ -63,6 +63,18 @@ export function isolated(text: string, keyPrefix: string): ReactNode[] {
 export interface MarkdownOptions {
   /** The chip a citation token becomes, where it stands. A token the body did not resolve is still a chip. */
   chip: (piece: TokenPiece, key: string) => ReactNode;
+  /**
+   * What a link the researcher wrote becomes: an `<a>` (the default, everywhere the prose is read), or THE
+   * TEXT IT IS.
+   *
+   * The folded preface's trigger is the one caller that asks for `'text'`, and the reason is the button's
+   * content model rather than a preference: §16 :521 lets the trigger hold the rendered BLOCKS but NEVER an
+   * interactive descendant, and `<https://…>` is a CommonMark AUTOLINK — core syntax, unaffected by
+   * `linkify: false` — so a statement carrying one would nest an `<a>` inside a `<button>`. Two elements
+   * claiming one click is broken however it parses. The link's own characters still reach the reader; only
+   * its interactivity is withheld, which is what "renders as the text it is" says.
+   */
+  links?: 'anchor' | 'text';
 }
 
 function inlineText(text: string, key: string, options: MarkdownOptions): ReactNode[] {
@@ -111,9 +123,13 @@ function inlineNodes(children: readonly Token[], key: string, options: MarkdownO
       if (closed === undefined) return;
       push(
         closed.tag === 'a' ? (
-          <a key={at} href={closed.href} rel="noopener noreferrer nofollow" target="_blank" className="underline">
-            {closed.children}
-          </a>
+          options.links === 'text' ? (
+            <Fragment key={at}>{closed.children}</Fragment>
+          ) : (
+            <a key={at} href={closed.href} rel="noopener noreferrer nofollow" target="_blank" className="underline">
+              {closed.children}
+            </a>
+          )
         ) : (
           // `<strong>`, `<em>` and `<s>` carry MEANING and not a size, so they take no class: the reading
           // region owns the face and the leading, and a local utility could only disagree with it.
