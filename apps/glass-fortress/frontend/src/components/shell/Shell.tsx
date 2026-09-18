@@ -156,7 +156,9 @@ function ShellFrame({ children }: { children: ReactNode }) {
   }, [tabs.length, setPaneOpen]);
 
   return (
-    <div ref={shellRef} className="shell" style={{ ['--sidebar-width' as string]: collapsed ? 'var(--touch-target)' : `${String(sidebarWidth)}px`, ['--pane-width' as string]: `${String(paneWidth)}px` }}>
+    // `data-pane-open` is READ — by `globals.css`'s `.shell[data-pane-open='true'] .shell-centre`, which
+    // slides the centre left while the pane arrives. It is not a marker for a test.
+    <div ref={shellRef} data-pane-open={paneOpen ? 'true' : undefined} className="shell" style={{ ['--sidebar-width' as string]: collapsed ? 'var(--touch-target)' : `${String(sidebarWidth)}px`, ['--pane-width' as string]: `${String(paneWidth)}px` }}>
       {/* THE PHONE'S TOP BAR: the menu control, the name as TEXT, the locale control. The name is a LINK once
           only, in the sidebar's head — a second anchor to `/` would be a second entry in the map. */}
       <div className="shell-topbar">

@@ -75,6 +75,9 @@
   --reading-column: 42rem;       /* 672px */
   --drawer-width: 300px;
   --touch-target: 44px;
+  /* How long the phone's pane takes to arrive and the centre to leave (§18 :564). One value, so the two
+     halves of one movement cannot drift apart; honoured only when the reader has not asked for less motion. */
+  --pane-slide: 240ms;
   --chrome-height: 3.5rem;       /* the phone's top bar */
 
   --radius-sm: 6px;
@@ -442,6 +445,30 @@ html, body {
      it is either absent or the whole screen. Without this it would sit as an ordinary flex child of the
      column shell and STACK BELOW the centre — the base rule at :166 gives it `display: flex` and nothing
      lifts it out of flow, which UI-4b could not see because no page declared a tab. */
+  /* THE PANE ARRIVES FROM THE RIGHT AND THE CENTRE LEAVES TO THE LEFT (the researcher, 2026-09-18; §18 :564).
+     The motion is not decoration and it is not a flourish: on a phone the pane is a FULL-SCREEN layer, so
+     without it the page simply becomes a different page and nothing tells the reader which way the two lie.
+     The researcher's words are the requirement — "the user is able to understand the orientation of the
+     pages" — so the centre must be SEEN to leave leftward while the pane enters from the right edge.
+
+     `translateX` IS PHYSICAL, NOT LOGICAL, AND THAT IS WHY IT IS USED. `100%` is the right-hand side in both
+     locales; a logical property would flip with the Hebrew document and send the pane in from the left,
+     which is the very confusion this replaces.
+
+     A NON-`none` TRANSFORM MAKES AN ELEMENT THE CONTAINING BLOCK FOR ITS `position: fixed` DESCENDANTS, so
+     this was checked before it was written: `Sheet` renders through `createPortal` and is therefore not a
+     descendant of the centre, and the drawer and the scrim are the centre's SIBLINGS in `Shell.tsx`. No
+     fixed element lives inside `.shell-centre`, so nothing is captured. Anything fixed added inside it
+     later would be, and this note is where that will be found. */
+  @keyframes pane-enters-from-the-right {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+
   @media (width < 48rem) {
     .shell-pane {
       display: none;
@@ -451,6 +478,26 @@ html, body {
       position: fixed;
       inset: 0;
       z-index: 45;
+      animation: pane-enters-from-the-right var(--pane-slide) ease-out;
+    }
+    .shell-centre {
+      transition: transform var(--pane-slide) ease-out;
+    }
+    .shell[data-pane-open='true'] .shell-centre {
+      transform: translateX(-18%);
+    }
+  }
+
+  /* A READER WHO ASKED FOR LESS MOTION GETS THE SAME PANE AND NONE OF THE TRAVEL. The orientation is then
+     carried by the back control alone, which is what it was carrying before this animation existed. */
+  @media (prefers-reduced-motion: reduce) {
+    .shell-pane[data-pane-open='true'] {
+      animation: none;
+    }
+    .shell-centre,
+    .shell[data-pane-open='true'] .shell-centre {
+      transition: none;
+      transform: none;
     }
   }
 
