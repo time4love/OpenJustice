@@ -460,7 +460,22 @@ DoD line gains the pointer.**
 **STATUS:** CLOSED 2026-09-18 — `docs/gf-ui-step-5-2026-09-18.md`. The renderer and its SUBSET recorded (markdown-it as a PARSER, `html: false`, `linkify: false`, tables and strikethrough enabled, task lists and footnotes ruled out, an image rendering its alt text alone), the runtime unchanged, the approved copy, **RE-BRIEFED 2026-09-16** against the design canvas pages 1–3 (docs/gf-ui-design-session-2026-09-16.md §4), the reading test RUN and **PASSED**, and the palette re-grounded on Claude’s own surface.
 **THE HEADING LEFT THIS STEP** (the researcher, 2026-09-18): a specification question and not a display one, so the `<h1>` is still the claim, no backend field landed, and the deployed exercise over its four chunks is recorded in the dated doc when it runs.
 
-### UI-6 · The door `/`
+### UI-6 · The door `/` — **THE HOME PAGE, AND IT IS BUILT LAST**
+
+**MOVED TO LAST BEFORE THE CUT-OVER (the researcher, 2026-09-18): "home page requires a redesign after we finish all other
+pages."** The order is UI-7 → UI-8 → UI-9 → UI-6 → UI-10. Nothing depends on this step: UI-10 is the cut-over regardless,
+UI-9 is independent, and UI-8 needs UI-7 alone. Moving it also retires this step's own known dead link — its archive entry
+was specified as opening "`/corpus` (a 404 until UI-7, recorded)", and after the reorder `/corpus` exists.
+
+**WHAT THE DOOR OWES THAT IT DOES NOT YET CARRY.** §33 designs it as the WHOLE published list — "each thesis a card …
+Newest first. That is the whole list; there is no search, no filter and no count". The page live today does
+`theses.slice(1, 5)` — a hero and four — beside a latest-evidence strip and mission pillars, so the gap is built-versus-
+designed and this step closes it.
+
+**`תזות` NOW LEADS TO `/theses`, AND THE LIST LEAVES THIS PAGE (the researcher, 2026-09-18).** §3's retirement of
+`/theses` is REVERSED and §33 is amended: the door shows the LATEST published theses with one entry onward, and `/theses`
+is the whole list. So this step no longer owes the catalogue — it owes the WELCOME: what this platform is, the latest
+theses, the three entries, the short disclaimer. `nav-is-the-map`'s subject set gains `/theses` for every identity.
 
 **Contract:** §33 :825–:844 (the published theses and one sentence about what this is; the five regions; EMPTY; no
 search, no filter, no count); §34 :855–:864 (the facts the paragraph MAY state and may not — §33 :836–:837 points here);
@@ -513,7 +528,20 @@ and naming no person. The EMPTY state is provoked in the fixture, not on staging
 
 **STATUS:** OPEN. Closes with `docs/gf-ui-step-6-<date>.md`: the approved paragraph in both languages, the exercise. **RE-BRIEFED 2026-09-16** against the design canvas, page 6 (and page 1, board A) — docs/gf-ui-design-session-2026-09-16.md §4.
 
-### UI-7 · The chronology, the two lenses, the three record pages
+### UI-7 · The chronology, the PAGES list, the two lenses, the three record pages
+
+**ORDERED BEFORE UI-6 (the researcher, 2026-09-18). The remaining order is UI-7 → UI-8 → UI-9 → UI-6 → UI-10.**
+UI-7 depends on nothing UI-6 builds, and UI-6 as written ships a KNOWN DEAD LINK — its archive entry "opens
+`/corpus` (a 404 until UI-7, recorded)". Building UI-7 first removes that rather than recording it. **`/corpus`
+is a 404 on staging TODAY**: `Sidebar.tsx` already renders `<Link href="/corpus">` under הארכיון, and the route
+does not exist. UI-6 moves last because the door is the home page and **the researcher ruled it is redesigned
+after every other page is finished** — where `תזות` leads is part of that redesign and is decided there, not here.
+
+**THE BODY BELOW ABSORBS THIS STEP'S OWN RE-BRIEF (2026-09-18).** Its `STATUS:` claimed "RE-BRIEFED 2026-09-16
+against the design canvas, page 4", but the re-brief landed in §10 :1138 and in `gf-ui-flows.md` §24's header and
+was never folded in, so the body described a superseded design. Three deltas, now applied: the PAGE CARD with the
+TIME STRIP replaces the DATE AXIS and moves BELOW the filters (the context line stays); a record opened from a row
+is a RIGHT-PANE TAB, not a sheet; and a search page was named by the re-brief alone.
 
 **Contract:** §24–§28 :653–:753 (one stream, two doors; the two row weights; the corpus's one public model voice; the five
 regions; the lenses; the record sheet and the record pages; the gated additions are UI-8's; the `pages` facet); §31 :787–:798
@@ -528,13 +556,28 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
 
 **What lands.**
 
-- **`/corpus`** — ONE component, the CHRONOLOGY, rendered here at `scope: 'public'` from `GET /api/corpus`; UI-8 renders the
+- **`/corpus` OPENS ON THE PAGES LIST** (the researcher, 2026-09-18), not on the stream. **THE PAGES LIST** is one row per
+  page url — the url, the interval, the record count — and NOTHING ELSE: **no time strip on a row**, because a strip is ONE
+  page's shape over time and therefore reads as a heading, not as a list item; it keeps the home it already has, the page
+  card at the top of `/corpus?page=<id>`. **No search and no count over the list either**, by §33's own reasoning for the
+  door — few by design, added slowly, and the researcher's words for the corpus were the same: the pages "will be added by
+  researchers in slow rate".
+  **ITS ONLY LEGAL SOURCE IS `list_corpus`'s `pages` FACET AT `scope: 'public'`** — never `list_pages`, never the facet at
+  `all`. `gf-ui-flows.md` §28 is explicit: "no public read lists pages (`list_pages` is GATED, and rightly: a public list of
+  surveyed pages is the §9.5 leak)". The facet at `public` is exactly the OPENED pages — those a published thesis cites —
+  and "reveals nothing the thesis pages' links do not already reveal". A list from any other source tells a stranger what is
+  under investigation before it is published, which is the one thing §9.5 forbids.
+  **IT IS ONE COMPONENT BUILT ONCE AND RENDERED AT TWO SCOPES**, as the chronology already is: public here; at UI-8's
+  `/research/corpus` the same list at `all`, every surveyed page, with the NOT PUBLIC mark on the rows no published thesis
+  has cited yet (§27). Writing it twice is the defect this repository names as its dominant shape.
+- **`/corpus`'s STREAM** — ONE component, the CHRONOLOGY, rendered here at `scope: 'public'` from `GET /api/corpus`; UI-8 renders the
   same component at `all` with its three additions and completes `one-stream-two-doors`. §24 top to bottom: (1) the sticky
-  context line — the scope, the active filters as chips, the count returned so far, the LENS control STREAM · CLAIMS ·
-  RECORDS; (2) the DATE AXIS — a scrubber by year and month along the edge, sticky month headers in the stream; (3) the
-  FILTERS — one horizontally scrolling row of chips: PAGE (a picker from the read's own `pages` facet, §28), SINCE / UNTIL,
+  context line — the scope, the count returned so far, the LENS control PAGES · STREAM · CLAIMS · RECORDS; (2) the
+  FILTERS; (3) the PAGE CARD with the TIME STRIP — captures as dots with cited ones ringed, diffs as bars by chunk count —
+  which is ALSO the scrubber and REPLACES the date axis; then (4) the
+  filter chips — one horizontally scrolling row: PAGE (a picker from the read's own `pages` facet, §28), SINCE / UNTIL,
   KIND, CITED — every chip a query parameter of the one read, carried in the URL, so a filtered view is linkable and the
-  thesis page's `/corpus?page=<trackedUrlId>` is one of them; (4) the STREAM, cursor-paginated on the read's own cursor,
+  thesis page's `/corpus?page=<trackedUrlId>` is one of them; the STREAM, cursor-paginated on the read's own cursor,
   oldest first within the range, "load older" and "load newer" at the ends, a row tap opening the RECORD SHEET, a page label
   tap adding the PAGE filter; (5) EMPTY — "no page is open yet — a page opens when a published thesis cites it"; filtered —
   "nothing in this range" with the filters shown for removal, which is also the 400 state.
@@ -550,6 +593,22 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
 - **The page label** (§4 :168–:169): the `pages` facet carries `trackedUrlId, url, first, last, entries` and no title (§28), so
   the label is composed from `url` — domain and path — and the id is never text. A title in the facet would be an amendment to
   §28 and is not made here; recorded as an observation in the dated doc if the composed label reads badly on the real corpus.
+- **`/theses` — THE PUBLIC THESIS LIST, un-retired 2026-09-18 and landing HERE** rather than at UI-6, because UI-6 is now
+  last and the sidebar's תזות has had no destination since UI-4b drew it as a category. One row per PUBLISHED thesis from
+  `GET /api/thesis` (A4 :1427) — the claim as the row, the provision, the author's handle, published <date> — newest first;
+  **no search, no filter and no count**, §33's own reasoning, which moved here with the list. It is the PUBLIC HALF of a
+  pair: the gated half is §29's THESES region under `/research` (`GET /api/research/theses?scope=all`, each row carrying
+  DRAFT ONLY · PUBLISHED = HEAD · PUBLISHED ≠ HEAD (n) · WITHDRAWN), which UI-8 builds. **TWO ROUTES, NOT ONE THAT BRANCHES**
+  — :1129's rule is "two centres by URL, none by identity": the NAV is keyed by identity, the PAGE never is, and this is
+  exactly how `/corpus` and `/research/corpus` already divide.
+  **WHY IT SITS IN A CORPUS STEP:** it is the same shape as the pages list this step already builds — a public list with a
+  gated twin — and building two list pages in one step is one implementation of one rule rather than two of it. The
+  researcher may move it; nothing else depends on where it lands.
+- **THE SEARCH PAGE IS DEFERRED** (the researcher, 2026-09-18). §10 :1139's re-brief named `/corpus/search?phrase=`; this
+  body never listed it, so nothing is removed — only the re-brief is amended. The researcher's reason is the corpus's size:
+  a list of what has been scanned is worth more than a search across it while the pages are few and grow slowly.
+  `GET /api/corpus/search` stays mounted from UI-2 and unused. The sidebar's search icon beside הארכיון currently links to
+  `/corpus/search` and would 404 — it is REMOVED here and returns with the page.
 - **The CLAIMS lens, `/corpus/claims`** (§25 :691–:697), from `GET /api/corpus/claims`: the same context line, filters and axis;
   rows are trajectories ordered by the date the claim LEFT, latest first — the claim's first words, the page's label, the
   pattern as a strip of ticks across its captures, the currency mark (PINNED_IS_LATEST / RECOMPUTED_AGREES current;
@@ -586,9 +645,11 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
 - **Copy**: the empty sentences, the chip labels, the mark names and the one verification line are drafted from §24–§26 and
   approved before landing (ruled 2026-09-15); the label's text is COMPLIANCE.md's.
 
-**Files.** NEW: `app/[locale]/corpus/page.tsx`, `corpus/claims/page.tsx`, `pages/[trackedUrlId]/captures/[capture]/page.tsx`,
+**Files.** NEW: `app/[locale]/corpus/page.tsx` (opening on the PAGES LIST), **`app/[locale]/theses/page.tsx` REWRITTEN as the public thesis list (it exists today as a legacy page and leaves `tokens-only`'s allow-list here)**, `corpus/claims/page.tsx`, `pages/[trackedUrlId]/captures/[capture]/page.tsx`,
 `pages/[trackedUrlId]/diffs/[before]/[after]/page.tsx`, `records/[fileHash]/page.tsx`; `components/corpus/` — the chronology,
-the context line, the date axis, the filter chips, the capture row, the diff card, the record sheet, the claims row and sheet,
+the context line, **the PAGES LIST row (one component, two scopes — UI-8 renders it at `all` with the NOT PUBLIC mark)**, the
+page card with the time strip (which replaces the date axis), the filter chips, the capture row, the diff card, the record
+**as a right-pane tab** (§10 :1138 — not a sheet), the claims row and sheet,
 the two stacked registers, the chain-check control; `components/opinion/LabelledOpinion.tsx`; `lib/archiveUrl.ts`,
 `lib/corpusQuery.ts` (chips ↔ URL ↔ the one read's parameters); `types/corpus.ts` (the bodies of A4 :1081–:1090, §6.1, §28, A4
 :1095, :1105, :1111, hand-written from the appendix); `messages/*.json` (`corpus`, new); `test/fixtures/corpus/` (a stream over
@@ -672,7 +733,10 @@ comes from the chat, never the marking link); A3 :1021–:1023. Frontend only.
   for a filter — "since" is `get_thesis_context`'s own parameter, used to refresh the stream on return; the history loaded
   whole, its size at phone width MEASURED on run B's thesis from this step (§41 :954–:955), a cursor added the day a
   measurement says so and not before.
-- **`/research/corpus`** (§27): UI-7's CHRONOLOGY at `scope: 'all'` — the same component, `one-stream-two-doors` completing — with
+- **`/research/corpus`** (§27): UI-7's PAGES LIST and CHRONOLOGY at `scope: 'all'` — **the same two components, not second
+  copies**. The pages list at `all` is `list_pages`' answer: every SURVEYED page, with the NOT PUBLIC mark on the rows no
+  published thesis has cited yet, so a researcher sees what a reader may not and the §9.5 line stays where §28 draws it.
+  The chronology at `scope: 'all'` — the same component, `one-stream-two-doors` completing — with
   three additions and no page: the NOT PUBLIC mark on rows of pages not yet opened; THE EXTRACTION SHEET from any capture row,
   "how this text was extracted" — the work-list row (`…/pages/:id/captures?outcome=`), the rules in force at this capture's
   date (`…/pages/:id/rules`, filtered by validFrom / validTo), each rule one step further (`…/rules/:ruleId/history`): three
