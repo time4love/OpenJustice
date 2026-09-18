@@ -57,7 +57,7 @@
      than the words it divides, and larger than any furniture the page adds — the page's four regions are
      14px fold triggers. The structure a reader meets first must be the ARGUMENT'S, not the platform's. */
   --text-words-heading: 1.125rem;/* 18px, 700, 1.4 */
-  --text-label: 0.8125rem;       /* 13px — section headings (600), labels, meta, the context line */
+  --text-label: 0.8125rem;       /* 13px — section headings (600), labels, meta */
   --text-mark: 0.75rem;          /* 12px — marks, chips, tabs, the disclaimer */
   --text-value: 0.71875rem;      /* 11.5px — a checkable value, LTR */
 
@@ -152,13 +152,18 @@ body {
      · at phone width `.shell-centre` reported `scrollHeight === clientHeight` (4209 = 4209) — it grew
        to its content instead of scrolling, because `.shell` had only `min-height` there and a flex
        child with no `min-height: 0` cannot shrink below its content. The document scrolled instead,
-       so the STICKY CONTEXT LINE — whose containing block is `.shell-centre`'s scrollport, since M1
-       gave it `overflow-y: auto` at every width — was pinned to a box that itself slid off the top
-       (`top -324`, then `-1566`).
+       so the sticky context line of the day — whose containing block is `.shell-centre`'s scrollport,
+       since M1 gave it `overflow-y: auto` at every width — was pinned to a box that itself slid off
+       the top (`top -324`, then `-1566`).
 
    ONE RULE, TWO BUGS: with the document unable to scroll and the shell exactly the viewport tall at
-   every width, `.shell-centre` becomes the real scroller everywhere, the sidebar cannot ride up, and
-   the sticky line resolves against a box that actually scrolls. */
+   every width, `.shell-centre` becomes the real scroller everywhere and the sidebar cannot ride up.
+
+   THE SECOND BUG'S SUBJECT IS GONE AND THE RULE IS NOT (the context line is RETIRED 2026-09-18, §4
+   :159): nothing sticky is left to resolve against this scrollport. The rule stays because the FIRST
+   bug is the researcher's screenshot — the sidebar riding up over a band of empty paper — and it
+   returns the moment the document can scroll again. `no-context-line` holds these three declarations
+   by value, so the rule cannot be removed as the retired line's leftover. */
 html, body {
   overflow: hidden;
   max-width: 100vw;
@@ -977,12 +982,5 @@ html, body {
     border-start-end-radius: 1rem;
     box-shadow: 0 0 40px rgb(31 27 22 / 25%);
     z-index: 60;
-  }
-
-  /* The context line: under the chrome, never leaving the top. */
-  .sticky-line {
-    position: sticky;
-    top: 0;
-    z-index: 10;
   }
 }

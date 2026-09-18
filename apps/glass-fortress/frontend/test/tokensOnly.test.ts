@@ -49,7 +49,6 @@ const THIS_STEPS_OWN = [
   'src/components/thesis/Appeals.tsx',
   'src/components/thesis/Banner.tsx',
   'src/components/thesis/Byline.tsx',
-  'src/components/thesis/ContextLine.tsx',
   'src/components/thesis/History.tsx',
   'src/components/thesis/PlatformMark.tsx',
   'src/components/thesis/ProvisionName.tsx',
