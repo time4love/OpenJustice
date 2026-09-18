@@ -74,7 +74,11 @@ export function CitationChip({ kind, name, source, citation, locale }: ChipProps
         onClick={() => {
           if (citation !== undefined) openRecord(citation);
         }}
-        className="mx-0.5 inline-flex items-center gap-1 rounded border border-line px-1.5 py-0.5 text-xs text-ink disabled:text-ink-muted"
+        // A CONTROL MUST LOOK LIKE ONE. The researcher read the built page and asked why the dates are not
+        // clickable; measured on `aa00640`, even the live chips reported `cursor: default`, because a
+        // `<button>` has no pointer cursor of its own — nothing signalled that a press does anything. The
+        // disabled arm keeps the default, since a record that resolves to nothing is a statement (R59 · F3).
+        className="mx-0.5 inline-flex cursor-pointer items-center gap-1 rounded border border-line px-1.5 py-0.5 text-xs text-ink disabled:cursor-default disabled:text-ink-muted"
       >
         {label}
       </button>

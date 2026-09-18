@@ -132,9 +132,12 @@ function Published({ thesis, locale, copyLabel, headings }: { thesis: PublishedT
       </h1>
       <header className="space-y-2">
         <ProvisionName title={thesis.provisionTitle} />
-        <Byline author={thesis.version.author} at={thesis.version.publishedAt} locale={locale} />
-        {/* The COPY of `thesis <id>` — the chat-ready form, labelled by what it is FOR (§4 :172–:174; run B, Live-31). */}
-        <CopyableCode value={`thesis ${thesis.thesisId}`} label={copyLabel} />
+        {/* The COPY of `thesis <id>` — the chat-ready form, labelled by what it is FOR (§4 :172–:174; run B,
+            Live-31) — INSIDE the credit line, as board 3A draws it (`.by > .copy`). It was a sibling of the
+            byline until R59's staging exercise; `built-as-drawn` holds the placement now. */}
+        <Byline author={thesis.version.author} at={thesis.version.publishedAt} locale={locale}>
+          <CopyableCode value={`thesis ${thesis.thesisId}`} label={copyLabel} />
+        </Byline>
         {/* THE TICK LINE, under the byline (§10 :1121): the cited records of each page, in the body's
             order, before the reader walks through them. */}
         <TickLine citations={thesis.citations} locale={locale} />

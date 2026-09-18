@@ -128,14 +128,36 @@ body {
   font-size: var(--text-label);
 }
 
-/* Belt-and-suspenders: side-entrance reveal animations (framer-motion x
-   offsets) can transiently extend a section's scrollable box past the
-   viewport edge before they settle at x:0. Individual sections should clip
-   this themselves (overflow-x-hidden), but the page must never scroll
-   horizontally regardless of which section forgets to. */
+/* THE DOCUMENT DOES NOT SCROLL. THE SHELL OWNS EVERY SCROLLPORT.
+
+   The horizontal half is belt-and-suspenders and predates the shell: side-entrance reveal animations
+   (framer-motion x offsets) can transiently extend a section's scrollable box past the viewport edge
+   before they settle at x:0, and the page must never scroll horizontally regardless of which section
+   forgets to clip itself.
+
+   THE VERTICAL HALF IS R59's F4, and it closes two defects that looked unrelated. The rule constrained
+   `overflow-x` only, so the Y axis was free and the document could scroll behind a shell that is
+   exactly the viewport tall. Measured on `aa00640`:
+
+     · at 1512x982 the document scrolled 186px and TOOK THE SIDEBAR WITH IT, leaving a 187px band of
+       empty paper beneath it — the researcher's screenshot exactly. No element in the flow extended
+       past the viewport (`countPast: 0`); the 186px could not be attributed to any node, and the fix
+       does not depend on attributing it. An app shell that owns its own scrolling should not leave the
+       document scrollable at all.
+     · at phone width `.shell-centre` reported `scrollHeight === clientHeight` (4209 = 4209) — it grew
+       to its content instead of scrolling, because `.shell` had only `min-height` there and a flex
+       child with no `min-height: 0` cannot shrink below its content. The document scrolled instead,
+       so the STICKY CONTEXT LINE — whose containing block is `.shell-centre`'s scrollport, since M1
+       gave it `overflow-y: auto` at every width — was pinned to a box that itself slid off the top
+       (`top -324`, then `-1566`).
+
+   ONE RULE, TWO BUGS: with the document unable to scroll and the shell exactly the viewport tall at
+   every width, `.shell-centre` becomes the real scroller everywhere, the sidebar cannot ride up, and
+   the sticky line resolves against a box that actually scrolls. */
 html, body {
-  overflow-x: hidden;
+  overflow: hidden;
   max-width: 100vw;
+  height: 100%;
 }
 
 ::-webkit-scrollbar {
@@ -161,10 +183,15 @@ html, body {
    is a full-screen layer with a back control, one layer at a time. The three-pane shell begins at `md`.
    --------------------------------------------------------------------------- */
 @layer components {
+  /* EXACTLY THE VIEWPORT, AT EVERY WIDTH (R59 · F4). `min-height` let the shell grow to its content on a
+     phone, which pushed the scrolling onto the document; `height` plus `overflow: hidden` makes the shell
+     a fixed frame whose children hold every scrollport. This was already true from `md` — it is now true
+     below it too, which is the half that was missing. */
   .shell {
     display: flex;
     flex-direction: column;
-    min-height: 100dvh;
+    height: 100dvh;
+    overflow: hidden;
     background: var(--paper);
   }
 
@@ -190,6 +217,12 @@ html, body {
   .shell-centre {
     flex: 1;
     min-width: 0;
+    /* AND `min-height: 0`, WITHOUT WHICH `overflow-y: auto` BELOW IS INERT. A flex item's default
+       `min-height: auto` refuses to shrink below its content, so in the phone's COLUMN shell the centre
+       grew to its content and scrolled nothing — measured at 375: `scrollHeight === clientHeight`, 4209
+       against 4209 (R59 · F4). At `md` the shell is a ROW and the main axis is width, which is why
+       `min-width: 0` alone was enough there and why the defect was desktop-invisible. */
+    min-height: 0;
     direction: rtl;
     display: flex;
     flex-direction: column;
@@ -409,13 +442,12 @@ html, body {
     }
   }
 
-  /* From `md` the three panes sit side by side and the phone's chrome disappears. */
+  /* From `md` the three panes sit side by side and the phone's chrome disappears. The height and the
+     overflow are NOT repeated here: they are the base rule's from R59's F4, true at every width. */
   @media (width >= 48rem) {
     .shell {
       flex-direction: row;
       direction: ltr;
-      height: 100dvh;
-      overflow: hidden;
     }
     .shell-sidebar {
       display: flex;
@@ -570,6 +602,38 @@ html, body {
     min-width: 1rem;
     height: 1px;
     background: var(--line);
+  }
+
+  /* -------------------------------------------------------------------------
+     THE RECORD'S CAPTURED TEXT (canvas `build.mjs` :97's `.captured`, drawn on page 1 board B and
+     page 3 board E; docs/gf-ui-flows.md §18 :568–:569, "long content scrolls inside the sheet").
+
+     IT HAD NO RULE AT ALL, and that is what the reader saw. Measured on the deployed page
+     (`aa00640`, run B's published thesis): 4,465 characters at 13px/19.5px with `max-height: none`,
+     `overflow: visible`, `padding: 0`, no background and no border — every property inherited, none
+     declared. The researcher's word for it was that the captured text is unreadable, and the
+     divergence from the binding image was total: every one of the board's nine properties differed.
+
+     THE CLAMP IS THE BOARD'S ANSWER TO LENGTH, and it is not the only one available — which is why
+     it is stated here rather than chosen again later. `theses.sheet.andMore` („…ועוד {count}") is the
+     COMPARISON REGISTER's overflow catch, per the approved copy freeze: a diff's chunks are COUNTED
+     and the tail is named. A capture's text is one run of prose with nothing to count, so board 3A
+     resolves it with height and overflow and no counted tail. Two shapes, two answers, each the
+     board's own.
+     ------------------------------------------------------------------------- */
+  .record-captured {
+    display: block;
+    max-height: 420px;
+    overflow: hidden;
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--paper);
+    font-size: var(--text-record);
+    line-height: var(--leading-record);
+    /* The capture's own line breaks are part of what was captured; collapsing them would edit the
+       record. `pre-line` keeps the breaks and still wraps, which `pre` would not. */
+    white-space: pre-line;
   }
 
   /* -------------------------------------------------------------------------
