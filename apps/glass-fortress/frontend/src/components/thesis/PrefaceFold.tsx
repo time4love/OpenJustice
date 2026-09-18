@@ -3,7 +3,7 @@
 import { useId, useState } from 'react';
 import { ICONS } from '@/components/glyphs';
 import { LegalDisclaimer } from '@/components/LegalDisclaimer';
-import { ResearcherWords } from './ResearcherWords';
+import { ResearcherProse } from './ResearcherProse';
 
 // ---------------------------------------------------------------------------
 // THE FOLDED PREFACE — docs/gf-ui-design-session-2026-09-16.md §1.5; docs/gf-ui-refactor-plan.md
@@ -54,9 +54,22 @@ export function PrefaceFold({ statement }: { statement: string | null }) {
         }}
         className="preface-trigger"
       >
-        <ResearcherWords as="span" className={`preface-statement ${open ? '' : 'preface-clamped'}`.trim()}>
-          {statement}
-        </ResearcherWords>
+        {/* THE TRIGGER HOLDS THE RENDERED BLOCKS (§16 :521): a block inside a `<button>` re-parses
+            byte-identical, unlike a block inside a `<p>`. `links="text"` is the one constraint that
+            survives — a `<button>` may hold NO interactive descendant, and `<https://…>` is a CommonMark
+            autolink the researcher may well write.
+
+            THE CLAMP READS `flow-root` IN THE BROWSER AND THE RULE IS STILL THE ONE RUNNING. Measured on
+            the real body: the served stylesheet carries `display: -webkit-box`, and Chromium reports the
+            COMPUTED display of a `-webkit-box` under `-webkit-line-clamp` as `flow-root`. A wrapper was
+            written here first, on the theory that the flex container was blockifying it away; the numbers
+            before and after were identical — 62px shown of 166px, three lines — so the wrapper was
+            removed. A fix that changes no measurement was a fix for a defect that was not there. */}
+        <ResearcherProse
+          text={statement}
+          links="text"
+          className={`preface-statement ${open ? '' : 'preface-clamped'}`.trim()}
+        />
         <ICONS.chevron className="preface-chevron" />
       </button>
       <div id={id} className={`preface-panel ${open ? '' : 'preface-shut'}`.trim()}>

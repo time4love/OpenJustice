@@ -439,3 +439,38 @@ export function publicThesisModules(): string[] {
   const components = sourceFiles(join(SRC, 'components', 'thesis'), ['.ts', '.tsx']).map((file) => relative(FRONTEND, file));
   return [...named, ...components].sort();
 }
+
+/**
+ * One CSS rule's declarations, by selector, from `globals.css` — as PROPERTY → VALUE.
+ *
+ * COMMENTS ARE STRIPPED BEFORE THE DECLARATIONS ARE SPLIT, and that is not tidiness: a rule in this file
+ * carries its reasoning inside itself, and a parser that split the raw text on `;` would read a sentence
+ * as a declaration and a declaration as part of a sentence. Measured while writing this: it reported
+ * `white-space` missing and "collapsing them would edit the" present, on a rule that declares the first
+ * and not the second.
+ *
+ * IT RETURNS THE VALUE, AND THAT IS R59 · CHUNK 3's CORRECTION OF THIS READER. Chunk 2 asserted only that a
+ * property was DECLARED, and said so as a stated limit — the negative decoy G5 changed `max-height` from
+ * 420px to 300px and reddened nothing. Less than a day later that hole bit: `overflow: hidden` on the
+ * captured text locked 91% of the evidence behind a clamp, and the case stayed green over it because
+ * `overflow` was declared. **A STATED LIMIT ON A VALUE THE BOARD FIXES IS A DEBT, NOT A NOTE.**
+ *
+ * IT LIVES HERE, AND IT DID NOT BEFORE (R60 · chunk 5). `built-as-drawn` held the only copy; the preface's
+ * clamp is the second rule an instrument must read by value, and a second copy of a reader is how one rule
+ * becomes two implementations — this module's own opening discipline (plan §4: one helper per kind).
+ */
+export function declarationsOf(selector: string): Map<string, string> {
+  const css = readFileSync(join(FRONTEND, 'src/app/globals.css'), 'utf8');
+  const at = css.indexOf(`${selector} {`);
+  if (at === -1) throw new Error(`globals.css declares no \`${selector}\` rule at all`);
+  const close = css.indexOf('}', at);
+  if (close === -1) throw new Error(`globals.css's \`${selector}\` rule is not closed`);
+  const declared = new Map<string, string>();
+  for (const line of css.slice(at + selector.length + 2, close).replace(/\/\*[\s\S]*?\*\//g, '').split(';')) {
+    const colon = line.indexOf(':');
+    if (colon === -1) continue;
+    const property = line.slice(0, colon).trim();
+    if (property !== '') declared.set(property, line.slice(colon + 1).trim());
+  }
+  return declared;
+}

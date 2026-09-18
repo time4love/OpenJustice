@@ -1,7 +1,7 @@
 import { useTranslations } from 'next-intl';
 import { Fold } from './Fold';
 import { PlatformMark } from './PlatformMark';
-import { ResearcherWords } from './ResearcherWords';
+import { ResearcherProse } from './ResearcherProse';
 
 /**
  * THE CASE — docs/gf-ui-flows.md §17 :550–:552; thesis T5 :822, :827–:829. The publication rationale in the
@@ -12,7 +12,7 @@ export function TheCase({ rationale, overObjection, analysisRun }: { rationale: 
   const t = useTranslations('theses.case');
   return (
     <Fold summary={t('heading')}>
-      <ResearcherWords className="text-ink">{rationale}</ResearcherWords>
+      <ResearcherProse text={rationale} className="text-ink" />
       <p className="mt-2 flex flex-wrap gap-2">
         {overObjection ? <PlatformMark kind="publishedOverObjection" /> : null}
         {analysisRun ? <PlatformMark kind="analysisRun" /> : null}

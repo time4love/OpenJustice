@@ -10,16 +10,19 @@ import type { ReactNode } from 'react';
  * is the selector that applies `--font-serif` to the researcher's words wherever they appear — F8's
  * repair, and the first of §1.8's two voices to be spelled in CSS at all.
  *
- * `as` EXISTS FOR EXACTLY ONE CALLER. The folded preface's trigger is a `<button>`, whose content model
- * is phrasing content, and a `<div>` inside it is invalid HTML. The statement has to sit inside the
- * trigger — it IS the trigger's accessible name, which is why the fold needs no new string — so the one
- * caller that needs a `<span>` asks for one. Everything else keeps the block.
+ * `as` IS GONE, AND THE RULING IS WHY. It existed for exactly one caller: the folded preface's trigger is a
+ * `<button>`, so the statement went in as a `<span>` to keep the markup valid. §16 :521 (the researcher,
+ * 2026-09-18) now has that trigger hold the RENDERED BLOCKS — a block inside a `<button>` re-parses
+ * byte-identical, unlike a block inside a `<p>`, measured with `DOMParser` — so the one caller that needed a
+ * span no longer does, and a prop with no caller is dead code.
+ *
+ * IT IS THE FACE AND NOT THE RENDERING. `ResearcherProse` is what renders the researcher's Markdown; this
+ * component is the element that carries their serif wherever their voice appears.
  */
-export function ResearcherWords({ children, className, as = 'div' }: { children: ReactNode; className?: string; as?: 'div' | 'span' }) {
-  const Tag = as;
+export function ResearcherWords({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <Tag data-researcher-words dir="auto" className={className}>
+    <div data-researcher-words dir="auto" className={className}>
       {children}
-    </Tag>
+    </div>
   );
 }
