@@ -671,18 +671,36 @@ and it is the ONLY model voice on any public page: it sits in chunk 3's labelled
 and `no-model-prose-public` (§9) is written to allow exactly this field and nothing else.
 
 ```
+0  THE PAGES LIST     THE DEFAULT, amended 2026-09-18. `/corpus` with NO query parameter is one row per page
+                      url — the url, the interval, the record count — and NOTHING else. NO time strip on a
+                      row: a strip is ONE page's shape over time and therefore reads as a heading, and it has
+                      that home already at region 3. NO search and NO count over the list, by §33's own
+                      reasoning for the door — few by design, added slowly. Its ONLY legal source is the
+                      `pages` facet at `public` (§28); `list_pages` and the facet at `all` are the §9.5 leak.
+                      ONE component, two scopes: §27 renders it at `all` with the NOT PUBLIC mark.
+
+                      ANY QUERY PARAMETER MEANS THE STREAM, and that rule is forced rather than chosen: the
+                      thesis page's `/corpus?page=<trackedUrlId>` must land on the stream filtered to that
+                      page, and it is a link already specified in four places. So the bare URL is the list,
+                      `?page=` · `?since=` · `?until=` · `?kind=` · `?cited=1` are the stream, and no link
+                      that exists today changes meaning.
 1  THE CONTEXT LINE   sticky: the scope (opened pages · every page) · the active filters as chips · the count
-                      the read returned so far · the LENS control: STREAM · CLAIMS · RECORDS
-2  THE DATE AXIS      a scrubber by year and month along the edge, and sticky month headers in the stream —
-                      the stream is long (a page can hold hundreds of real changes, interaction :95) and a
-                      reader arrives with a date in mind (researcher day :56–:58)
-3  THE FILTERS        one row of chips, horizontally scrolling: PAGE (a picker from the read's own `pages`
+                      the read returned so far · the LENS control: PAGES · STREAM · CLAIMS · RECORDS
+2  THE FILTERS        one row of chips, horizontally scrolling: PAGE (a picker from the read's own `pages`
                       facet, §28) · SINCE / UNTIL · KIND (captures · diffs · both) · CITED. Every chip is a
                       query parameter of the one read (§8: never a second read); the URL carries them, so a
                       filtered view is linkable and the thesis page's `/corpus?page=` is one of them
+3  THE PAGE CARD      AMENDED 2026-09-18: it REPLACES the date axis and sits BELOW the filters. The page's
+   WITH THE TIME      url, its interval, its record count, and the STRIP — captures as dots with cited ones
+   STRIP              ringed, diffs as bars by chunk count, positioned by time with month labels. It IS the
+                      scrubber the axis was, and it is ONE page's shape, which is why it is a heading here
+                      and never a row in region 0. The stream is long (a page can hold hundreds of real
+                      changes, interaction :95) and a reader arrives with a date in mind (researcher day
+                      :56–:58); the strip answers that without a second element.
 4  THE STREAM         cursor-paginated on the read's own cursor, oldest first within the range, "load older"
-                      and "load newer" at the ends; a row tap opens THE RECORD SHEET (§26); a page label tap
-                      adds the PAGE filter
+                      and "load newer" at the ends; a row tap opens THE RECORD as a RIGHT-PANE TAB (§26, and
+                      the UI plan's §10 :1138 — a tab since the shell gained a pane, not a sheet); a page
+                      label tap adds the PAGE filter
 5  EMPTY              public: "no page is open yet — a page opens when a published thesis cites it" (evidence
                       §5 :475–:479); filtered: "nothing in this range" with the filters shown for removal
 ```
@@ -985,7 +1003,9 @@ PUBLIC (no identity; PUBLIC_PAGE where a page is involved)
   /theses/[thesisId]                       the thesis             GET /api/thesis/:id
   /theses/[thesisId]/versions/[versionId]  a published version    GET /api/thesis/:id/versions/:v
   /call/[thesisId]                         the thesis             GET /api/thesis/:id · /call
-  /corpus                                  the scope + filters    GET /api/corpus            (list_corpus public)
+  /theses                                  the published list     GET /api/thesis            (un-retired 2026-09-18)
+  /corpus                                  the pages list · the   GET /api/corpus            (list_corpus public)
+                                           stream when filtered
   /corpus/claims                           the scope + filters    GET /api/corpus/claims     (list_trajectories public)
   /pages/[trackedUrlId]/captures/[capture] page + timestamp       GET /api/pages/:id/findings (its row) · …/chain
   /pages/[trackedUrlId]/diffs/[b]/[a]      page + pair            GET /api/pages/:id/diffs/:b/:a
