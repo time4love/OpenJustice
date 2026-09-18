@@ -157,7 +157,7 @@ stack; the thing being read (the thesis text, the chronology, the history stream
 attached to it (a citation's record, a diff's chunks, an opinion's text, how a text was extracted) opens IN
 PLACE as a sheet over it and returns; long lists paginate on the read's own cursor, never load whole; no table
 wider than the screen — a record is a card, a diff is two stacked texts; the sticky context line (which thesis,
-which page, which version, which date range) never leaves the top. Which patterns and from which platforms is
+which page, which version, which date range) never leaves the top. **RETIRED 2026-09-18 (the researcher): the sticky context line is REMOVED from the public thesis and call pages, and it is not a display decision. The pattern is real — a short title bar once the heading scrolls past — and it has ONE precondition: A SHORT NAME. This platform has none: thesis flows A2 :1268 records `title` as REMOVED, "the claim is the heading", so the line was handed the CLAIM itself and showed 640px of 3,497 — 18% of a 558-character sentence, cut mid-clause, identifying nothing. It was also MOUNTED on scroll rather than rendered and stuck, so it inserted 29px into the flow and pushed the page under a reader’s eye. The element returns when a thesis has a NAME; until then it is removed rather than repaired, because repairing it would maintain a control whose precondition does not hold.** Which patterns and from which platforms is
 chunk 3's, page by page.
 
 **One dialog does not fit a phone, and this document says so rather than hiding it:** the marking page asks the
@@ -528,7 +528,7 @@ registers apply with the middle one removed; the same components, one fewer. **A
                        document order, before the claim, before any navigation chrome the layout adds.
 2  THE CLAIM           verbatim, as the heading (A2 :1268) · the provision, named by its table entry (A1
                        :1251–:1254) · the author's handle · published on <date> · a COPY of `thesis <id>` for the chat. The
-                       hash is in the VERIFY disclosure (§4), not here. Sticky as the context line once scrolled past.
+                       hash is in the VERIFY disclosure (§4), not here. **The context line is RETIRED 2026-09-18 (§4 :159) — no thesis has a short name to put in it.**
 3  THE TEXT            the published version's Markdown as long-form reading — one column, generous measure,
                        Hebrew-first; a URL or a date inside the text is bidi-isolated LTR. Each citation token is
                        a CHIP inline where the token stands: for #ev_ the record's page (its domain and title)

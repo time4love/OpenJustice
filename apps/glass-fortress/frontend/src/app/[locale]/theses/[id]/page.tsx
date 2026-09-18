@@ -6,7 +6,6 @@ import { parseThesisBody } from '@/lib/thesisBody';
 import type { PublishedThesis, ThesisBody } from '@/types/thesis';
 import { Appeals } from '@/components/thesis/Appeals';
 import { Byline } from '@/components/thesis/Byline';
-import { ContextLine } from '@/components/thesis/ContextLine';
 import { History } from '@/components/thesis/History';
 import { ProvisionName } from '@/components/thesis/ProvisionName';
 import { PaneTabs } from '@/components/thesis/PaneTabs';
@@ -75,16 +74,15 @@ export async function generateMetadata({ params }: PageParams, parent: Resolving
  *   [0] the folded preface   the statement and the full disclaimer, one element that grows
  *   [1] the CLAIM            §17 :529; A2 :1268
  *   [2] <header>             the provision · the byline with the COPY · the TICK LINE (§10 :1121)
- *   [3] <article>            the read: the context line, the text, the call card, the four folds
+ *   [3] <article>            the read: the text, the call card, the four folds
  *   [4] the short disclaimer LAST (§17 :561; §32 :813–:815)
  *
  * REGION 4 IS GONE — the appeals leave the thesis page entirely (§10 :1122–:1123; R56's ruling;
  * design session §3 :73–:75). One card leads to the call page, where they still live.
  *
- * THE CONTEXT LINE SITS INSIDE [3], not beside it. `position: sticky` resolves against the nearest
- * scrolling ancestor and its stuck range is its own parent's box: as a child of `<main>` beside a
- * 3,000px article it would leave the top the moment `<main>`'s box ended. Inside the article it holds
- * for the whole read, which is what §17 :531 asks — and it keeps `<main>` at five.
+ * THE CONTEXT LINE IS RETIRED (2026-09-18; §4 :159, §17 :531 as amended). It sat inside [3], not beside
+ * it, and `<main>` is still at FIVE because it never was one of them. It returns when a thesis has a
+ * SHORT NAME to put in it; until then `no-context-line` holds that nothing re-adds it.
  */
 function Published({ thesis, locale, copyLabel, headings }: { thesis: PublishedThesis; locale: string; copyLabel: string; headings: Headings }) {
   // §17 :549 — a thesis with no CALLED and no REQUESTED gap shows no appeals section, so it declares no
@@ -143,7 +141,6 @@ function Published({ thesis, locale, copyLabel, headings }: { thesis: PublishedT
         <TickLine citations={thesis.citations} locale={locale} />
       </header>
       <article className="reading space-y-6">
-        <ContextLine claim={thesis.claim} watch="claim" />
         <ThesisText text={thesis.version.text} citations={thesis.citations} pages={thesis.pages} locale={locale} />
         <TheCase rationale={thesis.rationale} overObjection={thesis.overObjection} analysisRun={thesis.analysisRun} />
         <History

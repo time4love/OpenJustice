@@ -6,7 +6,6 @@ import { readPublic } from '@/lib/api';
 import { parseCallBody, parseThesisBody } from '@/lib/thesisBody';
 import type { PublishedThesis, ThesisBody, WhistleblowerCall } from '@/types/thesis';
 import { Appeals } from '@/components/thesis/Appeals';
-import { ContextLine } from '@/components/thesis/ContextLine';
 import { NoteRecent } from '@/components/thesis/NoteRecent';
 import { PrefaceFold } from '@/components/thesis/PrefaceFold';
 import { WithdrawnNotice } from '@/components/thesis/WithdrawnNotice';
@@ -85,7 +84,6 @@ function Live({ thesis, call, locale, t }: { thesis: PublishedThesis; call: Whis
           {t.toThesis}
         </Link>
       </header>
-      <ContextLine claim={thesis.claim} watch="claim" />
       {call.live ? (
         <Appeals
           call={call.call}
