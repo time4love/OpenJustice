@@ -801,6 +801,47 @@ html, body {
   }
 
   /* -------------------------------------------------------------------------
+     A TABLE IN THE RESEARCHER'S TEXT (docs/gf-ui-flows.md §17 :538 as amended 2026-09-18).
+
+     "ONE COLUMN" GOVERNS THE READING MEASURE, NOT THE BLOCK TYPES. A table that widened the page would
+     break §6 :963's `scrollWidth <= 375`, which is a verification measurement and not a preference — so
+     the table carries a scrollport of its own and the page never gains a horizontal scrollbar. The
+     wrapper exists for exactly that; the table itself is content.
+     ------------------------------------------------------------------------- */
+  .md-table-scroll {
+    overflow-x: auto;
+    /* Without this the wrapper takes its content's width and hands the overflow back to the page — the
+       defect it exists to prevent, wearing the fix's own class name. */
+    max-width: 100%;
+  }
+
+  .md-table {
+    border-collapse: collapse;
+    /* The head reads as the head at any width, so a wide table scrolls rather than crushing its columns. */
+    min-width: max-content;
+    font-size: var(--text-record);
+    line-height: var(--leading-record);
+  }
+
+  .md-table th,
+  .md-table td {
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    text-align: start;
+  }
+
+  .md-table th {
+    background: var(--paper);
+    font-weight: 600;
+  }
+
+  /* The researcher's own alignment, carried as a class — never the parser's inline style. `start`/`end`
+     rather than left/right, so an alignment written in a right-to-left text means what it looks like. */
+  .md-align-left { text-align: start; }
+  .md-align-right { text-align: end; }
+  .md-align-center { text-align: center; }
+
+  /* -------------------------------------------------------------------------
      THE FOUR FOLDS OF THE READ (`docs/gf-ui-refactor-plan.md` §10 :1123, "the case, the history, the
      pages and VERIFY as folds, closed"; canvas `build.mjs` :89's `.fold`).
 
