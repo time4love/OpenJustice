@@ -223,7 +223,7 @@ Findings: `docs/gf-ui-step-2-2026-09-15.md` (the `limit` default, the reads, the
 (the public routes, the status table, the retirements, "no route is paid"); §7 :278–:310 (the gated routes, the one
 mount-level gate, 401 and 403 FIRST with one body each, a 404 inside the prefix may say which); §6 :221–:224 (routes name
 a page by `trackedUrlId`, tools by `url`; "the one function takes the page's row"; `pages` on the thesis body gains the id);
-A2 :1004–:1014 (the states a route must answer); A4 :1041, :1044 (thesis A5 :1565 amended; `GET /api/forensics/*` and
+A2 :1141–:1156 (recomputed 2026-09-19; read :1004–:1014) (the states a route must answer); A4 :1041, :1044 (thesis A5 :1565 amended; `GET /api/forensics/*` and
 `GET /api/stats` RETIRED); A5 :1058–:1064 (the five instruments left to this step); interaction A6 :1229 as amended
 (`/api/article-rules` stays the marking page's only surface). Backend only; no migration.
 
@@ -373,7 +373,7 @@ until UI-7 and UI-8. Findings: `docs/gf-ui-step-4-2026-09-15.md`.
 
 **Contract:** §16–§23 :507–:649 (what the page is; §17's eight regions in T5's order; the sheets; the notice, the 404 and
 the version page; the call page; what the public pages never have; the six instruments); §4 :167–:178 (no hash and no id as
-text; the COPY control and the VERIFY disclosure); §8 :329–:342; A1 :976–:979; A2 :1004–:1014; thesis T5 :809–:829 and
+text; the COPY control and the VERIFY disclosure); §8 :329–:342; A1 :976–:979; A2 :1141–:1156 (recomputed 2026-09-19; read :1004–:1014); thesis T5 :809–:829 and
 A5 :1565–:1570 as amended (the bodies); T6 :898–:901 (the history's diff, the frontend's one computation) and :915–:918
 (the notice); COMPLIANCE.md :82–:99 (rule 5's statement; the disclaimer verbatim in both languages); document plan
 :506–:509 (the intake-down window — no door drawn); thesis plan :327 (the DoD line this step closes) and :331–:332 (the
@@ -538,21 +538,21 @@ does not exist. UI-6 moves last because the door is the home page and **the rese
 after every other page is finished** — where `תזות` leads is part of that redesign and is decided there, not here.
 
 **THE BODY BELOW ABSORBS THIS STEP'S OWN RE-BRIEF (2026-09-18).** Its `STATUS:` claimed "RE-BRIEFED 2026-09-16
-against the design canvas, page 4", but the re-brief landed in §10 :1138 and in `gf-ui-flows.md` §24's header and
+against the design canvas, page 4", but the re-brief landed in §10 :1217–:1223 and in `gf-ui-flows.md` §24's header and
 was never folded in, so the body described a superseded design. Three deltas, now applied: the PAGE CARD with the
 TIME STRIP replaces the DATE AXIS and moves BELOW the filters (the context line stays); a record opened from a row
 is a RIGHT-PANE TAB, not a sheet; and a search page was named by the re-brief alone.
 
-**Contract:** §24–§28 :653–:753 (one stream, two doors; the two row weights; the corpus's one public model voice; the five
-regions; the lenses; the record sheet and the record pages; the gated additions are UI-8's; the `pages` facet); §31 :787–:798
+**Contract:** §24–§28 :653–:886 (one stream, two doors; the two row weights; the corpus's one public model voice; the five
+regions; the lenses; the record sheet and the record pages; the gated additions are UI-8's; the `pages` facet); §31 :917–:933
 (the instruments — three land here, `one-stream-two-doors` and `no-marking-link-from-research` complete at UI-8,
 `pages-facet-equals-scope` landed at UI-2); §10 :371–:387 (the three voices — the third, THE MODEL'S, is born here as the
 classifier's chip); §4 :167–:178 (a capture by its date and time, never its 14-digit timestamp; a page by its title and
-domain); §6 :207–:218 and §6.1 (the reads, all UI-3's); §8; A1 :980–:984; A2 :1004–:1013 (400 the filters shown for removal;
-404 one sentence; 409 the state with both capture links live; 503 a statement about the check); A6 :1095–:1097 (`limit`, the
-nesting depth of three, the date axis's granularity); §41 :956–:958 (the density and the chain-check press rate are MEASURED
+domain); §6 :207–:218 and §6.1 (the reads, all UI-3's); §8; A1 :1111–:1139; A2 :1141–:1156 (400 the filters shown for removal;
+404 one sentence; 409 the state with both capture links live; 503 a statement about the check); A6 :1234 (`limit`, the
+nesting depth of three, the date axis's granularity); §41 :1091–:1103 (the density and the chain-check press rate are MEASURED
 here, not designed); evidence §5 :428–:430 (the archive link composed deterministically); evidence A4 :1081–:1090, :1095–:1099,
-:1105–:1109, :1111–:1115 (the bodies); COMPLIANCE.md rule 3 (the label's text). Frontend only.
+:1105–:1109, :1111–:1115 (the bodies); COMPLIANCE.md rule 3 (the label's text). **Frontend only, WITH ONE DECLARED EXCEPTION ruled 2026-09-19 and re-shaped the same day by a cold design review the researcher commissioned and accepted whole: the step adds `get_capture({ url, capture, textHash? })` at `GET /api/pages/:trackedUrlId/captures/:capture` (evidence A4), a resource beside the mounted …/captures/:capture/chain. **THE MCP SURFACE MOVES 45 → 46 and the backend diff is that tool, its route and its core — larger than the "one field" first ruled, and stated here so the growth is declared and not discovered.** The step said "frontend only" and the researcher's clean-code rule overrode it — *„לא לשכפל קוד ולא לשכפל אלמנטים גרפיים"* — because the record's content is ALREADY drawn in the thesis page's right pane and a shared component cannot be fed by a read that carries nothing. **What is shared is `RecordContent`, not the pane** (ui flows §26): the two surfaces hold one domain object inside two context objects, and sharing the pane would make the corpus synthesise a citation it does not have. **AND THE STEP CARRIES A REPAIR IT DID NOT CREATE:** `RecordPane.tsx` labels a cited diff's chunks by `'before'` while the backend writes `'REMOVED' | 'ADDED'`, so every chunk reads „אחרי"; `publishedThesis.ts` widens `side` to `string`, which is why `tsc` cannot see it, and the thesis fixture carries the wrong vocabulary, which is why the suite is green. It is LATENT — the published thesis cites three captures and no diffs — and it fires on the first cited diff. The fix lands with `RecordContent`, which is the one place the vocabulary is mapped. Every piece of this is declared in the landing PR.**
 
 **What lands.**
 
@@ -578,10 +578,10 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
   filter chips — one horizontally scrolling row: PAGE (a picker from the read's own `pages` facet, §28), SINCE / UNTIL,
   KIND, CITED — every chip a query parameter of the one read, carried in the URL, so a filtered view is linkable and the
   thesis page's `/corpus?page=<trackedUrlId>` is one of them; the STREAM, cursor-paginated on the read's own cursor,
-  oldest first within the range, "load older" and "load newer" at the ends, a row tap opening the RECORD SHEET, a page label
+  oldest first within the range, "load older" and "load newer" at the ends, a row tap opening THE RECORD AS A RIGHT-PANE TAB — **CORRECTED 2026-09-19: this line said "the RECORD SHEET" and was the only one of five that did; :544, :663, §10 :1217–:1223 and `gf-ui-flows.md` :761 all say TAB, and §10 :1202 rules that where a body and its block disagree the block wins. §26's "sheet" is the CONTENT, presented through the `Sheet` primitive full-screen on the phone (`gf-ui-flows.md` §18, §22)** — a page label
   tap adding the PAGE filter; (5) EMPTY — "no page is open yet — a page opens when a published thesis cites it"; filtered —
   "nothing in this range" with the filters shown for removal, which is also the 400 state.
-- **Two weights of row** (§24 :660–:666): a CAPTURE is a thin row — the page's label, the date and time, the anchor mark
+- **Two weights of row** (§24 :663–:669): a CAPTURE is a thin row — the page's label, the date and time, the anchor mark
   (ATTRIBUTED or not yet), a COPY giving the citation token; a DIFF is a card — the page's label, the interval, the size of the
   change by side from `current`, **the classifier's opinion CLAMPED TO TWO LINES with **„קרא עוד" — approved 2026-09-19; this clause said „עוד" and the researcher chose the longer form** — not a chip; it runs 197
   characters and a chip shows forty (amended 2026-09-18, flows §24)** — and **the stream HIDES rows the classifier did
@@ -589,7 +589,7 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
   legally significant, so that gate would bury what it was meant to surface. A count line states how many are hidden and
   one tap reveals them.** The CITED mark with the published
   theses that cite it, the NARROWED mark, AWAITING DERIVATION as a state.
-- **The third voice is born here** (§10 :378–:381; §24 :668–:670): `components/opinion/LabelledOpinion.tsx`, the ONE container
+- **The third voice is born here** (§10 :378–:381; §24 :690–:692): `components/opinion/LabelledOpinion.tsx`, the ONE container
   carrying "ניתוח AI — אינו מהווה קביעה שיפוטית" with the model and version beside it — here the classifier's `classifierVersion`. **AMENDED 2026-09-19 (the researcher): the MODEL NAME is OWED and DEFERRED, never waived** — it matters to show, but is not worth delaying development for a server change at this stage, so UI-7 renders the version alone and invents no name; it arrives when a step opens the server. **The reveal control's word is „קרא עוד” (approved 2026-09-19)**; until chunk 5 draws it the tail is unreachable.
   The classifier's opinion on a diff is the only model voice on any public page; `opinion-labelled-on-corpus` holds that every
   rendered `opinion` field descends from it and that no other model field is rendered on a public corpus page. UI-5's public
@@ -608,7 +608,7 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
   **WHY IT SITS IN A CORPUS STEP:** it is the same shape as the pages list this step already builds — a public list with a
   gated twin — and building two list pages in one step is one implementation of one rule rather than two of it. The
   researcher may move it; nothing else depends on where it lands.
-- **THE SEARCH PAGE IS DEFERRED** (the researcher, 2026-09-18). §10 :1139's re-brief named `/corpus/search?phrase=`; this
+- **THE SEARCH PAGE IS DEFERRED** (the researcher, 2026-09-18). §10 :1217–:1223's re-brief named `/corpus/search?phrase=`; this
   body never listed it, so nothing is removed — only the re-brief is amended. The researcher's reason is the corpus's size:
   a list of what has been scanned is worth more than a search across it while the pages are few and grow slowly.
   `GET /api/corpus/search` stays mounted from UI-2 and unused. The sidebar's search icon beside הארכיון currently links to
@@ -627,22 +627,22 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
   order with the claim present or absent at each, each a link to its record, and the diffs in which it left or returned.
 - **The CITED lens** (§25, renamed from RECORDS 2026-09-18 — „רשומות” is the UNIT, every row is one) is `/corpus?cited=1`, not a page: the stream filtered to `evidence ≠ null`, each card
   showing the record's standing — PROMOTED or WITHDRAWN — and its citing published theses.
-- **The RECORD SHEET** (§26 :706–:709) over the stream: a capture's text or a diff's CURRENT chunks stacked by side; the marks
+- **The RECORD SHEET** (§26 :822–:825) over the stream: a capture's text or a diff's CURRENT chunks stacked by side; the marks
   in full — the anchor, VERIFIED per capture where the row is cited, the opinion's categories, editorial, classifier version
   and draws under the label, `narrowed` with what intervened; the citing theses as links; ONE link onward to the record's
   page. A sheet may open one further sheet, three deep at most (A6).
-- **`/pages/[id]/captures/[capture]`** (§26 :711–:718), from `GET /api/pages/:id/findings` (its row): the page and the date and
+- **`/pages/[id]/captures/[capture]`** (§26 :827–:834), from `GET /api/pages/:id/captures/:capture` — `get_capture`, ONE capture's row plus its text (evidence A4 :1082; A1 :1123; :555 above) — **RE-POINTED 2026-09-19: this bullet said "from `GET /api/pages/:id/findings` (its row)" after the same day's ruling had moved the read to a resource; found by the DEV seat's cold read of its own brief**: the page and the date and
   time as the heading; the text version in full; the anchor as a mark; the COPY of the citation token; the VERIFY disclosure
   holding document hash, text hash, extraction version and registry index; a CHAIN CHECK on demand — one button whose moment
   is the reader's doubt — calling `GET …/captures/:capture/chain` and showing isRegistered · ATTRIBUTED · anchored = document ·
   the stored verdict and its version, or CHAIN_UNAVAILABLE as a statement about the check; the SECOND WITNESS — the archive
   link composed deterministically from the url and the timestamp (`lib/archiveUrl.ts`, one function), with the one line on
-  how to verify: fetch, hash, compare. Nothing is fetched from the chain on render.
-- **`/pages/[id]/diffs/[before]/[after]`** (§26 :720–:724), from `GET /api/pages/:id/diffs/:b/:a`: the two texts as an inline
+  one line saying the archive holds this page at this date and the link opens it — **AND NO INSTRUCTION TO HASH ANYTHING. CORRECTED 2026-09-19: this bullet ordered "fetch, hash, compare", which `gf-ui-flows.md` §26 :834, :836–:850 RETIRED on 2026-09-18 on the researcher's words and on a measurement — the VIEWER form the reader is given returns 54,180 bytes hashing to `1b108bb2…`, the RAW form 47,731 bytes hashing to `5887afdf…`, which is the anchored `documentHash`, so a reader who obeyed the instruction got a MISMATCH and would conclude the evidence was fabricated. The RAW form belongs in the VERIFY disclosure beside the hash it matches (§26 :847; §4 :175–:179) and nowhere else.** Nothing is fetched from the chain on render.
+- **`/pages/[id]/diffs/[before]/[after]`** (§26 :852–:856), from `GET /api/pages/:id/diffs/:b/:a`: the two texts as an inline
   diff at phone width and side by side when wide (UI-5's `lib/textDiff.ts`, the same two-input function), the CURRENT chunks
   by side beneath, the opinion labelled, `narrowed` with the intervening captures as links, the citing theses; both endpoints
   linking to their capture pages; 409 AWAITING_DERIVATION rendered as the state with both capture links live.
-- **`/records/[fileHash]`** (§26 :726–:729), from `GET /api/records/:fileHash`: the record the name resolves to — kind, page,
+- **`/records/[fileHash]`** (§26 :858–:861), from `GET /api/records/:fileHash`: the record the name resolves to — kind, page,
   timestamps; RECOMPUTABLE and VERIFIED with per-capture attribution as marks; the published versions that cite it, each with
   FLAGGED and its text; one link to the record's page. A document commitment renders the RESERVED stub of UI-5 until the
   document plan's step 34; no anchor to any door.
@@ -650,7 +650,7 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
 - **Operational values, named once** (A6): the date axis opens at MONTH and the stream's `limit` is UI-2's default, both
   recorded in the dated doc as the initial values and moved by §41's measurement, never by this plan; the sheet nesting
   depth is three.
-- **What is measured from this step** (§41 :956–:958; §39): rows per page and per month on the real corpus, read from the
+- **What is measured from this step** (§41 :1091–:1103; §39): rows per page and per month on the real corpus, read from the
   staging exercise's bodies; the chain check's press rate, read from the backend's request log for the `…/chain` route —
   never from the page, which records nothing (§39 :925–:926).
 - **Copy**: the empty sentences, the chip labels, the mark names and the one verification line are drafted from §24–§26 and
@@ -660,7 +660,7 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
 `pages/[trackedUrlId]/diffs/[before]/[after]/page.tsx`, `records/[fileHash]/page.tsx`; `components/corpus/` — the chronology,
 the context line, **the PAGES LIST row (one component, two scopes — UI-8 renders it at `all` with the NOT PUBLIC mark)**, the
 page card with the time strip (which replaces the date axis), the filter chips, the capture row, the diff card, the record
-**as a right-pane tab** (§10 :1138 — not a sheet), the claims row and sheet,
+**as a right-pane tab** (§10 :1217–:1223 — not a sheet), the claims row and sheet,
 the two stacked registers, the chain-check control; `components/opinion/LabelledOpinion.tsx`; `lib/archiveUrl.ts`,
 `lib/corpusQuery.ts` (chips ↔ URL ↔ the one read's parameters); `types/corpus.ts` (the bodies of A4 :1081–:1090, §6.1, §28, A4
 :1095, :1105, :1111, hand-written from the appendix); `messages/*.json` (`corpus`, new); `test/fixtures/corpus/` (a stream over
@@ -1217,7 +1217,7 @@ something is opened. No animation anywhere but here. **AMENDED 2026-09-17:** the
 **UI-7, page 4.** The chronology opens on the PAGE CARD with the TIME STRIP — captures as dots, cited captures ringed, diffs as bars
 by chunk count — which is also the scrubber; the stream oldest-first under month headers, a capture a thin row, a diff a card with
 removed/added bars and the labelled opinion clamped; a record opened from a row is a right-pane tab. A SEARCH page
-`/corpus/search?phrase=` over the existing route, one row per capture, present or absent in the stored text. The claims lens with a
+`/corpus/search?phrase=` over the existing route, one row per capture, present or absent in the stored text. The CLAIMS view — PER PAGE, `page` REQUIRED, no top-level lens (§25, ruled 2026-09-18; this re-brief had said "the claims lens", corrected in place 2026-09-19) — with a
 run strip per claim and the claim's sheet on the right. The capture page whole with the second witness and the chain check; the diff
 page with the two texts side by side and the chunks marked where they stand. Hebrew names for the classifier's `categories`. Copy to
 approve first: the lens names, the filter chips, the six drafted sentences of page 4.

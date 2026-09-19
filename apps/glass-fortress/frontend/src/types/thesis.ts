@@ -1,3 +1,5 @@
+import type { ChunkSide } from './record';
+
 // Shared thesis types — used by thesis pages, call page, and modal components.
 
 // Which version the API served: the published one to the public, the head to
@@ -218,9 +220,15 @@ export interface EvidenceRecord {
   after?: string;
 }
 
+/**
+ * A citation's content. `side` IS THE BACKEND'S OWN UNION AND NOT `string` — narrowed 2026-09-19 with
+ * `RecordContent`. It was `string` here and at `publishedThesis.ts` :162, which is precisely why `tsc`
+ * could not see `RecordPane` comparing it against `'before'`: a word the walk has never written matched
+ * the type and failed at run time, on every chunk, silently. The parser narrows it at the boundary.
+ */
 export type CitedContent =
   | { kind: 'CAPTURE'; text: string }
-  | { kind: 'DIFF'; chunks: { side: string; text: string }[] };
+  | { kind: 'DIFF'; chunks: { side: ChunkSide; text: string }[] };
 
 export type CitationVerdict =
   | { verified: boolean; captures: { capture: string; attributed: boolean | null; anchoredHashMatchesDocumentHash: boolean }[] }

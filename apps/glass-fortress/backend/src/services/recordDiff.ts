@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { captureHtml, deriveTextFromHtml, TEXT_EXTRACTION_VERSION } from '../lib/captureDocument';
-import { diffChunkPair } from '../lib/diffChunking';
+import { diffChunkPair, type ChunkSide } from '../lib/diffChunking';
 import { checkDiffSurvival, SURVIVAL_CHECK_VERSION, type SurvivalVerdict } from '../lib/diffSurvival';
 import { DIFF_VERSION } from '../lib/diffVersion';
 import { asJsonColumn } from '../lib/jsonColumn';
@@ -158,7 +158,7 @@ export interface WrittenDiff {
 
 /** A chunk of the content, as the differ emitted it and as the version stores it. */
 interface ContentChunk {
-  side: 'REMOVED' | 'ADDED';
+  side: ChunkSide;
   text: string;
   survival: SurvivalVerdict;
 }

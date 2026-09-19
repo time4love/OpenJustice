@@ -637,12 +637,7 @@
     },
     "sheet": {
       "close": "Close",
-      "capture": "The page as captured on {date}",
-      "diff": "A change to the page between {before} and {after}",
-      "before": "Before",
-      "after": "After",
       "attributed": "Anchored by the platform",
-      "hashMatches": "The anchored hash equals the document hash",
       "attributionUnread": "The anchor has not been checked yet",
       "notEvaluable": "Cannot be checked: {reason}",
       "flag": {
@@ -655,7 +650,6 @@
       "yes": "yes",
       "no": "no",
       "openPage": "Everything kept from this page",
-      "openRecord": "The record's page",
       "copyToken": "Copy the citation for a conversation",
       "transitions": "{count, plural, one {one transition} other {# transitions}}",
       "andMore": "…and {count} more"
@@ -1974,6 +1968,7 @@
     },
     "changeSize": "{removed} removed · {added} added",
     "awaitingDerivation": "The difference is not computed yet",
+    "textUnread": "The capture's text could not be read",
     "narrowed": "Narrowed",
     "cited": "Cited by a published thesis",
     "copyToken": "Copy the citation token",
@@ -1993,6 +1988,7 @@
     "emptyFiltered": "Nothing in this range",
     "hiddenCount": "{count} changes classified as non-material are hidden — show",
     "readMore": "Read more",
+    "loadNewer": "Load newer",
     "lenses": "Views",
     "lens": {
       "pages": "Pages",
@@ -2015,5 +2011,13 @@
     "NUREMBERG_10": "Nuremberg Code, article 10",
     "PATIENT_RIGHTS_13": "Patients' Rights Law, section 13",
     "ADMIN_DISCLOSURE_DUTY": "Administrative duty of disclosure"
+  },
+  "record": {
+    "capture": "The page as captured on {date}",
+    "diff": "A change to the page between {before} and {after}",
+    "before": "Before",
+    "after": "After",
+    "hashMatches": "The anchored hash equals the document hash",
+    "openRecord": "The record's page"
   }
 }

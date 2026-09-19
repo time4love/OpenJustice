@@ -3,24 +3,31 @@
 //
 // GROUND: docs/gf-evidence-flows.md §5 :428–:430 — "the registry holds `documentHash`, and the archive
 // serves the URL at the timestamp to anyone who asks. An outsider fetches, hashes and compares. Nothing the
-// evidence layer could write would add a third." docs/gf-ui-flows.md §26 :716–:718: the capture page renders
-// "a link to the archive at this URL and timestamp, composed deterministically… with the one line on how to
-// verify — fetch, hash, compare".
+// evidence layer could write would add a third." docs/gf-ui-flows.md §26 :827–:834: the capture page renders
+// a link to the archive at this URL and timestamp, composed deterministically, "with one line saying the
+// archive holds this page at this date and the link opens it — AND NO INSTRUCTION TO HASH ANYTHING."
 //
 // COMPOSED MEANS COMPOSED. Nothing here reaches the network, on render or ever: the whole point of a second
 // witness is that this platform does not stand between the reader and it. The link is a pure function of two
 // values the row already carries — the page's `url` and the capture's 14-digit timestamp — so it can be
 // checked against the appendix without a fixture of somebody else's response.
 //
-// ONE FUNCTION, AND A CONTRADICTION IN THE CLAUSE IT SERVES, reported rather than resolved here. The Wayback
-// Machine serves two URLs for one capture: the VIEWER form `/web/<ts>/<url>`, which wraps the page in
-// archive.org's own chrome, and the RAW form `/web/<ts>id_/<url>`, which serves the bytes as captured. §26
-// asks for one link and gives it two jobs — a link a READER OPENS (the viewer's job) and the subject of
-// "fetch, hash, compare" (only the raw form's, since hashing the viewer form hashes archive.org's markup as
-// much as the ministry's page). This module composes the VIEWER form, because §26's sentence is about what a
-// reader opens and because it is the form the corpus itself already stores as `snapshotUrl`. The
-// verification line therefore names a different URL from the one the link points at, and THAT is the
-// question — it is asked in the report and not answered by this code.
+// THE CONTRADICTION THIS HEADER USED TO REPORT IS RULED AND GONE — amended 2026-09-18, re-pointed here
+// 2026-09-19. The header asked how ONE link could be both "what a reader opens" and the subject of "fetch,
+// hash, compare", since hashing the viewer form hashes archive.org's chrome as much as the ministry's page.
+// The researcher retired the INSTRUCTION rather than the link: „הקוראים לא יבינו את ההוראה לגבב את הקובץ.
+// זה טכני מאוד ולא נדרש."
+//
+// AND IT WAS WRONG AS WELL AS TECHNICAL, which only a measurement showed. On the 2021-12-23 capture of the
+// ministry's vaccine page the VIEWER form returns 54,180 bytes hashing to `1b108bb2…`; the RAW form
+// `/web/<ts>id_/<url>` returns 47,731 bytes hashing to `5887afdf…`, which is the `documentHash` the platform
+// anchored, exactly. The 6,449-byte difference is the archive's own toolbar. A reader who followed the old
+// instruction on the link they were given would have got a MISMATCH and concluded the evidence was fabricated.
+//
+// SO THIS MODULE COMPOSES THE VIEWER FORM AND ONLY THAT. The RAW form belongs inside the VERIFY disclosure,
+// beside the hash it matches (§26 :847; §4 :175–:179), and is named nowhere else — a reader is never sent to
+// it and never told to hash anything. THE CAPABILITY DID NOT MOVE, only the instruction: evidence §5's
+// "fetches, hashes and compares" remains true and unamended as a statement about what is POSSIBLE.
 // ---------------------------------------------------------------------------
 
 /** A wayback timestamp: exactly fourteen digits, `YYYYMMDDhhmmss`. */

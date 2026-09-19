@@ -1,0 +1,261 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useTranslations, useLocale } from 'next-intl';
+import { fetchJson } from '@/lib/api';
+import { parseCaptureText } from '@/lib/corpusBody';
+import { CopyableCode } from '@/components/CopyableCode';
+import { LabelledOpinion } from '@/components/opinion/LabelledOpinion';
+import { RecordContent } from '@/components/record/RecordContent';
+import { DeclareTabs, usePaneLayer, usePaneSelection } from '@/components/shell/RightPane';
+import { displayUrl, formatCaptureDate } from '@/lib/format';
+import type { CaptureEntry, CorpusEntry, DiffEntry } from '@/types/corpus';
+
+// ---------------------------------------------------------------------------
+// THE RECORD SHEET — docs/gf-ui-flows.md §26 :822–:825, and §24 region 4's "a row tap opens THE RECORD as a
+// RIGHT-PANE TAB (§26, and the UI plan's §10 — a tab since the shell gained a pane, not a sheet)".
+//
+// IT IS A TAB, AND THE SHEET IS HOW THE PHONE DRAWS ONE. §18 as amended: the record is a right-pane tab at
+// width and full-screen on the phone, on the ONE Sheet primitive of UI-4b. So there is no second presentation
+// here and no second primitive: `DeclareTabs` is CALLED, `usePaneLayer` opens the layer, `usePaneSelection`
+// chooses the tab, and the shell draws all of it. This file builds an array and holds which row is open.
+//
+// `PaneTabs.tsx` IS NOT RE-SPELLED AND NOT EDITED. It is `components/thesis/*`, a KEEP path, and it builds
+// tabs from a `Citation` — the thesis page's shape, which a corpus row is not. What the two share is the
+// SHELL's primitive, and that is what both call. Re-spelling the mechanism is the defect this round already
+// paid for once, in the gate predicate.
+//
+// A TAB'S LABEL IS DERIVED, NEVER AN ID (§4): a capture is its domain and date, a diff its domain and
+// interval. NO NEW STRING: every word here is already in the `corpus` namespace, approved and landed.
+//
+// THE BYTES ARE `RecordContent`'S, ON BOTH SURFACES — §26 clause (1), as replaced 2026-09-19. What stays
+// here is the corpus ROW's own context: the anchor mark, the cited mark, `narrowed`, the change size, the
+// labelled opinion, the citation token and the citing theses. None of those exists on a thesis citation,
+// which is exactly why the CONTENT was extracted and the PANE was not.
+//
+// WHAT THIS SHEET DOES NOT CARRY YET, said rather than half-drawn:
+//   · A CAPTURE'S TEXT. §26 opens the sheet with "a capture's text", and `list_corpus` does not return one —
+//     the body carries `fileHash`, `textHash`, the anchor and the evidence link, and no text at all. THE
+//     QUESTION IS NOW ANSWERED (§26 clause (3), evidence A4): the read is `get_capture`, a RESOURCE at
+//     `GET /api/pages/:trackedUrlId/captures/:capture`, built at chunk (b) and called on open at chunk (d).
+//     Until then the capture sheet's content is LOADING — the state it genuinely is — and never a `CAPTURE`
+//     holding an empty string, which would tell a reader the archive held nothing. A DIFF's chunks ARE in
+//     this body and are drawn in full.
+//   · THE ONE LINK ONWARD to the record's own page. Those pages are chunk (c) and do not exist; an anchor
+//     to an unbuilt route is what `no-door-before-it-exists` catches and what this round has paid for
+//     elsewhere. It lands with them, in the same commit.
+// ---------------------------------------------------------------------------
+
+/** A row's stable identity — the same string the tap sets and the tab declares. Never rendered. */
+export function recordIdOf(entry: CorpusEntry): string {
+  return entry.kind === 'CAPTURE' ? `capture:${entry.page.trackedUrlId}:${entry.capture}` : `diff:${entry.page.trackedUrlId}:${entry.before}:${entry.after}`;
+}
+
+/**
+ * THE CAPTURE'S TEXT, READ WHEN THE SHEET OPENS — docs/gf-ui-flows.md §26 clause (2), evidence A4 :1082.
+ *
+ * `list_corpus` carries `fileHash`, `textHash`, the anchor and the evidence link and NO text at all
+ * (measured on the running body: a capture row's keys hold `textHash` and no `text`), so the bytes need
+ * their own read. `get_capture` is it, and it is a RESOURCE — one capture, by its page and its timestamp.
+ *
+ * A READER'S ACT, NOT A FILTER. §8 forbids a page fetching a second read to answer a FILTER; nothing here
+ * changes the stream's query or answers the list. It is the same shape as the thesis page's history diff,
+ * which reads on the reader's press — and the request is issued only when a sheet is actually opened.
+ *
+ * NO `textHash` IS SENT, deliberately: a corpus row is not a citation and has no pin, so what this surface
+ * wants is the capture's CURRENT extraction — which is exactly what the read answers when the argument is
+ * omitted. The argument exists for the thesis page, whose citation does have a pin (§26 clause (2)).
+ */
+type CaptureText = { state: 'LOADING' } | { state: 'READ'; text: string } | { state: 'FAILED' };
+
+function useCaptureText(entry: CaptureEntry, offline: string): CaptureText {
+  const [read, setRead] = useState<CaptureText>({ state: 'LOADING' });
+  const path = `/api/pages/${entry.page.trackedUrlId}/captures/${entry.capture}`;
+  useEffect(() => {
+    const controller = new AbortController();
+    // NO RESET TO LOADING HERE — a synchronous `setState` in an effect is what `react-hooks/set-state-in-effect`
+    // refuses, and `RecordSheetTab` KEYS this component by the record's id so a different record mounts a
+    // FRESH one whose state already starts at LOADING.
+    //
+    // THE KEY IS LOAD-BEARING, and the road to knowing that is worth more than the sentence. Without it a
+    // REUSED instance keeps the previous record's `read` while the new record's request is still in flight,
+    // so the sheet draws the PREVIOUS capture's archive bytes under the NEW capture's date — the wrong
+    // document presented as the right one. `sheet-reads-on-open`'s SR-6 holds it, and goes RED the moment the
+    // key is removed from the element it renders.
+    //
+    // TWO EARLIER MEASUREMENTS SAID OTHERWISE AND BOTH WERE BROKEN, recorded so neither is repeated. The
+    // first drove the PANE, where the sheet does not survive a record change for an unrelated reason —
+    // `DeclareTabs` re-registers whenever its tabs' signature changes and `RightPane` early-returns `null` at
+    // zero tabs — so the key's absence was masked. The second rendered the component directly but let
+    // `rerender` replace a wrapped tree with an unwrapped one, giving the two renders different STRUCTURES,
+    // which remounts everything and makes any key look unnecessary. A decoy that reddens nothing is a claim
+    // about the instrument before it is a claim about the code.
+    void (async () => {
+      try {
+        const body = parseCaptureText(await fetchJson<unknown>(path, { signal: controller.signal, offline }));
+        setRead({ state: 'READ', text: body.text });
+      } catch {
+        // AN ABORT IS NOT A FAILURE: it means this sheet was closed or replaced, and the component is
+        // already gone. Setting FAILED here would be a verdict about a read nobody is waiting for.
+        if (!controller.signal.aborted) setRead({ state: 'FAILED' });
+      }
+    })();
+    return () => {
+      controller.abort();
+    };
+  }, [path, offline]);
+  return read;
+}
+
+/** THE MARKS IN FULL (§26): the anchor as the body states it, and the cited mark where the row is. */
+function CaptureMarks({ entry }: { entry: CaptureEntry }) {
+  const t = useTranslations('corpus');
+  return (
+    <span data-sheet-marks className="flex flex-wrap gap-2 text-xs text-ink-muted">
+      <span data-anchor-mark>{t(entry.anchor.attributed ? 'anchor.attributed' : 'anchor.notYet')}</span>
+      {entry.evidence === null ? null : <span data-cited-mark>{t('cited')}</span>}
+    </span>
+  );
+}
+
+/**
+ * EXPORTED FOR ITS OWN INSTRUMENT. `sheet-reads-on-open`'s SR-6 renders this component directly, at a fixed
+ * position, so the property under test is THIS component's — "a new record starts clean" — and not a side
+ * effect of how the pane happens to re-register its tabs. Nothing in `src/` imports it.
+ */
+export function CaptureSheet({ entry }: { entry: CaptureEntry }) {
+  const t = useTranslations('corpus');
+  const locale = useLocale();
+  const read = useCaptureText(entry, t('textUnread'));
+  const domain = displayUrl(entry.page.url);
+  const heading = formatCaptureDate(entry.capture, locale);
+  return (
+    <div data-record-sheet data-record-kind="CAPTURE" className="flex flex-col gap-3 p-3">
+      {/* A FAILED READ DRAWS NO ARCHIVE BOX — and it must not draw the skeleton either, which would say
+          "still arriving" about a read that has already ended. IT SAYS SO IN WORDS (approved 2026-09-19):
+          silence here is a region a reader cannot tell from "there is nothing to show", which is the shape
+          `lib/corpusBody.ts`' own rule is written against. The SAME sentence is `fetchJson`'s `offline`
+          message, so a backend that never answered and a backend that refused read identically to a
+          reader — both are "the text could not be read", and neither is a claim about the archive. The
+          marks are one component called by both branches, never two spellings of one row's marks. */}
+      {read.state === 'FAILED' ? (
+        <>
+          <p className="record-head">
+            <bdi dir="ltr">{domain}</bdi>
+          </p>
+          <h2 className="record-title">{heading}</h2>
+          <CaptureMarks entry={entry} />
+          <p data-text-unread className="record-meta">{t('textUnread')}</p>
+        </>
+      ) : (
+        <RecordContent
+          domain={domain}
+          heading={heading}
+          content={read.state === 'READ' ? { kind: 'CAPTURE', text: read.text } : { kind: 'LOADING' }}
+        >
+          <CaptureMarks entry={entry} />
+        </RecordContent>
+      )}
+      <CopyableCode value={`#ev_${entry.fileHash}`} label={t('copyToken')} />
+      <CitingTheses evidence={entry.evidence} />
+    </div>
+  );
+}
+
+function DiffSheet({ entry }: { entry: DiffEntry }) {
+  const t = useTranslations('corpus');
+  const locale = useLocale();
+  const chunks = entry.current?.chunks ?? [];
+  const removed = chunks.filter((chunk) => chunk.side === 'REMOVED');
+  const added = chunks.filter((chunk) => chunk.side === 'ADDED');
+  return (
+    <div data-record-sheet data-record-kind="DIFF" className="flex flex-col gap-3 p-3">
+      {/* THE CURRENT CHUNKS, STACKED BY SIDE (§26) — drawn by `RecordContent`, the ONE component §26
+          clause (1) rules, so the side words and the serif box are the same element the thesis page's
+          record pane uses. The chunks are ALREADY IN THIS BODY, so nothing is read to draw them; only a
+          capture's text needs a read, which is why the two sheets differ in their content value and not in
+          their component. AWAITING carries the approved sentence this namespace already owns. */}
+      <RecordContent
+        domain={displayUrl(entry.page.url)}
+        heading={t('interval', { first: formatCaptureDate(entry.before, locale), last: formatCaptureDate(entry.after, locale) })}
+        content={entry.current === null ? { kind: 'AWAITING', statement: t('awaitingDerivation') } : { kind: 'DIFF', chunks }}
+      >
+        <span data-sheet-marks className="flex flex-wrap gap-2 text-xs text-ink-muted">
+          {entry.evidence === null ? null : <span data-cited-mark>{t('cited')}</span>}
+          {entry.narrowed ? <span data-narrowed-mark>{t('narrowed')}</span> : null}
+        </span>
+        {entry.current === null ? null : (
+          <span data-change-size className="text-xs text-ink-muted">{t('changeSize', { removed: removed.length, added: added.length })}</span>
+        )}
+      </RecordContent>
+      {/* The opinion in FULL here — the stream clamps it to two lines, and the sheet is where the rest is
+          (§24 region 4: "the rest in the sheet"). It stays inside the one labelled container either way. */}
+      {entry.opinion === null ? null : <LabelledOpinion opinion={entry.opinion} />}
+      <CitingTheses evidence={entry.evidence} />
+    </div>
+  );
+}
+
+/** The citing theses as LINKS (§26) — `citedBy` lists published versions only, which is what makes them public. */
+function CitingTheses({ evidence }: { evidence: CorpusEntry['evidence'] }) {
+  if (evidence === null || evidence.citedBy.length === 0) return null;
+  return (
+    <ul data-citing-theses className="flex flex-col gap-1 text-xs">
+      {evidence.citedBy.map((cite) => (
+        <li key={cite.thesisId}>
+          {/* A THESIS IS NAMED BY ITS CLAIM AND NEVER BY ITS ID (§4), and the corpus body carries no claim —
+              only the id. So the link's words are the CITED mark's own approved phrase, and the id stays in
+              the href where a URL may carry one. */}
+          <a href={`/theses/${cite.thesisId}`} className="text-ink underline">
+            <CitedLabel />
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function CitedLabel() {
+  const t = useTranslations('corpus');
+  return <>{t('cited')}</>;
+}
+
+/**
+ * THE PANE'S DECLARATION, and the only stateful thing on this page besides the two reveals.
+ *
+ * The open record is the READER'S CHOICE made after the page arrives, so it is client state and not a URL
+ * parameter: a record opened is not a filtered view and must not be linkable as one. That is the same
+ * reasoning `Stream` already records for its reveals.
+ */
+export function RecordSheetTab({ entries, openId }: { entries: readonly CorpusEntry[]; openId: string | null }) {
+  const locale = useLocale();
+  const open = entries.find((entry) => recordIdOf(entry) === openId);
+  if (open === undefined) return <DeclareTabs tabs={[]} />;
+  const label =
+    open.kind === 'CAPTURE'
+      ? `${displayUrl(open.page.url)} · ${formatCaptureDate(open.capture, locale)}`
+      : `${displayUrl(open.page.url)} · ${formatCaptureDate(open.before, locale)}–${formatCaptureDate(open.after, locale)}`;
+  return (
+    <DeclareTabs
+      tabs={[
+        {
+          id: recordIdOf(open),
+          label,
+          // KEYED BY THE RECORD: a different record is a different sheet, not the same sheet re-pointed, so
+          // no record ever draws the previous one's bytes. `useCaptureText` records what was measured.
+          content: open.kind === 'CAPTURE' ? <CaptureSheet key={recordIdOf(open)} entry={open} /> : <DiffSheet entry={open} />,
+        },
+      ]}
+    />
+  );
+}
+
+/** Opening a record: the tab is declared, the layer opened and the tab selected — one act, one place. */
+export function useOpenRecord(): (entry: CorpusEntry) => void {
+  const [, setLayer] = usePaneLayer();
+  const [, select] = usePaneSelection();
+  return (entry: CorpusEntry) => {
+    select(recordIdOf(entry));
+    setLayer(true);
+  };
+}

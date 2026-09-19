@@ -6,6 +6,7 @@ import { CopyableCode } from '@/components/CopyableCode';
 import { LabelledOpinion } from '@/components/opinion/LabelledOpinion';
 import { displayUrl, formatCaptureDate } from '@/lib/format';
 import { partitionBySignificance } from '@/lib/corpusSignificance';
+import { RecordSheetTab, recordIdOf, useOpenRecord } from './RecordSheet';
 import type { CaptureEntry, CorpusEntry, DiffEntry } from '@/types/corpus';
 
 // ---------------------------------------------------------------------------
@@ -24,9 +25,10 @@ import type { CaptureEntry, CorpusEntry, DiffEntry } from '@/types/corpus';
 // neither is rendered anywhere else, and a reader judging whether a row is drawn right needs both in front of
 // them. When UI-8 or a record page renders one alone, it moves out with its own name.
 //
-// NO ROW IS A LINK YET, AND THAT IS THE CONTRACT RATHER THAN AN OMISSION. §24's region 4 opens a record as a
-// RIGHT-PANE TAB, and the record pages it reaches are chunk 5b. A row that navigated somewhere unbuilt is the
-// defect this round has already paid for four times.
+// A ROW TAP OPENS THE RECORD AS A RIGHT-PANE TAB (§24 region 4, §26), and this is new surface as of chunk
+// 5b(b) — until now no row was a link at all, which was correct while no destination existed. It is a BUTTON
+// and not an anchor, deliberately: the record is a pane tab and not a route, so a link would promise a URL
+// this act does not produce. The record PAGES are 5b(c) and the sheet's one link onward lands with them.
 //
 // IT IS A CLIENT COMPONENT FOR ONE REASON: the reveals. The significance gate's count line and the opinion's
 // „קרא עוד" are both a reader's choice made after the page arrives, and neither is a navigation — a server
@@ -52,17 +54,33 @@ function PageLabel({ url }: { url: string }) {
  * THE COPY CARRIES THE CITATION TOKEN and is labelled by what it is FOR (§4 :172), which is why the hash it
  * copies is never drawn as text beside it.
  */
-function CaptureRow({ entry }: { entry: CaptureEntry }) {
+function CaptureRow({ entry, onOpen }: { entry: CaptureEntry; onOpen: (entry: CaptureEntry) => void }) {
   const t = useTranslations('corpus');
   const locale = useLocale();
   return (
     <li data-entry="CAPTURE" data-capture-row className="flex flex-col gap-1 border-b border-line py-2">
+      {/* THE WHOLE ROW IS THE TARGET, and the COPY control inside it is not: a tap on the copy must copy and
+          not open a record. It is a sibling button rather than a nested one, because a control inside a
+          control is the nesting `valid-nesting` refuses and a browser resolves by guessing. */}
+      <button type="button" data-open-record={recordIdOf(entry)} onClick={() => { onOpen(entry); }} className="text-start">
       <PageLabel url={entry.page.url} />
       <span className="flex flex-wrap items-baseline gap-2 text-sm text-ink">
         <bdi dir="ltr">{formatCaptureDate(entry.capture, locale)}</bdi>
         <span data-anchor-mark className="text-xs text-ink-muted">
           {t(entry.anchor.attributed ? 'anchor.attributed' : 'anchor.notYet')}
         </span>
+        {/* THE CITED MARK, which this row did not draw. §24 names it among the marks a row carries, and the
+            2026-09-19 ruling on region 3 makes the omission visible rather than merely incomplete: a capture
+            dot is ringed on the STRIP when the capture's OWN `evidence` is set, and three of this page's 22
+            captures carry one. Without this the strip would ring three dots whose rows say nothing about why,
+            and a reader would have a mark with no explanation six centimetres below it. The catalogue's
+            existing `cited` is reused — the diff card already draws the same word, and no new string is
+            approved. The condition is the capture's own `evidence`, never a diff touching it: measured, the
+            other reading rings nothing at all, since 0 of 21 diffs carry one. */}
+        {entry.evidence === null ? null : <span data-cited-mark className="text-xs text-ink-muted">{t('cited')}</span>}
+        </span>
+      </button>
+      <span className="flex flex-wrap items-baseline gap-2">
         <CopyableCode value={`#ev_${entry.fileHash}`} label={t('copyToken')} />
       </span>
     </li>
@@ -77,13 +95,14 @@ function CaptureRow({ entry }: { entry: CaptureEntry }) {
  *
  * THE OPINION IS INSIDE `LabelledOpinion` OR IT IS NOT RENDERED (§10 :384, "Never outside one").
  */
-function DiffCard({ entry }: { entry: DiffEntry }) {
+function DiffCard({ entry, onOpen }: { entry: DiffEntry; onOpen: (entry: DiffEntry) => void }) {
   const t = useTranslations('corpus');
   const locale = useLocale();
   const removed = entry.current?.chunks.filter((one) => one.side === 'REMOVED').length ?? 0;
   const added = entry.current?.chunks.filter((one) => one.side === 'ADDED').length ?? 0;
   return (
     <li data-entry="DIFF" data-diff-card className="flex flex-col gap-2 rounded border border-line bg-surface p-3">
+      <button type="button" data-open-record={recordIdOf(entry)} onClick={() => { onOpen(entry); }} className="flex flex-col gap-2 text-start">
       <PageLabel url={entry.page.url} />
       {/* THE INTERVAL USES THE CATALOGUE'S OWN `interval` STRING, which the pages list already draws — one
           approved spelling of "from one date to another", not a second. An arrow between the two dates was
@@ -101,6 +120,9 @@ function DiffCard({ entry }: { entry: DiffEntry }) {
         {entry.evidence === null ? null : <span data-cited-mark>{t('cited')}</span>}
         {entry.narrowed ? <span data-narrowed-mark>{t('narrowed')}</span> : null}
       </span>
+      </button>
+      {/* THE OPINION IS OUTSIDE THE TAP, because „קרא עוד" is a control of its own and a control inside a
+          control is the nesting `valid-nesting` refuses. */}
       {entry.opinion === null ? null : <LabelledOpinion opinion={entry.opinion} />}
     </li>
   );
@@ -119,17 +141,26 @@ function DiffCard({ entry }: { entry: DiffEntry }) {
 export function Stream({ entries }: { entries: readonly CorpusEntry[] }) {
   const t = useTranslations('corpus');
   const [revealed, setRevealed] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const openRecord = useOpenRecord();
+  const open = (entry: CorpusEntry): void => {
+    setOpenId(recordIdOf(entry));
+    openRecord(entry);
+  };
   const { shown, hidden } = partitionBySignificance(entries);
   if (entries.length === 0) return <p data-stream-empty className="text-sm text-ink-muted">{t('emptyFiltered')}</p>;
   const drawn = revealed ? [...shown, ...hidden] : shown;
   return (
     <>
+      {/* The pane's declaration follows the list's own state: what is open is a reader's choice, so it is
+          client state and never a URL parameter — a record opened is not a filtered view. */}
+      <RecordSheetTab entries={entries} openId={openId} />
       <ul data-stream className="flex flex-col gap-2">
         {drawn.map((entry) =>
           entry.kind === 'CAPTURE' ? (
-            <CaptureRow key={`c-${entry.capture}-${entry.page.trackedUrlId}`} entry={entry} />
+            <CaptureRow key={`c-${entry.capture}-${entry.page.trackedUrlId}`} entry={entry} onOpen={open} />
           ) : (
-            <DiffCard key={`d-${entry.before}-${entry.after}-${entry.page.trackedUrlId}`} entry={entry} />
+            <DiffCard key={`d-${entry.before}-${entry.after}-${entry.page.trackedUrlId}`} entry={entry} onOpen={open} />
           ),
         )}
       </ul>

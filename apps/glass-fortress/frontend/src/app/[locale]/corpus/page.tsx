@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
-import { readPublic } from '@/lib/api';
+import { readPublic, readUnfiltered } from '@/lib/api';
 import { parseCorpusPages, parseCorpusStream } from '@/lib/corpusBody';
-import { readCorpusQuery, toReadParameters, type CorpusFilters } from '@/lib/corpusQuery';
+import { readCorpusQuery, readCursor, toReadParameters, writeCorpusQuery, writeReadQuery, type CorpusFilters } from '@/lib/corpusQuery';
 import { CorpusContextLine } from '@/components/corpus/CorpusContextLine';
 import { PagesList } from '@/components/corpus/PagesList';
+import { PageCard } from '@/components/corpus/PageCard';
 import { Stream } from '@/components/corpus/Stream';
-import { LegalDisclaimer } from '@/components/LegalDisclaimer';
+import { Link } from '@/i18n/navigation';
 
 // ---------------------------------------------------------------------------
 // `/corpus` — docs/gf-ui-flows.md §24 :676–:717, §28 :792, A1's route table; UI plan UI-7.
@@ -35,6 +36,13 @@ import { LegalDisclaimer } from '@/components/LegalDisclaimer';
 // control of one; what returns carries the COUNT, the CHIPS and a lens control of TWO (PAGES · CITED, §25
 // :770 and :783). The scope label does NOT return: „דפים פתוחים" names a scope against a second scope this
 // public door does not have, and a reader who is not a researcher does not know the closed pages exist.
+//
+// NO LEGAL DISCLAIMER, ruled 2026-09-19 (the researcher): „יש להסיר את ההסתייגות הלא עקבית מ /corpus". §26
+// carries it. `COMPLIANCE.md` names a thesis page and a call page and nothing else, so the public pages that
+// carry it are exactly `/theses/[id]`, `/theses/[id]/versions/[v]` and `/call/[id]` — and the same reasoning
+// that took it off `/theses` ("a list is neither") takes it off this door and off the three record pages.
+// This page rendered it TWICE, once per branch. `no-disclaimer-off-the-thesis` holds the absence in both
+// directions, because an absence asserted with no positive control is the easiest green in the world.
 //
 // A SERVER COMPONENT, and no `loading.tsx` in this segment — the thesis page's ruling (q1 A, 2026-09-16): a
 // Suspense boundary streams the response, and a `notFound()` after the first byte answers 200 with a `noindex`
@@ -78,7 +86,10 @@ function queryOf(searchParams: Record<string, string | string[] | undefined>): U
  * what caught it — the fixture-that-does-not-match-reality shape, exactly.
  */
 async function pagesInScope(): Promise<ReturnType<typeof parseCorpusPages>> {
-  const answer = await readPublic('/api/corpus', parseCorpusPages);
+  // `readUnfiltered`, because region 0 is the BARE url: it sends no chip, so the route has nothing to refuse
+  // and a 400 here would be this page's own bug rather than a reader's filter. The stream below is the half
+  // that can meet one, and it is the half that renders the state.
+  const answer = await readUnfiltered('/api/corpus', parseCorpusPages);
   // The one 404 is NOT_SURVEYED and NOT_PUBLIC alike (§6's table). A corpus with no opened page is not a 404:
   // it is region 5's sentence, which is why an empty facet returns a body and renders the empty state.
   return answer.status === 404 ? [] : answer.body;
@@ -89,19 +100,19 @@ async function pagesInScope(): Promise<ReturnType<typeof parseCorpusPages>> {
  * become the read's parameters through `toReadParameters`, which is where the URL's `cited=1` and the read's
  * boolean meet — the only place the two spellings are allowed to know about each other.
  */
-async function streamInScope(filters: CorpusFilters): Promise<ReturnType<typeof parseCorpusStream>> {
-  const read = toReadParameters(filters, 'public');
-  const query = new URLSearchParams();
-  if (read.page !== undefined) query.set('page', read.page);
-  if (read.since !== undefined) query.set('since', read.since);
-  if (read.until !== undefined) query.set('until', read.until);
-  if (read.kind !== undefined) query.set('kind', read.kind);
-  if (read.cited === true) query.set('cited', '1');
-  const suffix = query.toString();
+async function streamInScope(filters: CorpusFilters, cursor: string | undefined): Promise<ReturnType<typeof parseCorpusStream>> {
+  // THE WIRE'S SPELLING IS THE PURE MODULE'S, NEVER THIS PAGE'S. This was six hand-rolled lines, and one of
+  // them serialised the read's BOOLEAN `cited` back to the URL's `1` — which `booleanParam` does not coerce,
+  // so the route answered 400 and the reader got a 500 on „רשומות מצוטטות". One rule, one implementation:
+  // `writeReadQuery` is CALLED, it drops `scope` because the scope is the route, and it is where `cursor` and
+  // `limit` will already be right when the stream gains "load older".
+  const suffix = writeReadQuery(toReadParameters(filters, 'public', cursor)).toString();
   const answer = await readPublic(`/api/corpus${suffix === '' ? '' : `?${suffix}`}`, parseCorpusStream);
   // §6's table: NOT_SURVEYED and NOT_PUBLIC are ONE 404, and a filter naming a page this scope cannot see is
   // the commonest way to reach it. An empty stream is region 5's sentence, which is a state and not an error.
-  return answer.status === 404 ? { entries: [], pages: [], nextCursor: null } : answer.body;
+  // A2 gives 400 THE SAME RENDERING — region 5's filtered sentence with the chips shown for removal — so a
+  // malformed filter is answered by the page rather than by a stack trace, and it needs no new string.
+  return answer.status === 200 ? answer.body : { entries: [], pages: [], nextCursor: null };
 }
 
 export async function generateMetadata({ params }: PageParams): Promise<Metadata> {
@@ -115,13 +126,46 @@ export default async function CorpusPage({ params, searchParams }: PageParams) {
   const t = await getTranslations({ locale, namespace: 'corpus' });
   const query = readCorpusQuery(queryOf(await searchParams));
   if (query.view === 'stream') {
-    const answer = await streamInScope(query.filters);
+    const cursor = readCursor(queryOf(await searchParams));
+    const answer = await streamInScope(query.filters, cursor);
+    // THE NEXT WINDOW'S URL — the filters unchanged, the cursor replaced. `writeCorpusQuery` is CALLED for the
+    // filters so the link and the chips cannot spell them differently, and the cursor is appended as what it
+    // is: an operational parameter, not a sixth chip.
+    const onward = (next: string): string => {
+      const params = writeCorpusQuery(query.filters);
+      params.set('cursor', next);
+      return `/corpus?${params.toString()}`;
+    };
+    // `find` narrows to `PagesFacetRow | undefined` on its own, so the card's presence is a value and never a
+    // cast: a page the facet did not return has no url and no interval, and there is nothing to draw.
+    const card = query.filters.page === undefined ? undefined : answer.pages.find((row) => row.trackedUrlId === query.filters.page);
     return (
       <main className="page-column flex flex-col gap-3 py-4">
         <h1 className="text-lg text-ink">{t('title')}</h1>
         <CorpusContextLine filters={query.filters} count={answer.entries.length} pages={answer.pages} />
+        {/* REGION 3, and ruling (a) is the whole of this condition: the card is ONE page's shape, so a stream
+            reached by `?cited=1`, `?since=` or `?until=` alone carries none and begins under the chips. The
+            facet is what supplies the url and the interval, so a filter naming a page this scope cannot see
+            draws no card either — and that is the same 404 the stream already renders as its empty state.
+            It is handed EVERY entry, not the gate's survivors: (g) draws all 21 of the real page's diffs and
+            dims the 13 the gate hides, so passing `Stream`'s shown set would silently make the strip
+            "the shape the classifier approved". */}
+        {card === undefined ? null : <PageCard page={card} entries={answer.entries} />}
         <Stream entries={answer.entries} />
-        <LegalDisclaimer form="short" />
+        {/* „טען חדשים יותר" — §24 region 4's forward control, and the ONE the read can serve. MEASURED on the
+            running backend: the window is OLDEST FIRST (23.12.2021 → 17.3.2022 at `limit=10`) and the cursor
+            advances toward NEWER, so forward is „newer" and this control belongs at the FOOT of the stream.
+            `nextCursor === null` IS the end — one fact, not a second `hasMore` beside it.
+            WHY THE URL AND NOT CLIENT STATE: this page is a Server Component and `readPublic` is the one door
+            to the read, with its own token, its own 404 and its own 400. A browser fetch would be a SECOND
+            door to the same read, with those three implemented twice — the duplication this round has spent
+            itself removing. The URL also makes a deep window linkable, which is region 2's own principle for
+            the filters, and it is why the cursor is read from `searchParams` rather than held in a component. */}
+        {answer.nextCursor === null ? null : (
+          <Link data-load-newer href={onward(answer.nextCursor)} className="self-start text-xs text-ink-muted underline">
+            {t('loadNewer')}
+          </Link>
+        )}
       </main>
     );
   }
@@ -136,7 +180,6 @@ export default async function CorpusPage({ params, searchParams }: PageParams) {
     <main className="page-column flex flex-col gap-3 py-4">
       <h1 className="text-lg text-ink">{t('title')}</h1>
       <PagesList pages={pages} scope="public" />
-      <LegalDisclaimer form="short" />
     </main>
   );
 }

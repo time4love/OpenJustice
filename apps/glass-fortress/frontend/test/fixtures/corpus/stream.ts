@@ -10,6 +10,14 @@ import type { CorpusAnswer } from '@/types/corpus';
  * editorial only. That pair is what makes the gate assertable by VALUE rather than by property name: 20 of 21
  * diffs on the real corpus are editorial and EIGHT of those are also legally significant, so a gate written on
  * `editorial` would hide the first of these two, which is exactly the row the page exists to show.
+ *
+ * A CITED CAPTURE was added 2026-09-19 for the same reason, and the same way. Both captures carried
+ * `evidence: null`, so a case asserting the capture row's CITED mark would have examined nothing and passed —
+ * the vacuity this repository names as its own. The field is grounded in the appendix, not in the body: A4
+ * gives `evidence` to the diff row, and §6.1 defines `cited` as the entries with `evidence` ≠ null WITHOUT
+ * restricting the kind, which `types/corpus.ts` already records as the reading it took. The real corpus agrees
+ * — 3 of 22 captures carry one and 0 of 21 diffs do — and that reading CHECKS the appendix rather than
+ * supplying it. It is also region 3's ringed dot: the strip rings a capture by this very field.
  */
 export const corpusStream: CorpusAnswer = {
   "entries": [
@@ -42,7 +50,16 @@ export const corpusStream: CorpusAnswer = {
         "documentHash": "6666666666666666666666666666666666666666666666666666666666666666",
         "attributed": false
       },
-      "evidence": null,
+      "evidence": {
+        "fileHash": "0x8888888888888888888888888888888888888888888888888888888888888888",
+        "status": "PROMOTED",
+        "citedBy": [
+          {
+            "thesisId": "thesis-one",
+            "published": true
+          }
+        ]
+      },
       "page": {
         "trackedUrlId": "page-one",
         "url": "https://example.gov/one/",
@@ -60,6 +77,10 @@ export const corpusStream: CorpusAnswer = {
           {
             "side": "REMOVED",
             "text": "הקישור לדיווח על תופעות לוואי"
+          },
+          {
+            "side": "REMOVED",
+            "text": "והפירוט של תופעות הלוואי השכיחות"
           },
           {
             "side": "ADDED",

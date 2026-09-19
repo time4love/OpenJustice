@@ -75,16 +75,38 @@ export function CorpusContextLine({ filters, count, pages }: { filters: CorpusFi
             to={filters.page === page.trackedUrlId ? without('page') : { ...filters, page: page.trackedUrlId }}
           />
         ))}
+
+        {/* EVERY FILTER IN FORCE IS DRAWN, AND THE FACET IS NOT WHAT DECIDES THAT. The chips above are the
+            PICKER — one per page the read returned — and on a 400 the read returned none, so the page a
+            reader actually set had no chip at all and could not be removed. A2 gives the 400 state as "the
+            filters shown for removal", and the filters in force are `filters`, never the facet: a chip drawn
+            only when the answer came back is a chip that is missing exactly when it is needed.
+
+            THE LABEL IS THE CATALOGUE'S, NEVER THE ID. A page the facet did not return has no url here, and
+            §4 forbids showing the `trackedUrlId`; `filters.page` („דף") is the approved word the chip group
+            already uses for this parameter, so nothing new is invented and no id reaches a reader.
+
+            SINCE and UNTIL get the same treatment and for the same reason — REMOVAL is not a picker. Chunk 5a
+            drew no date control because setting a date is its own drawing problem with no approved copy, and
+            that stands: these chips appear ONLY when the parameter is already in the URL, and their one act
+            is to take it out. Without them a reader who reached the 400 through `?since=` could press every
+            chip on the page and keep sending the value that caused it — measured on the real body, where all
+            three hrefs carried `since=garbage` forward. */}
+        {filters.page !== undefined && !pages.some((page) => page.trackedUrlId === filters.page) ? (
+          <Chip label={t('filters.page')} active to={without('page')} />
+        ) : null}
+        {filters.since === undefined ? null : <Chip label={t('filters.since')} active to={without('since')} />}
+        {filters.until === undefined ? null : <Chip label={t('filters.until')} active to={without('until')} />}
         <Chip label={t('kind.capture')} active={filters.kind === 'CAPTURE'} to={filters.kind === 'CAPTURE' ? without('kind') : { ...filters, kind: 'CAPTURE' }} />
         <Chip label={t('kind.diff')} active={filters.kind === 'DIFF'} to={filters.kind === 'DIFF' ? without('kind') : { ...filters, kind: 'DIFF' }} />
         <Chip label={t('filters.cited')} active={filters.cited === true} to={filters.cited === true ? without('cited') : { ...filters, cited: true }} />
       </div>
 
-      {/* SINCE and UNTIL are chips of the same row in §24, but a DATE is a value a reader supplies rather than
-          one this line can offer — and the control that supplies it is not drawn here, because no approved
-          copy names it and a date picker is its own drawing problem. The two parameters are honoured
-          wherever they arrive in the URL (`readCorpusFilters` reads them, the read receives them); what is
-          missing is only the chip that sets them, and it is reported rather than half-drawn. */}
+      {/* WHAT IS STILL MISSING FOR SINCE AND UNTIL IS THE CONTROL THAT SETS THEM, and only that. §24 puts them
+          in this row; a DATE is a value a reader supplies, and the picker that supplies it has no approved
+          copy and is its own drawing problem, so it is still reported rather than half-drawn. Both parameters
+          are honoured wherever they arrive in the URL, and as of this chunk both can be REMOVED once set —
+          removal needs no picker, and without it the 400 they can cause had no way out. */}
 
       <nav data-corpus-lenses className="flex flex-wrap gap-3 text-sm" aria-label={t('lenses')}>
         {LENSES.map((lens) =>

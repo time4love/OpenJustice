@@ -1,3 +1,4 @@
+import type { ChunkSide } from '@/types/record';
 import type {
   Citation,
   CitationRef,
@@ -34,6 +35,22 @@ const text = (value: unknown, at: string): string => (typeof value === 'string' 
 const maybeText = (value: unknown, at: string): string | null => (value === null || value === undefined ? null : text(value, at));
 const flag = (value: unknown, at: string): boolean => (typeof value === 'boolean' ? value : fail(at, 'a boolean', value));
 const list = (value: unknown, at: string): unknown[] => (Array.isArray(value) ? value : fail(at, 'an array', value));
+
+/**
+ * ONE CHUNK OF A CITED DIFF — and the guard that makes the vocabulary a FACT rather than a hope.
+ *
+ * `side` WAS `text(...)` HERE, which accepted any string at all. That is how „before"/„after" — words the
+ * backend has never written — reached `RecordPane` and made every chunk of a cited diff read „אחרי", with
+ * `tsc` unable to see it because the type said `string` on both sides of the wire. Narrowing it at the
+ * boundary means a body that drifts from `recordDiff.ts`' `ContentChunk` fails HERE, LOUDLY, NAMING THE
+ * FIELD — the same shape `lib/corpusBody.ts`' `chunk` already uses for the corpus half.
+ */
+function recordChunk(value: unknown, at: string): { side: ChunkSide; text: string } {
+  const row = object(value, at);
+  const side = text(row.side, `${at}.side`);
+  if (side !== 'REMOVED' && side !== 'ADDED') return fail(`${at}.side`, "'REMOVED' or 'ADDED'", side);
+  return { side, text: text(row.text, `${at}.text`) };
+}
 
 function citationRef(value: unknown, at: string): CitationRef {
   const row = object(value, at);
@@ -74,10 +91,9 @@ function citation(value: unknown, at: string): Citation {
       content.kind === 'DIFF'
         ? {
             kind: 'DIFF',
-            chunks: list(content.chunks, `${at}.content.chunks`).map((chunk, index) => {
-              const row_ = object(chunk, `${at}.content.chunks[${String(index)}]`);
-              return { side: text(row_.side, `${at}.content.chunks[${String(index)}].side`), text: text(row_.text, `${at}.content.chunks[${String(index)}].text`) };
-            }),
+            chunks: list(content.chunks, `${at}.content.chunks`).map((chunk, index) =>
+              recordChunk(chunk, `${at}.content.chunks[${String(index)}]`),
+            ),
           }
         : { kind: 'CAPTURE', text: text(content.text, `${at}.content.text`) },
     verified:

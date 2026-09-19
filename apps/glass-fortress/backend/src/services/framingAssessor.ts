@@ -3,6 +3,7 @@ import { PROVISIONS, type ProvisionShape } from '../lib/provisions';
 import { LLMFactory, resolveModelId } from '../factories/LLMFactory';
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 import { FRAMING_ASSESSMENT_PROMPT } from '../prompts/framingAssessment';
+import type { ChunkSide } from '../lib/diffChunking';
 
 // ---------------------------------------------------------------------------
 // THE FRAMING ASSESSOR — docs/gf-thesis-flows.md T1, A4 :1442–:1450.
@@ -33,7 +34,7 @@ export type AssessedRecord =
       url: string;
       before: string;
       after: string;
-      chunks: readonly { side: string; text: string }[];
+      chunks: readonly { side: ChunkSide; text: string }[];
     };
 
 /** A trajectory as the assessor reads it — the detection pass's row, computed without a model. */

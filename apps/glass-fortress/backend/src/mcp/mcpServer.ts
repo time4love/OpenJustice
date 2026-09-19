@@ -29,6 +29,7 @@ import { verifyClaimTextSchema, verifyClaimTextHandler } from './tools/verifyCla
 import { getEnvironmentSchema, getEnvironmentHandler } from './tools/getEnvironment';
 import { auditThesisClaimsSchema, auditThesisClaimsHandler } from './tools/auditThesisClaims';
 import { listFindingsSchema, listFindingsHandler } from './tools/listFindings';
+import { getCaptureSchema, getCaptureHandler } from './tools/getCapture';
 import { getDiffInputSchema, getDiffInputHandler } from './tools/getDiffInput';
 import { resolveRecordSchema, resolveRecordHandler } from './tools/resolveRecord';
 import { checkOnChainStatusSchema, checkOnChainStatusHandler } from './tools/checkOnChainStatus';
@@ -487,6 +488,34 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: stampEnvironment(await listFindingsHandler(input)) }],
+    }),
+  );
+
+  // ONE CAPTURE, WHOLE — evidence flows A4 as ruled 2026-09-19, ui flows §26 clause (3). It is a RESOURCE
+  // beside list_findings and never an argument on it: a list tool with a single-item mode makes its return
+  // type depend on its argument, runs a whole page's timeline to answer one row, and becomes a list that
+  // sometimes returns a whole document into a model's context. Reads nothing but the stored row and the text.
+  server.registerTool(
+    'get_capture',
+    {
+      description:
+        'ONE CAPTURE, WHOLE — its row exactly as list_findings reports it, PLUS the extracted text ' +
+        'itself. Use it when you have a capture and need what the page actually said at that moment; ' +
+        'use list_findings when you need the page\'s timeline. The capture is named by its 14-digit ' +
+        'wayback timestamp, never by a date: three captures on one day are three captures. BY DEFAULT ' +
+        'THE TEXT IS THE CAPTURE\'S CURRENT EXTRACTION, and the answer always states which extraction ' +
+        'it gave — `textHash`, with `current` true when no extraction was asked for. Pass `textHash` to ' +
+        'read the exact extraction a thesis citation pinned: a citation holds the text AS IT WAS at its ' +
+        'pin, so after a re-extraction the pinned bytes and the current bytes legitimately differ, and ' +
+        'this is how you read the pinned ones. An extraction this capture does not hold is REFUSED and ' +
+        'never silently answered with the current text. Writes nothing, asks no chain and invokes no ' +
+        'model. Refuses NOT_SURVEYED, NOT_A_CAPTURE (the timestamp is malformed, unknown to this page\'s ' +
+        'work-list, or names a capture the corpus holds no text for) and NOT_PUBLIC (no published thesis ' +
+        'cites any record of this page).',
+      inputSchema: getCaptureSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await getCaptureHandler(input)) }],
     }),
   );
 

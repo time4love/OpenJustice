@@ -63,6 +63,7 @@ export const READ_TOOLS = new Set([
   // unbounded anonymous path this set exists to keep out, and that is why the
   // attribution is stored at anchor time instead.
   'list_findings',
+  'get_capture',
   'get_diff_input',
   'resolve_record',
   'check_on_chain_status',

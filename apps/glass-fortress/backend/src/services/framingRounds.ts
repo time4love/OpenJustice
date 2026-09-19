@@ -18,6 +18,7 @@ import { currentVersionOf } from './evidencePredicates';
 import { resolveTrajectoryCitations } from './trajectoryCitation';
 import type { AssessedRecord, AssessedTrajectory } from './framingAssessor';
 import { refusal, type Refusal } from '../mcp/tools/thesisRefusals';
+import type { ChunkSide } from '../lib/diffChunking';
 
 // ---------------------------------------------------------------------------
 // THE FRAMING'S ROUNDS, AND WHAT THE ASSESSOR IS HANDED — thesis T1, A2 :1295–:1311.
@@ -254,7 +255,7 @@ export async function loadRecords(
 /** A record's CURRENT computed content — what an assessor, the critic and the drafter are handed. */
 export type ComputedContent =
   | { kind: 'CAPTURE'; url: string; capture: string; text: string }
-  | { kind: 'DIFF'; url: string; before: string; after: string; chunks: { side: string; text: string }[] };
+  | { kind: 'DIFF'; url: string; before: string; after: string; chunks: { side: ChunkSide; text: string }[] };
 
 /**
  * The CURRENT computed content of ONE record — a capture's current text, or a pair's CURRENT version's chunks — or

@@ -518,7 +518,7 @@ describe('gate-by-prefix — one gate at the /api/research mount; the caller rea
     const research = codeAt('routes/researchRoutes.ts');
     const corpus = codeAt('routes/corpusRoutes.ts');
     const thesis = codeAt('routes/publicThesisRoutes.ts');
-    expect([registrations(research, 'researchRouter').length, ['corpusRouter', 'pagesRouter', 'recordsRouter'].map((r) => registrations(corpus, r).length).reduce((a, b) => a + b, 0), registrations(thesis, 'publicThesisRouter').length]).toEqual([14, 8, 4]);
+    expect([registrations(research, 'researchRouter').length, ['corpusRouter', 'pagesRouter', 'recordsRouter'].map((r) => registrations(corpus, r).length).reduce((a, b) => a + b, 0), registrations(thesis, 'publicThesisRouter').length]).toEqual([14, 9, 4]);
     expect(offDoor(research, 'researchRouter', 'researchRoute')).toEqual([]);
     expect(['corpusRouter', 'pagesRouter', 'recordsRouter'].flatMap((r) => offDoor(corpus, r, 'publicRoute'))).toEqual([]);
     expect(offDoor(thesis, 'publicThesisRouter', 'publicRoute')).toEqual([]);

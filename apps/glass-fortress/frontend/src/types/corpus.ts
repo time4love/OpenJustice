@@ -1,3 +1,5 @@
+import type { ChunkSide } from './record';
+
 // ---------------------------------------------------------------------------
 // THE CORPUS BODIES — hand-written from the appendix, never from a live response.
 //
@@ -98,7 +100,7 @@ export interface EvidenceLink {
  * what a card shows; `survival` is OPTIONAL because no clause in UI-7's contract requires it.
  */
 export interface DiffChunk {
-  side: 'REMOVED' | 'ADDED';
+  side: ChunkSide;
   text: string;
   survival?: string;
 }
@@ -188,6 +190,24 @@ export interface DiffInput {
   page: CorpusPage;
 }
 
+/**
+ * `get_capture`'s answer (evidence A4 :1082) — ONE capture's row PLUS its bytes.
+ *
+ * THE ROW HERE CARRIES NO `kind` AND NO `page`, and that is the BODY's shape rather than an omission: the
+ * read answers one capture of one page, so the page is stated once at the top and the row is the timeline's
+ * row exactly. `trackedUrlId` is deliberately absent — the id is the one the READER asked with, in the URL,
+ * and a page that read it back out of the body would be deriving an identity it was already handed (§4).
+ */
+export interface CaptureRead {
+  page: { url: string; public: boolean };
+  capture: Omit<CaptureEntry, 'kind' | 'page'>;
+  text: string;
+  /** WHICH extraction the bytes are — stated by the read, never assumed by the page. */
+  textHash: string;
+  /** True when no extraction was asked for, so the bytes are the capture's CURRENT text. */
+  current: boolean;
+}
+
 /** One capture beneath a record, with its own attribution (A4 :1105–:1108, "per-capture attribution"). */
 export interface RecordCapture {
   capture: string;
@@ -217,21 +237,43 @@ export interface ResolvedRecord {
   citedBy: CitingPublishedVersion[];
 }
 
+/** One capture's chain verdict, as `check_on_chain_status` reports it (A4 :1111–:1114). */
+export interface CaptureChainStatus {
+  capture: string;
+  documentHash: string;
+  isRegistered: boolean;
+  /** The registry's own index for this hash — the VERIFY disclosure's fourth value (§26 :831). */
+  registryIndex: number | null;
+  submitter: string | null;
+  attributed: boolean;
+  anchoredHash: string | null;
+  anchoredHashMatchesDocumentHash: boolean;
+  /** The verdict the platform STORED at its last check, with the version that reached it — null if never checked. */
+  storedVerdict: { verdict: string; verifierVersion: string; checkedAt: string; attributed: boolean | null } | null;
+}
+
 /**
  * `check_on_chain_status`' answer (A4 :1111–:1115), or its one refusal.
  *
- * `CHAIN_UNAVAILABLE` IS A VERDICT ABOUT THE CHECK AND NEVER ABOUT THE RECORD (A4 :1115; §26 :715–:716).
- * It is modelled as a member of the union rather than as an error so that a renderer cannot reach it through
- * a `catch` and report it as a failed record.
+ * `CHAIN_UNAVAILABLE` IS A VERDICT ABOUT THE CHECK AND NEVER ABOUT THE RECORD (A4 :1115; §26). It is modelled
+ * as a member of the union rather than as an error so that a renderer cannot reach it through a `catch` and
+ * report it as a failed record.
+ *
+ * **RE-DERIVED 2026-09-19 FROM THE WIRE, and the shape it replaces was never served by anything.** This type
+ * and its two fixtures were hand-written as a FLAT, single-capture object carrying `verdict` and
+ * `verdictVersion` and a boolean `available` — fields the route does not send and the backend does not build.
+ * The route answers `{ page, captures: CaptureStatus[], registry }` at 200 and `{ error, code }` at 503;
+ * measured on the running body, `GET /api/pages/<id>/captures/<ts>/chain` returns a `captures` array. A4
+ * :1111–:1115 names the FIELDS and not the envelope, which is how the guess survived — the same shape as the
+ * `editorial`/`draws` defect A4 :1086 records, where a fixture written from the same wrong reading as the code
+ * left 273 cases green and the page 500'd on the first real body. **The ENVELOPE is owed an A4 amendment.**
  */
 export type ChainAnswer =
   | {
       available: true;
-      isRegistered: boolean;
-      attributed: boolean;
-      anchoredHash: string;
-      documentHash: string;
-      verdict: string;
-      verdictVersion: string;
+      page: { url: string; public: boolean };
+      captures: CaptureChainStatus[];
+      /** OBSERVED, never configured — a wrong environment records itself (the 2026-08-29 rule). */
+      registry: { chainId: number | null; registryAddress: string | null };
     }
   | { available: false; reason: 'CHAIN_UNAVAILABLE' };

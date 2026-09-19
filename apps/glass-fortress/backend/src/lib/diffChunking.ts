@@ -80,6 +80,20 @@ export const DIFF_INPUT_VERSION = 'v4-sentence-claims-lettered';
  */
 
 /**
+ * THE TWO SIDES A CHUNK CAN BE, AND THE ONE SPELLING OF THEM.
+ *
+ * It lived inline in `recordDiff.ts`' private `ContentChunk` and nowhere else, so every other module that
+ * handled a chunk either re-spelled the union or widened it to `string` — and `corpusReads.ts`' `StoredChunk`
+ * and `publishedThesis.ts`' citation shape had both widened. That widening is what let the frontend compare a
+ * side against „before", a word this module has never emitted, and mislabel every chunk of a cited diff with
+ * `tsc` unable to see it (docs/gf-ui-refactor-plan.md :555, the repair UI-7 carries).
+ *
+ * IT BELONGS HERE because this module is where a side is DECIDED — `diffChunkPair` is what cuts a pair into
+ * removed and added — and it is pure, so every reader downstream can call it without gaining a dependency.
+ */
+export type ChunkSide = 'REMOVED' | 'ADDED';
+
+/**
  * v3-sentence-claims: a changed region whose two sides are BOTH non-empty is
  * refined to sentence granularity, so a chunk stored as REMOVED contains only
  * text that was actually removed.

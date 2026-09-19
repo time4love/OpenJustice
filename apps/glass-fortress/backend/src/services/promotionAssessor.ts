@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { LLMFactory, resolveModelId } from '../factories/LLMFactory';
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 import { FORENSIC_PROMOTION_ASSESSMENT_PROMPT } from '../prompts/forensicPromotionAssessment';
+import type { ChunkSide } from '../lib/diffChunking';
 
 // ---------------------------------------------------------------------------
 // THE DEBATE'S ASSESSOR — docs/gf-evidence-flows.md §4 and docs/gf-thesis-flows.md T3.
@@ -77,7 +78,7 @@ assertSchemaCompatibility(PromotionAssessmentSchema, 'promotionAssessor');
 /** The record's CURRENT COMPUTED content — and nothing else about it (§3's two registers). */
 export type AssessedContent =
   | { kind: 'CAPTURE'; capture: string; text: string }
-  | { kind: 'DIFF'; before: string; after: string; chunks: { side: string; text: string }[] };
+  | { kind: 'DIFF'; before: string; after: string; chunks: { side: ChunkSide; text: string }[] };
 
 export interface PromotionAssessmentInput {
   /** The page, by the exact URL it was surveyed under (A1). */

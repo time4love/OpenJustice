@@ -67,6 +67,28 @@ function given(value: string | null): string | undefined {
   return trimmed === '' ? undefined : trimmed;
 }
 
+/**
+ * `?since=` and `?until=` are a DAY, and anything else is not a date — an unreadable chip is no chip.
+ *
+ * §24 region 0: a parameter the page cannot parse is not a filter, and neither is a value it cannot parse.
+ * `kind` has always been read that way; these two were not, and the asymmetry was the only reason a reader
+ * could put a value on the wire that the route refuses. Measured before the change: `?since=garbage` reached
+ * `/api/corpus` and earned a 400.
+ *
+ * THE SHAPE IS THE BACKEND'S OWN, copied and not invented: `corpusReads.ts`' `DAY`, `/^\d{4}-\d{2}-\d{2}$/`,
+ * whose refusal message is "a day, YYYY-MM-DD". Re-spelling a validator is the defect this repository names,
+ * and the honest alternative — importing the backend's — is the cross-workspace coupling the researcher
+ * refused on 2026-09-19. So it is copied WITH ITS SOURCE NAMED, and the report batches the shape for a ruling.
+ *
+ * IT VALIDATES THE SHAPE AND NEVER THE CALENDAR. `2022-13-45` passes here and the route refuses it, which is
+ * correct: the page's job is to not send nonsense, not to become a second authority on what a day is.
+ */
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+function readDay(value: string | undefined): string | undefined {
+  return value !== undefined && DAY.test(value) ? value : undefined;
+}
+
 /** `?kind=` is one of two words, and anything else is not a kind — an unreadable chip is no chip. */
 function readKind(value: string | undefined): EntryKind | undefined {
   if (value === 'CAPTURE' || value === 'DIFF') return value;
@@ -83,9 +105,9 @@ export function readCorpusFilters(params: URLSearchParams): CorpusFilters {
   const filters: CorpusFilters = {};
   const page = given(params.get('page'));
   if (page !== undefined) filters.page = page;
-  const since = given(params.get('since'));
+  const since = readDay(given(params.get('since')));
   if (since !== undefined) filters.since = since;
-  const until = given(params.get('until'));
+  const until = readDay(given(params.get('until')));
   if (until !== undefined) filters.until = until;
   const kind = readKind(given(params.get('kind')));
   if (kind !== undefined) filters.kind = kind;
@@ -94,6 +116,23 @@ export function readCorpusFilters(params: URLSearchParams): CorpusFilters {
   // complement, so the absence of the chip is the only other state there is.
   if (given(params.get('cited')) === '1') filters.cited = true;
   return filters;
+}
+
+/**
+ * THE CURSOR THE URL CARRIES, AND IT IS NOT A FILTER.
+ *
+ * `toReadParameters`' own note already says it: `cursor` and `limit` are the read's OPERATIONAL parameters
+ * and never chips, because no filter in §24 names them. So this is read SEPARATELY from `readCorpusFilters`
+ * and deliberately does NOT join the five that mean the stream — a bare `?cursor=` is ignored exactly as
+ * `?utm_source=` is, and region 0's rule is untouched. A cursor with no filter has nothing to page through.
+ *
+ * ITS SHAPE IS NOT VALIDATED HERE. The read issues it (`encodeCursor`, base64url of the last entry's key) and
+ * the route refuses anything it did not issue, by a `refine` that decodes it. A second decoder here would be
+ * a second authority on a value this page only ever echoes back — the same reasoning that keeps the day's
+ * validation to a SHAPE. What this does check is that it is present and non-empty.
+ */
+export function readCursor(params: URLSearchParams): string | undefined {
+  return given(params.get('cursor'));
 }
 
 /**
@@ -131,6 +170,35 @@ export function writeCorpusQuery(filters: CorpusFilters): URLSearchParams {
  * are never chips: no filter in §24 :688–:690 names them, and `limit` "is an operational parameter, never a
  * judgement" (§6.1 :241).
  */
+/**
+ * THE READ'S PARAMETERS AS THE WIRE CARRIES THEM — the one place a value becomes text on its way to the route.
+ *
+ * It exists because the page hand-rolled this and got it wrong. `toReadParameters` turns the URL's `1`
+ * into a BOOLEAN, exactly as its own note says; the page then serialised that boolean back to `1`, and the route's
+ * `booleanParam` coerces the two words and nothing else — so the CITED lens answered 400 and the page rendered
+ * a 500. Measured against the running backend: `cited=1` and `cited=TRUE` are refused, `cited=true` and
+ * `cited=false` are accepted. A boolean therefore spells itself, and no caller chooses.
+ *
+ * THE SCOPE IS THE ROUTE AND IS NEVER A PARAMETER, so it is the one field of the read that this drops: the
+ * public door is `/api/corpus` and the route answers 400 to a `scope` key at all. Dropping it here rather than
+ * at each caller is what makes that a property of the serialiser instead of a thing to remember.
+ *
+ * `cursor` and `limit` are carried because the read has them; the stream's "load older" and "load newer" are
+ * the callers that will set them, and a serialiser that silently dropped them would move the same defect one
+ * chunk later.
+ */
+export function writeReadQuery(read: CorpusReadParameters): URLSearchParams {
+  const query = new URLSearchParams();
+  if (read.page !== undefined) query.set('page', read.page);
+  if (read.since !== undefined) query.set('since', read.since);
+  if (read.until !== undefined) query.set('until', read.until);
+  if (read.kind !== undefined) query.set('kind', read.kind);
+  if (read.cited !== undefined) query.set('cited', read.cited ? 'true' : 'false');
+  if (read.cursor !== undefined) query.set('cursor', read.cursor);
+  if (read.limit !== undefined) query.set('limit', String(read.limit));
+  return query;
+}
+
 export function toReadParameters(filters: CorpusFilters, scope: CorpusScope, cursor?: string, limit?: number): CorpusReadParameters {
   const read: CorpusReadParameters = { scope };
   if (filters.page !== undefined) read.page = filters.page;
