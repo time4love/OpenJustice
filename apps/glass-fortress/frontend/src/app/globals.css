@@ -1,40 +1,1035 @@
 @import "tailwindcss";
 
-@theme inline {
-  --color-background: #f8fafc;
-  --color-foreground: #0f172a;
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* ---------------------------------------------------------------------------
+   THE SYSTEM — docs/gf-ui-design-session-2026-09-16.md §1.8, drawn on canvas page 7.
+
+   THE ONE PLACE A RAW COLOUR BELONGS. Every colour of the system is defined here, once, and used by name
+   everywhere else; `test/tokensOnly.test.ts` holds that no file under `src/` carries a raw hex or a named
+   palette utility outside this file and outside its dated, shrinking allow-list.
+
+   The rule the palette encodes: INK for actions, colour only for MEANING. Four meaning colours and no more —
+   olive and seal red are not "good" and "bad" but ADDED and REMOVED, PRESENT and ABSENT, VERIFIED and
+   WITHDRAWN.
+   --------------------------------------------------------------------------- */
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  /* The surfaces and the text */
+  --paper: #FCFCFB;          /* the page */
+  --paper-deep: #F2F1EE;     /* the sidebar */
+  --surface: #FFFFFF;        /* a card, a pane, a sheet */
+  --ink: #1F1B16;            /* text, actions, the primary button */
+  --ink-muted: #4E463F;      /* labels, meta, the disclaimer */
+  --line: #E6E5E2;           /* every border and divider */
+
+  /* The four meaning colours */
+  --olive: #4F6B3A;          /* verified against the anchor · added · present */
+  --gold: #B08D3B;           /* the anchor · the seal · publication */
+  --amber: #B7791F;          /* flagged · missing · draft */
+  --seal-red: #A8322A;       /* removed · absent · withdrawal */
+
+  /* A SURFACE, named for where it is drawn — `--door-field`'s precedent. It marks a value the platform
+     filled into the letter, joins none of the four meaning colours above, and no record, mark or state
+     is ever drawn in it. Ruled with the `--line` underline beside it (the researcher, Q5 „א+ג”). */
+  --letter-fill: #FBEFC9;
+
+  /* The two in-text tints, for a changed passage */
+  --olive-tint: #dee8d3;
+  --seal-tint: #f5dad7;
+
+  /* THE TWO VOICES, as two faces each — see app/[locale]/layout.tsx for why there are four files.
+     The HEBREW subset comes first in each stack and the LATIN one immediately after it: CSS font fallback is
+     per GLYPH, and neither Hebrew subset maps a single digit, so „בצילום מ-28.6.2022” takes its letters from
+     the first face and its digits from the second. Reversing the order silently changes which face draws a
+     digit inside a Hebrew heading. */
+  --font-serif: var(--font-frank-hebrew), var(--font-frank-latin), 'Times New Roman', serif;
+  --font-sans: var(--font-heebo-hebrew), var(--font-heebo-latin), system-ui, sans-serif;
+  /* The values a reader checks — a document hash, a registry index, a citation token — are Latin and digits
+     only, so they need no shipped face of their own. */
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* THE TYPE SCALE (canvas page 7). Phone sizes are the second number where the scale has two. */
+  --text-claim: 1.5rem;          /* 24px, Frank Ruhl Libre 700, 1.35 */
+  --text-claim-compact: 1.375rem;/* 22px — in the right pane and on the phone */
+  --text-words: 1.0625rem;       /* 17px, Frank Ruhl Libre 400, 1.75 — the researcher's words */
+  --text-words-compact: 1rem;    /* 16px */
+  --text-record: 0.9375rem;      /* 15px, 1.7 — a sheet's and a record's body */
+  /* THE RESEARCHER'S OWN HEADING inside their text (`build.mjs` :81's `.words h2`). It is LARGER and HEAVIER
+     than the words it divides, and larger than any furniture the page adds — the page's four regions are
+     14px fold triggers. The structure a reader meets first must be the ARGUMENT'S, not the platform's. */
+  --text-words-heading: 1.125rem;/* 18px, 700, 1.4 */
+  --text-label: 0.8125rem;       /* 13px — section headings (600), labels, meta */
+  --text-mark: 0.75rem;          /* 12px — marks, chips, tabs, the disclaimer */
+  --text-value: 0.71875rem;      /* 11.5px — a checkable value, LTR */
+
+  --leading-claim: 1.35;
+  --leading-words: 1.75;
+  --leading-words-heading: 1.4;
+  --leading-record: 1.7;
+  --leading-disclaimer: 1.55;
+
+  /* The shell's own measurements (canvas page 7's closing line). The two widths are the INITIAL values; both
+     are resizable and browser-local from there. */
+  --sidebar-width: 268px;
+  --pane-width: 580px;
+  --splitter-width: 8px;
+  --reading-column: 42rem;       /* 672px */
+  --drawer-width: 300px;
+  --touch-target: 44px;
+  /* How long the phone's pane takes to arrive and the centre to leave (§18 :564). One value, so the two
+     halves of one movement cannot drift apart; honoured only when the reader has not asked for less motion. */
+  --pane-slide: 240ms;
+  --chrome-height: 3.5rem;       /* the phone's top bar */
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-pill: 999px;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-deep: var(--paper-deep);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-line: var(--line);
+  --color-olive: var(--olive);
+  --color-gold: var(--gold);
+  --color-amber: var(--amber);
+  --color-seal-red: var(--seal-red);
+  --color-olive-tint: var(--olive-tint);
+  --color-seal-tint: var(--seal-tint);
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-mono: var(--font-mono);
+
+  /* THE TYPE SCALE JOINS THE THEME, which is what gives it utilities at all. The ten colours and the
+     three font stacks were mapped here at UI-4b and the scale was not, so `--text-claim` lived in
+     `:root` with no `text-claim` utility and no consumer, and the claim fell back to Tailwind's own
+     `--text-2xl`. That is F8's other half: a token block complete, and nothing able to use it.
+
+     THE SELF-REFERENCE IS THE MECHANISM, not a typo — `--font-serif: var(--font-serif)` has worked
+     here since UI-4b for the same reason. Tailwind emits this block into `:root,:host` FIRST and the
+     author's own `:root` AFTER, so the real definition wins and the utility resolves to it.
+
+     `--text-x--line-height` is Tailwind v4's paired form: `text-claim` then sets size AND leading
+     together, so no page can take one and forget the other. */
+  --text-claim: var(--text-claim);
+  --text-claim--line-height: var(--leading-claim);
+  --text-claim-compact: var(--text-claim-compact);
+  --text-claim-compact--line-height: var(--leading-claim);
+  --text-words: var(--text-words);
+  --text-words--line-height: var(--leading-words);
+  --text-words-compact: var(--text-words-compact);
+  --text-words-compact--line-height: var(--leading-words);
+  --text-record: var(--text-record);
+  --text-record--line-height: var(--leading-record);
+  --text-label: var(--text-label);
+  --text-mark: var(--text-mark);
+  --text-value: var(--text-value);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-label);
 }
 
-/* Belt-and-suspenders: side-entrance reveal animations (framer-motion x
-   offsets) can transiently extend a section's scrollable box past the
-   viewport edge before they settle at x:0. Individual sections should clip
-   this themselves (overflow-x-hidden), but the page must never scroll
-   horizontally regardless of which section forgets to. */
+/* THE DOCUMENT DOES NOT SCROLL. THE SHELL OWNS EVERY SCROLLPORT.
+
+   The horizontal half is belt-and-suspenders and predates the shell: side-entrance reveal animations
+   (framer-motion x offsets) can transiently extend a section's scrollable box past the viewport edge
+   before they settle at x:0, and the page must never scroll horizontally regardless of which section
+   forgets to clip itself.
+
+   THE VERTICAL HALF IS R59's F4, and it closes two defects that looked unrelated. The rule constrained
+   `overflow-x` only, so the Y axis was free and the document could scroll behind a shell that is
+   exactly the viewport tall. Measured on `aa00640`:
+
+     · at 1512x982 the document scrolled 186px and TOOK THE SIDEBAR WITH IT, leaving a 187px band of
+       empty paper beneath it — the researcher's screenshot exactly. No element in the flow extended
+       past the viewport (`countPast: 0`); the 186px could not be attributed to any node, and the fix
+       does not depend on attributing it. An app shell that owns its own scrolling should not leave the
+       document scrollable at all.
+     · at phone width `.shell-centre` reported `scrollHeight === clientHeight` (4209 = 4209) — it grew
+       to its content instead of scrolling, because `.shell` had only `min-height` there and a flex
+       child with no `min-height: 0` cannot shrink below its content. The document scrolled instead,
+       so the sticky context line of the day — whose containing block is `.shell-centre`'s scrollport,
+       since M1 gave it `overflow-y: auto` at every width — was pinned to a box that itself slid off
+       the top (`top -324`, then `-1566`).
+
+   ONE RULE, TWO BUGS: with the document unable to scroll and the shell exactly the viewport tall at
+   every width, `.shell-centre` becomes the real scroller everywhere and the sidebar cannot ride up.
+
+   THE SECOND BUG'S SUBJECT IS GONE AND THE RULE IS NOT (the context line is RETIRED 2026-09-18, §4
+   :159): nothing sticky is left to resolve against this scrollport. The rule stays because the FIRST
+   bug is the researcher's screenshot — the sidebar riding up over a band of empty paper — and it
+   returns the moment the document can scroll again. `no-context-line` holds these three declarations
+   by value, so the rule cannot be removed as the retired line's leftover. */
 html, body {
-  overflow-x: hidden;
+  overflow: hidden;
   max-width: 100vw;
+  height: 100%;
 }
 
-/* Scrollbar styling for the light theme */
 ::-webkit-scrollbar {
   width: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: var(--paper);
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--line);
   border-radius: 3px;
+}
+
+/* ---------------------------------------------------------------------------
+   THE SHELL (docs/gf-ui-refactor-plan.md §9; canvas page 1, boards A–F).
+
+   THE DIRECTION TRICK, which is the board's spelling and not an invention: the shell itself is `ltr` so that
+   flex-row lays its FIRST child against the left edge, and each pane flips back to `rtl` for its own content.
+   That is how a LEFT sidebar survives a right-to-left document. `row-reverse` would put it left too and would
+   reverse the pane order for a screen reader; this does not.
+
+   MOBILE FIRST (docs/gf-ui-flows.md §4): one column by default; the sidebar is a drawer; the pane's content
+   is a full-screen layer with a back control, one layer at a time. The three-pane shell begins at `md`.
+   --------------------------------------------------------------------------- */
+@layer components {
+  /* EXACTLY THE VIEWPORT, AT EVERY WIDTH (R59 · F4). `min-height` let the shell grow to its content on a
+     phone, which pushed the scrolling onto the document; `height` plus `overflow: hidden` makes the shell
+     a fixed frame whose children hold every scrollport. This was already true from `md` — it is now true
+     below it too, which is the half that was missing. */
+  .shell {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+    background: var(--paper);
+  }
+
+  .shell-sidebar {
+    display: none;
+    flex-direction: column;
+    gap: 2px;
+    padding: 14px 14px 14px 10px;
+    background: var(--paper-deep);
+    direction: rtl;
+    position: relative;
+    flex: none;
+  }
+
+  /* COLLAPSED: a RAIL exactly one touch target wide, holding only the control that expands it again.
+     Never zero — a zero-width sidebar clips its own expand control and the shell cannot be re-opened. */
+  .shell-sidebar-rail {
+    padding: 8px 0 0;
+    align-items: center;
+    gap: 0;
+  }
+
+  .shell-centre {
+    flex: 1;
+    min-width: 0;
+    /* AND `min-height: 0`, WITHOUT WHICH `overflow-y: auto` BELOW IS INERT. A flex item's default
+       `min-height: auto` refuses to shrink below its content, so in the phone's COLUMN shell the centre
+       grew to its content and scrolled nothing — measured at 375: `scrollHeight === clientHeight`, 4209
+       against 4209 (R59 · F4). At `md` the shell is a ROW and the main axis is width, which is why
+       `min-width: 0` alone was enough there and why the defect was desktop-invisible. */
+    min-height: 0;
+    direction: rtl;
+    display: flex;
+    flex-direction: column;
+    /* THE CENTRE MUST SCROLL. At `md` the shell is `height: 100dvh; overflow: hidden`, and the pane, the
+       drawer and the sheet each declare a scroll of their own — the CENTRE ALONE did not, so a page
+       taller than the viewport was cut off with nothing to scroll.
+
+       MEASURED ON THE DEPLOYED PAGE (staging `b9d689f`, run B's published thesis, 1440x900): the centre
+       was 3,368px inside a 900px box, overflowing by 2,521px, while the document could scroll only
+       1,441px — leaving 1,080px UNREACHABLE BY ANY MEANS. Five of `<main>`'s eleven children could not
+       be reached at all: the publication rationale, the published versions, THE PAGES (the
+       counterweight), the VERIFY disclosure, and the SHORT LEGAL DISCLAIMER, which COMPLIANCE.md
+       requires on every thesis page. Each was present in the DOM — which is why every instrument was
+       green over it — and none could be arrived at.
+
+       The phone was never affected: at 375 the shell is a column with `min-height`, the centre
+       overflowed by 0 and the document scrolled 4,637px.
+
+       UI-4b could not see it although its exercise DID run at 1440 on this very page: every reading it
+       took was an element query or a computed style, and not one read a scroll dimension.
+       A VIEWPORT IS NOT AN INSTRUMENT. */
+    overflow-y: auto;
+  }
+
+  .shell-pane {
+    background: var(--surface);
+    direction: rtl;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* The drag edge and the splitter: the same grip, 8px of hit area, a real resize cursor. */
+  .shell-grip {
+    width: 3px;
+    height: 36px;
+    border-radius: 2px;
+    background: var(--line);
+  }
+
+  .shell-splitter {
+    display: none;
+    width: var(--splitter-width);
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    cursor: col-resize;
+    background: var(--paper);
+    border: 0;
+    padding: 0;
+  }
+
+  .shell-edge {
+    position: absolute;
+    inset-inline-end: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--splitter-width);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: col-resize;
+    background: transparent;
+    border: 0;
+    padding: 0;
+  }
+
+  /* The sidebar's contents */
+  .shell-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-weight: 600;
+    font-size: var(--text-label);
+    line-height: 1.25;
+    color: var(--ink);
+  }
+
+  .shell-category {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: var(--text-mark);
+    font-weight: 600;
+    color: var(--ink-muted);
+    padding: 12px 8px 4px;
+  }
+
+  .shell-item {
+    font-size: var(--text-label);
+    line-height: 1.35;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    color: var(--ink);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+
+  .shell-item[aria-current='page'] {
+    background: var(--surface);
+    font-weight: 500;
+  }
+
+  .shell-foot {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+  }
+
+  .shell-foot .shell-item {
+    padding: 6px 8px;
+  }
+
+  /* An icon control: 44px of touch target on a phone, the board's 28 at width. */
+  .shell-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
+    border-radius: var(--radius-sm);
+    color: var(--ink-muted);
+    flex: none;
+    background: transparent;
+    border: 0;
+  }
+
+  /* The right pane's tab strip */
+  .shell-tabs {
+    display: flex;
+    flex-direction: row;
+    gap: 2px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line);
+    background: var(--paper);
+    flex: none;
+    overflow-x: auto;
+  }
+
+  .shell-tab {
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-label);
+    color: var(--ink-muted);
+    white-space: nowrap;
+    background: transparent;
+    border: 0;
+  }
+
+  .shell-tab[aria-selected='true'] {
+    background: var(--surface);
+    color: var(--ink);
+    font-weight: 600;
+    box-shadow: 0 0 0 1px var(--line);
+  }
+
+  .shell-pane-body {
+    flex: 1;
+    overflow: auto;
+    padding: 24px 28px;
+  }
+
+  /* The phone's top bar: the menu control, the name as TEXT, the locale control. */
+  .shell-topbar {
+    height: var(--chrome-height);
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface);
+  }
+
+  .shell-scrim {
+    position: fixed;
+    inset: 0;
+    background: rgb(31 27 22 / 38%);
+    z-index: 40;
+    border: 0;
+  }
+
+  .shell-drawer {
+    position: fixed;
+    /* LEFT, physically — not `inset-inline-start`, which resolves to the RIGHT in a Hebrew document and put
+       the drawer at x=75 on a 375px phone (measured in the local run). The shell is left-anchored by design
+       at every width and in both locales. `.shell` is `direction: ltr` for the SAME reason, but only from
+       `md` (:459) — at this width it is not, which is why the value here is `left` and not a logical
+       property borrowed from the shell's direction. */
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--drawer-width);
+    z-index: 50;
+    box-shadow: 0 0 40px rgb(31 27 22 / 25%);
+    display: flex;
+    overflow-y: auto;
+  }
+
+  /* THE PHONE'S FULL-SCREEN LAYER (docs/gf-ui-refactor-plan.md §9 :1070, "the pane's content opens
+     full-screen with a back control, ONE LAYER AT A TIME"). Below `md` the pane is not a third column:
+     it is either absent or the whole screen. Without this it would sit as an ordinary flex child of the
+     column shell and STACK BELOW the centre — the base rule at :166 gives it `display: flex` and nothing
+     lifts it out of flow, which UI-4b could not see because no page declared a tab. */
+  /* THE PANE ARRIVES FROM THE RIGHT AND THE CENTRE LEAVES TO THE LEFT (the researcher, 2026-09-18; §18 :564).
+     The motion is not decoration and it is not a flourish: on a phone the pane is a FULL-SCREEN layer, so
+     without it the page simply becomes a different page and nothing tells the reader which way the two lie.
+     The researcher's words are the requirement — "the user is able to understand the orientation of the
+     pages" — so the centre must be SEEN to leave leftward while the pane enters from the right edge.
+
+     `translateX` IS PHYSICAL, NOT LOGICAL, AND THAT IS WHY IT IS USED. `100%` is the right-hand side in both
+     locales; a logical property would flip with the Hebrew document and send the pane in from the left,
+     which is the very confusion this replaces.
+
+     A NON-`none` TRANSFORM MAKES AN ELEMENT THE CONTAINING BLOCK FOR ITS `position: fixed` DESCENDANTS, so
+     this was checked before it was written: `Sheet` renders through `createPortal` and is therefore not a
+     descendant of the centre, and the drawer and the scrim are the centre's SIBLINGS in `Shell.tsx`. No
+     fixed element lives inside `.shell-centre`, so nothing is captured. Anything fixed added inside it
+     later would be, and this note is where that will be found. */
+  @keyframes pane-enters-from-the-right {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  @media (width < 48rem) {
+    .shell-pane {
+      display: none;
+    }
+    .shell-pane[data-pane-open='true'] {
+      display: flex;
+      position: fixed;
+      inset: 0;
+      z-index: 45;
+      animation: pane-enters-from-the-right var(--pane-slide) ease-out;
+    }
+    .shell-centre {
+      transition: transform var(--pane-slide) ease-out;
+    }
+    .shell[data-pane-open='true'] .shell-centre {
+      transform: translateX(-18%);
+    }
+  }
+
+  /* A READER WHO ASKED FOR LESS MOTION GETS THE SAME PANE AND NONE OF THE TRAVEL. The orientation is then
+     carried by the back control alone, which is what it was carrying before this animation existed. */
+  @media (prefers-reduced-motion: reduce) {
+    .shell-pane[data-pane-open='true'] {
+      animation: none;
+    }
+    .shell-centre,
+    .shell[data-pane-open='true'] .shell-centre {
+      transition: none;
+      transform: none;
+    }
+  }
+
+  /* From `md` the three panes sit side by side and the phone's chrome disappears. The height and the
+     overflow are NOT repeated here: they are the base rule's from R59's F4, true at every width. */
+  @media (width >= 48rem) {
+    .shell {
+      flex-direction: row;
+      direction: ltr;
+    }
+    .shell-sidebar {
+      display: flex;
+      width: var(--sidebar-width);
+    }
+    .shell-splitter,
+    .shell-edge {
+      display: flex;
+    }
+    .shell-pane {
+      width: var(--pane-width);
+      flex: none;
+      border-inline-start: 1px solid var(--line);
+    }
+    .shell-topbar {
+      display: none;
+    }
+  }
+
+  /* -------------------------------------------------------------------------
+     THE TWO VOICES, APPLIED (F8; docs/gf-ui-refactor-plan.md §10's 2026-09-17 amendment;
+     docs/gf-ui-design-session-2026-09-16.md §1.8).
+
+     `--font-serif` was self-hosted, correct and APPLIED TO NOTHING: measured on the published page,
+     182 elements under `main` resolved to the sans, 7 to the mono and ZERO to the serif, and no rule
+     outside `:root` named it. These are the rules that name it.
+
+     THE FACE BELONGS TO THE VOICE AND THE SIZE BELONGS TO THE REGION, which is why there are two
+     rules and not one. `ResearcherWords` appears at three sizes — the statement, the rationale and
+     the text, a record's pinned text — so a size on the component would need a prop every caller has
+     to get right; the reading region opts in ONCE and the chrome around it is untouched.
+     ------------------------------------------------------------------------- */
+
+  /* -------------------------------------------------------------------------
+     THE FOLDED PREFACE (design session §1.5; canvas page 2 board C; the researcher's ruling „אפשרות ב”).
+     ONE bordered container that GROWS. Closed and open hold the same DOM: the statement is shortened
+     HERE, in CSS, over the whole string, and the disclaimer is hidden by a class rather than unmounted.
+     ------------------------------------------------------------------------- */
+  .preface {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+  }
+
+  .preface-trigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    min-height: var(--touch-target);
+    background: transparent;
+    border: 0;
+    text-align: start;
+    cursor: pointer;
+    color: var(--ink);
+  }
+
+  .preface-statement {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--text-label);
+    line-height: 1.6;
+  }
+
+  /* A SHORT PARAGRAPH, NOT ONE ELLIPSISED LINE — the researcher, 2026-09-18: „when collapsed I prefer
+     block, that they see a short paragraph and not inline of one line only" (docs/gf-ui-flows.md §16 :521).
+     The board drew the one line (`build2.mjs` :21's `.prefold .one`) and this ruling supersedes it: a board
+     grounds LAYOUT, and the researcher's later word on their own preface outranks the earlier drawing.
+     The FULL string is still in the element — only its rendering is cut, as it was before. */
+  .preface-clamped {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .preface-chevron {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    color: var(--ink-muted);
+    transform: rotate(-90deg);
+  }
+
+  .preface[data-preface-open='true'] .preface-chevron {
+    transform: rotate(90deg);
+  }
+
+  .preface-panel {
+    padding: 0 10px 10px;
+    border-top: 1px solid var(--line);
+    margin-top: 8px;
+  }
+
+  /* IN THE DOCUMENT, not on the screen. `display: none` keeps it in `textContent` and in find-in-page's
+     reach while it is folded away — which is what makes "first two elements in document order" true of
+     the bytes. Unmounting it would make the contract true only when a reader had already opened it. */
+  .preface-shut {
+    display: none;
+  }
+
+  /* -------------------------------------------------------------------------
+     THE DATED TICK AND THE TICK LINE (canvas `build.mjs` `.tick` / `.tickline`; §10 :1121–:1122).
+     The mark a citation wears in the body, and the line of them under the byline. The dot is the ONLY
+     thing that carries a status here; the marks' words are in the record.
+     ------------------------------------------------------------------------- */
+  .tick {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 1px 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    background: var(--surface);
+    font-family: var(--font-sans);
+    font-size: var(--text-mark);
+    line-height: 1.5;
+    color: var(--ink);
+    white-space: nowrap;
+    vertical-align: baseline;
+  }
+
+  .tick-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex: none;
+  }
+
+  /* §1.8's meaning colours and the absence of one — never a fifth. */
+  .tick-dot-verified { background: var(--olive); }
+  .tick-dot-flagged { background: var(--amber); }
+  .tick-dot-neutral { background: var(--ink-muted); }
+
+  .tick-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+  }
+
+  .tick-line-domain {
+    font-size: var(--text-mark);
+    color: var(--ink-muted);
+    flex: none;
+  }
+
+  .tick-line-rail {
+    flex: 1;
+    min-width: 1rem;
+    height: 1px;
+    background: var(--line);
+  }
+
+  /* -------------------------------------------------------------------------
+     THE RECORD'S CAPTURED TEXT (canvas `build.mjs` :97's `.captured`, drawn on page 1 board B and
+     page 3 board E; docs/gf-ui-flows.md §18 :568–:569, "long content scrolls inside the sheet").
+
+     IT HAD NO RULE AT ALL, and that is what the reader saw. Measured on the deployed page
+     (`aa00640`, run B's published thesis): 4,465 characters at 13px/19.5px with `max-height: none`,
+     `overflow: visible`, `padding: 0`, no background and no border — every property inherited, none
+     declared. The researcher's word for it was that the captured text is unreadable, and the
+     divergence from the binding image was total: every one of the board's nine properties differed.
+
+     THE CLAMP IS THE BOARD'S ANSWER TO LENGTH, and it is not the only one available — which is why
+     it is stated here rather than chosen again later. `theses.sheet.andMore` („…ועוד {count}") is the
+     COMPARISON REGISTER's overflow catch, per the approved copy freeze: a diff's chunks are COUNTED
+     and the tail is named. A capture's text is one run of prose with nothing to count, so board 3A
+     resolves it with height and no counted tail. Two shapes, two answers, each the board's own.
+
+     THE HEIGHT IS THE BOARD'S; THE SCROLL IS THE DESIGN'S (R59 · S-4). This rule first took BOTH of
+     the board's declarations — `max-height: 420px` AND `overflow: hidden` — and the second one was
+     wrong. `docs/gf-ui-flows.md` §18 :569 says it outright: *"long content scrolls inside the sheet,
+     the header stays."* A CANVAS BOARD IS A GROUND FOR LAYOUT AND NOTHING ELSE: the height is layout
+     and the board governs it; SCROLLABILITY IS BEHAVIOUR and §18 governs that. The board is a static
+     mockup carrying short sample text, so its `overflow` was never a decision about a 4,822px capture.
+     Measured on the deployed page before the fix: `clientHeight 418` against `scrollHeight 4822` —
+     **4,404px, 91% of the capture, unreachable to a reader**, over the very evidence the citation
+     exists to show. `overflow-y: auto` keeps the board's height and satisfies §18 at the same time.
+     ------------------------------------------------------------------------- */
+  .record-captured {
+    display: block;
+    /* THE FACE IS DECLARED HERE, and until 2026-09-18 it was INHERITED. This block wore
+       `[data-researcher-words]` — a marker whose meaning is "the researcher wrote this" (§16 :517–:521)
+       — and took its serif from that selector, while the text it holds is the ARCHIVE'S: a captured
+       page, a diff chunk, a trajectory's claim. The face does not change; what changes is that it is
+       now a stated decision about the record, not a side effect of the wrong voice's marker. */
+    font-family: var(--font-serif);
+    max-height: 420px;
+    /* The Y axis scrolls (§18 :569); the X axis never does — a long unbroken URL must wrap or clip,
+       never push the pane sideways (§6 :963, no horizontal scroll at any width). */
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--paper);
+    font-size: var(--text-record);
+    line-height: var(--leading-record);
+    /* The capture's own line breaks are part of what was captured; collapsing them would edit the
+       record. `pre-line` keeps the breaks and still wraps, which `pre` would not. */
+    white-space: pre-line;
+  }
+
+  /* -------------------------------------------------------------------------
+     THE CALL PAGE'S CARDS AND THE LETTER (design session §1.6; canvas page 3 boards A and B).
+     ------------------------------------------------------------------------- */
+  .appeal-heading {
+    margin: 6px 0 0;
+    font-size: var(--text-label);
+    font-weight: 600;
+    color: var(--ink-muted);
+  }
+
+  .appeal-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+  }
+
+  /* DECISION 5: drawn muted, and not an anchor. */
+  .appeal-card-muted {
+    border-style: dashed;
+    background: var(--paper);
+  }
+
+  .appeal-card-muted .appeal-card-title { color: var(--ink-muted); }
+  .appeal-card-title { margin: 0; font-size: var(--text-record); font-weight: 600; }
+  .appeal-field { font-size: var(--text-label); }
+  .appeal-field-label { color: var(--ink-muted); }
+  .appeal-rests-on { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: var(--text-label); }
+  .appeal-intake { font-size: var(--text-label); color: var(--ink-muted); }
+
+  .appeal-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: var(--touch-target);
+    padding: 8px 16px;
+    border: 1px solid var(--ink);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: var(--text-label);
+    font-weight: 600;
+  }
+
+  /* The letter: a dialog at width, a full-screen sheet on the phone — ONE primitive for both, so this
+     rule sets size and nothing about modality, focus or scroll, which are `components/Sheet.tsx`'. */
+  .letter-dialog { max-width: 40rem; margin-inline: auto; }
+  .letter-authority { margin: 0; font-size: var(--text-mark); color: var(--ink-muted); }
+  .letter-field { display: flex; flex-direction: column; gap: 4px; }
+  .letter-field-label { font-size: var(--text-mark); font-weight: 600; color: var(--ink-muted); }
+  .letter-field-hint { font-size: var(--text-mark); color: var(--ink-muted); }
+
+  .letter-input {
+    height: var(--touch-target);
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    font-size: var(--text-label);
+    color: var(--ink);
+  }
+
+  .letter-body {
+    padding: 18px 20px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--paper);
+    font-family: var(--font-serif);
+    font-size: var(--text-label);
+    line-height: 1.8;
+    max-height: 40dvh;
+    overflow-y: auto;
+  }
+
+  .letter-body p { margin: 0 0 0.7em; }
+
+  /* BOTH CUES ON THE SAME SPAN (Q5 „א+ג”): the fill works by hue and the underline by luminance, so a
+     greyscale reader sees the second where the first is 1.118:1 against paper.
+
+     RE-MEASURED 2026-09-18, against the NEW paper (§1.8 :42's `--letter-fill` amendment). The figure was
+     1.074:1 and that was correct — of the OLD `--paper`. The palette moved `--paper` and left the
+     sentence behind, which is the shape a measurement written in prose always fails in: nothing
+     recomputes it. `--letter-fill` itself does NOT move. Text laid on the fill stays legible: ink reads
+     14.91:1 on it and `--ink-muted` 8.05:1.
+
+     THE VALUES ARE NAMED AS TOKENS HERE AND NOT AS HEXES ON PURPOSE: `tokens-only` counts each of §1.8's
+     ten colours in this file and requires EXACTLY ONE occurrence, comments included — a first draft of
+     this note quoted the new paper's hex and reddened that case, correctly. A colour is declared once and
+     referred to by name everywhere after, and a comment is no exception to the rule it explains. */
+  .letter-fill {
+    background: var(--letter-fill);
+    border-bottom: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 0 3px;
+    color: inherit;
+  }
+
+  .letter-addresses { margin: 0; font-size: var(--text-mark); color: var(--ink-muted); }
+  .letter-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+
+  .letter-button {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--touch-target);
+    padding: 8px 16px;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: var(--ink);
+    color: var(--paper);
+    font-size: var(--text-label);
+    font-weight: 600;
+  }
+
+  .letter-button-quiet { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+
+  /* The researcher's words, wherever they appear: their FACE, and nothing else. */
+  /* THE VOICE CARRIES THE SANS from 2026-09-18 (§1.8, the researcher, choosing on three rendered
+     options against the published text). It carried `--font-serif` from UI-5 until then. The serif did
+     not leave the project with it — it took a narrower job, a DOCUMENT BROUGHT VERBATIM THAT THE
+     PLATFORM DID NOT AUTHOR: `.record-captured` and `.letter-body`, which declare it themselves. */
+  [data-researcher-words] {
+    font-family: var(--font-sans);
+  }
+
+  /* The read itself — the region that opts in to the reading size. The chrome keeps the sans at
+     `--text-label`, which is why `body` is left alone: 13px is right for a shell and wrong for a page,
+     and only the page can say so. */
+  .reading {
+    font-family: var(--font-sans);
+    font-size: var(--text-words-compact);
+    line-height: var(--leading-words);
+  }
+
+  @media (width >= 48rem) {
+    .reading {
+      font-size: var(--text-words);
+    }
+  }
+
+  /* -------------------------------------------------------------------------
+     THE RESEARCHER'S OWN HEADINGS, inside their published text (`build.mjs` :81's `.words h2`).
+
+     THE HIERARCHY WAS INVERTED and the reading test found it. Measured on the deployed page: a `##`
+     in the researcher's Markdown rendered at 17px/600 — the SAME SIZE as the body it divides, told
+     apart by weight alone — while the page's own three region headings sat ABOVE them at 18px/600.
+     The platform's furniture was louder than the argument it frames.
+
+     Both halves move: the three regions become 14px fold triggers (`.fold-summary`, §10 :1123) and
+     leave the read, and the researcher's structure rises to the board's 18 / 700 / 1.4. It is scoped
+     to `[data-thesis-text]` and NOT to `.reading`, because the version page renders the same text
+     outside that region and the researcher's structure is theirs wherever it is drawn.
+     ------------------------------------------------------------------------- */
+  [data-thesis-text] h2 {
+    font-size: var(--text-words-heading);
+    font-weight: 700;
+    line-height: var(--leading-words-heading);
+  }
+
+  /* -------------------------------------------------------------------------
+     THE SPACING OF THE RESEARCHER'S PROSE — one rule, wherever their Markdown is rendered
+     (docs/gf-ui-flows.md §16 :521).
+
+     THE PARSER MAKES THE PARAGRAPHS; ONLY CSS SAYS HOW FAR APART THEY SIT. This app's reset
+     takes the browser's own margin off every `<p>` — measured, not assumed: a `<p>` inside a
+     bare iframe computes 16px top and bottom, and here it computes 0 — so rendered Markdown has
+     NO separation at all unless something restores it.
+
+     It was restored at exactly ONE call site, as `ThesisText`'s `space-y-3` utility. So the
+     published TEXT read as paragraphs, while the rationale, the statement and every appeal
+     field — the same parser, through `ResearcherProse` — rendered four `<p>` elements with a
+     ZERO gap between them and reached the reader as one run-on block. The structure was right
+     and invisible, which is why counting blocks could not see it.
+
+     The rule therefore belongs to the PROSE and travels with it, rather than to one container.
+     ------------------------------------------------------------------------- */
+  .md-prose > * + * {
+    margin-top: 0.75rem;
+  }
+
+  /* -------------------------------------------------------------------------
+     A TABLE IN THE RESEARCHER'S TEXT (docs/gf-ui-flows.md §17 :538 as amended 2026-09-18).
+
+     "ONE COLUMN" GOVERNS THE READING MEASURE, NOT THE BLOCK TYPES. A table that widened the page would
+     break §6 :963's `scrollWidth <= 375`, which is a verification measurement and not a preference — so
+     the table carries a scrollport of its own and the page never gains a horizontal scrollbar. The
+     wrapper exists for exactly that; the table itself is content.
+     ------------------------------------------------------------------------- */
+  .md-table-scroll {
+    overflow-x: auto;
+    /* Without this the wrapper takes its content's width and hands the overflow back to the page — the
+       defect it exists to prevent, wearing the fix's own class name. */
+    max-width: 100%;
+  }
+
+  .md-table {
+    border-collapse: collapse;
+    /* The head reads as the head at any width, so a wide table scrolls rather than crushing its columns. */
+    min-width: max-content;
+    font-size: var(--text-record);
+    line-height: var(--leading-record);
+  }
+
+  .md-table th,
+  .md-table td {
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    text-align: start;
+  }
+
+  .md-table th {
+    background: var(--paper);
+    font-weight: 600;
+  }
+
+  /* The researcher's own alignment, carried as a class — never the parser's inline style. `start`/`end`
+     rather than left/right, so an alignment written in a right-to-left text means what it looks like. */
+  .md-align-left { text-align: start; }
+  .md-align-right { text-align: end; }
+  .md-align-center { text-align: center; }
+
+  /* -------------------------------------------------------------------------
+     THE FOUR FOLDS OF THE READ (`docs/gf-ui-refactor-plan.md` §10 :1123, "the case, the history, the
+     pages and VERIFY as folds, closed"; canvas `build.mjs` :89's `.fold`).
+
+     ONE RULE AND ONE COMPONENT for all four — `components/thesis/Fold.tsx`. VERIFY was the only fold
+     the build had, and spelling `<details>` three more times beside it is how four regions come to
+     disagree about what a fold is.
+     ------------------------------------------------------------------------- */
+  .fold {
+    border-top: 1px solid var(--line);
+  }
+
+  .fold-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 2px;
+    font-family: var(--font-sans);
+    font-size: 0.875rem;          /* 14px, the board's `.fold` */
+    font-weight: 500;
+    line-height: 1.5;
+    color: var(--ink);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  /* Safari draws its own disclosure triangle through this pseudo-element; the chevron is ours. */
+  .fold-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .fold-chevron {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    color: var(--ink-muted);
+    transform: rotate(-90deg);
+    transition: transform 120ms ease;
+  }
+
+  .fold[open] > .fold-summary .fold-chevron {
+    transform: rotate(90deg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fold-chevron {
+      transition: none;
+    }
+  }
+
+  .fold-body {
+    padding: 0 2px 12px;
+  }
+
+  /* -------------------------------------------------------------------------
+     THE LEGAL DISCLAIMER (COMPLIANCE.md :88–:99; canvas `build.mjs` :68's `.disc`).
+
+     THE REGION OWNS THE LEADING. The element carried Tailwind's `leading-relaxed`, which is 1.625
+     against the board's 1.55 — the one divergence the whole canvas comparison found, and the same
+     shape as R58's two local-run defects: a LOCAL utility quietly beating the token. It states the
+     token now, so the two can no longer disagree.
+     ------------------------------------------------------------------------- */
+  .disclaimer {
+    font-size: var(--text-mark);
+    line-height: var(--leading-disclaimer);
+    color: var(--ink-muted);
+  }
+
+  /* One column at any width, at the reading measure. */
+  .page-column {
+    width: 100%;
+    max-width: var(--reading-column);
+    margin-inline: auto;
+    padding-inline: 1rem;
+  }
+
+  /* A sheet: over the page, from the bottom edge, and back. */
+  .sheet {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    max-height: 85dvh;
+    overflow-y: auto;
+    background: var(--surface);
+    border-start-start-radius: 1rem;
+    border-start-end-radius: 1rem;
+    box-shadow: 0 0 40px rgb(31 27 22 / 25%);
+    z-index: 60;
+  }
 }

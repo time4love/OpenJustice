@@ -32,6 +32,9 @@ import { listFindingsSchema, listFindingsHandler } from './tools/listFindings';
 import { getDiffInputSchema, getDiffInputHandler } from './tools/getDiffInput';
 import { resolveRecordSchema, resolveRecordHandler } from './tools/resolveRecord';
 import { checkOnChainStatusSchema, checkOnChainStatusHandler } from './tools/checkOnChainStatus';
+import { listCorpusSchema, listCorpusHandler } from './tools/listCorpus';
+import { listTrajectoriesSchema, listTrajectoriesHandler } from './tools/listTrajectories';
+import { searchCorpusSchema, searchCorpusHandler } from './tools/searchCorpus';
 import { openDebateSchema, openDebateHandler } from './tools/openDebate';
 import { respondInDebateSchema, respondInDebateHandler } from './tools/respondInDebate';
 import { promoteFromDebateSchema, promoteFromDebateHandler } from './tools/promoteFromDebate';
@@ -45,6 +48,21 @@ import { openFramingSchema, openFramingHandler } from './tools/openFraming';
 import { assessFramingSchema, assessFramingHandler } from './tools/assessFraming';
 import { chooseFramingSchema, chooseFramingHandler } from './tools/chooseFraming';
 import { getFramingSchema, getFramingHandler } from './tools/getFraming';
+import { createThesisSchema, createThesisHandler } from './tools/createThesis';
+import { addThesisVersionSchema, addThesisVersionHandler } from './tools/addThesisVersion';
+import { getThesisContextSchema, getThesisContextHandler } from './tools/getThesisContext';
+import { listThesesSchema, listThesesHandler } from './tools/listTheses';
+import { addNoteSchema, addNoteHandler } from './tools/addNote';
+import { listFramingsSchema, listFramingsHandler } from './tools/listFramings';
+import { listPagesSchema, listPagesHandler } from './tools/listPages';
+import { runAnalysisSchema, runAnalysisHandler } from './tools/runAnalysis';
+import { decideGapSchema, decideGapHandler } from './tools/decideGap';
+import { draftFoiaRequestSchema, draftFoiaRequestHandler } from './tools/draftFoiaRequest';
+import { getWhistleblowerCallSchema, getWhistleblowerCallHandler } from './tools/getWhistleblowerCall';
+import { checkPublicationReadinessSchema, checkPublicationReadinessHandler } from './tools/checkPublicationReadiness';
+import { listThesisReviewsSchema, listThesisReviewsHandler } from './tools/listThesisReviews';
+import { publishThesisSchema, publishThesisHandler } from './tools/publishThesis';
+import { unpublishThesisSchema, unpublishThesisHandler } from './tools/unpublishThesis';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -428,6 +446,21 @@ export function createMcpServer(): McpServer {
   // the counterweight to a thesis's selection rather than a promise about one.
   // -------------------------------------------------------------------------
   server.registerTool(
+    'list_pages',
+    {
+      description:
+        'LIST THE PAGES THE CORPUS HOLDS — every surveyed page by its exact URL, with when it was surveyed ' +
+        'and its captures counted per outcome (ACQUIRED is what the corpus holds; UNFETCHED what a walk ' +
+        'still owes). Free; writes nothing. Start here when the researcher names no URL: every other read ' +
+        'takes a page as this returns it. Refuses nothing — an empty list is an answer.',
+      inputSchema: listPagesSchema,
+    },
+    async () => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await listPagesHandler()) }],
+    }),
+  );
+
+  server.registerTool(
     'list_findings',
     {
       description:
@@ -520,6 +553,61 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: stampEnvironment(await checkOnChainStatusHandler(input)) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // THE CORPUS ACROSS PAGES — UI-2, docs/gf-ui-flows.md §6.1 :226–:257, §28; docs/gf-ui-refactor-plan.md UI-2.
+  // Three reads over the same loader as list_findings, each the per-page read across every page of a SCOPE:
+  // `public` answers over the pages a published thesis has opened, identically for everyone and reading no caller;
+  // `all` answers over every surveyed page and refuses NO_RESEARCHER without one. None invokes a model, fetches the
+  // archive or writes. The wording below is the researcher's approved copy (2026-09-15).
+  // -------------------------------------------------------------------------
+  server.registerTool(
+    'list_corpus',
+    {
+      description:
+        'THE CORPUS ACROSS EVERY PAGE, in date order — the same rows list_findings gives for one page (captures with ' +
+        'their anchors, changes with their computed chunks and the classifier\'s opinion labelled as one, published ' +
+        'citations as linkage), each with its page, oldest first, paged on this read\'s own cursor, with a `pages` facet ' +
+        'naming every page in scope. `scope: \'public\'` answers over the pages a published thesis has opened, identically ' +
+        'for everyone; `scope: \'all\'` answers over every surveyed page and needs a signed-in researcher. Filter by `page`, ' +
+        '`kind`, `since`/`until`, `cited`. Free; writes nothing. Refuses INVALID_RANGE, NOT_SURVEYED, NOT_PUBLIC (a named ' +
+        'page not opened, at scope public) and NO_RESEARCHER (scope all without a researcher).',
+      inputSchema: listCorpusSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await listCorpusHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'list_trajectories',
+    {
+      description:
+        'WHAT CLAIMS DID ACROSS EVERY PAGE — get_claim_trajectories\' findings for every page in scope, each with its ' +
+        'page, ordered by the date the claim LEFT, latest first. Reads stored detection passes only and never computes ' +
+        'one: a page whose current state has no pass is NAMED in `undetected` — run get_claim_trajectories on it. Same ' +
+        'scopes, filters and refusals as list_corpus.',
+      inputSchema: listTrajectoriesSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await listTrajectoriesHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'search_corpus',
+    {
+      description:
+        'FIND AN EXACT PHRASE IN THE TEXT THE PLATFORM STORED for every held capture across the pages in scope — one ' +
+        'verdict per capture, in date order, each with its page. The STORED register only: to ask the raw archive about ' +
+        'one capture, use verify_claim_text. Same scopes and refusals as list_corpus, plus PHRASE_REQUIRED for a blank ' +
+        'phrase.',
+      inputSchema: searchCorpusSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await searchCorpusHandler(input)) }],
     }),
   );
 
@@ -817,6 +905,270 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: stampEnvironment(await getFramingHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'list_framings',
+    {
+      description:
+        'LIST EVERY FRAMING — its question, provision, author, the thesis it is attached to (or none), when ' +
+        'it was opened, its round count and latest round, and the claim it CHOSE, verbatim. Free; writes ' +
+        'nothing. Start here when the researcher wants to continue a framing or turn one into a thesis: ' +
+        'the framingId for get_framing and the exact claim create_thesis must restate both come from this ' +
+        'list. Refuses nothing — an empty list is an answer.',
+      inputSchema: listFramingsSchema,
+    },
+    async () => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await listFramingsHandler()) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // THE VERSION WRITE — thesis step 20, docs/gf-thesis-flows.md T2, §9 and A4 :1426–:1479, :1520.
+  // A thesis is created from a framing's CHOSEN claim; every version is one transaction whose
+  // citations are tokens in its text and whose pins the write computes.
+  // -------------------------------------------------------------------------
+
+  server.registerTool(
+    'create_thesis',
+    {
+      description:
+        'CREATE A THESIS FROM A CHOSEN FRAMING, with its first version. Free; writes the thesis. ' +
+        'The claim must be the framing\'s CHOSEN claim CHARACTER FOR CHARACTER — restate it exactly, ' +
+        'never tidied — and the provision the thesis asserts is set once, here. The text is the version ' +
+        'the researcher approved, stored verbatim; each citation is a token inside it: #ev_ followed by ' +
+        'a record\'s name exactly as list_findings returns it, or #tr_ followed by a trajectory id. The ' +
+        'platform COMPUTES every citation\'s pin — the content version the researcher stands behind — ' +
+        'and nothing you send can set one. Unargued citations are legal in a draft and come back in ' +
+        '`unargued`. Refuses NO_RESEARCHER, NO_FRAMING, NO_PROVISION_SHAPE, EMPTY, NOT_A_RECORD (a name the ' +
+        'corpus does not hold, or a #doc_ token — documents are not citable yet), NOT_ACQUIRED, ' +
+        'AWAITING_DERIVATION (naming the diff), UNKNOWN_TRAJECTORY_ID, CLAIM_MISMATCH, FRAMING_ATTACHED ' +
+        'and STALE_PIN.',
+      inputSchema: createThesisSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await createThesisHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'add_thesis_version',
+    {
+      description:
+        'WRITE THE NEXT VERSION OF YOUR THESIS, against the head you read. Free; writes one version. ' +
+        'The version is ONE transaction: the text verbatim, its hash, a citation per #ev_ or #tr_ token, ' +
+        'each pin computed by the platform, and the head moved. An argument made for a citation CARRIES ' +
+        'to the new version only while the record and its pin are unchanged; otherwise the citation ' +
+        'comes back in `unargued`. Nothing is ever edited: a version that disagrees with the head is a ' +
+        'new version after it. STALE_HEAD means another write landed first — read get_thesis_context and ' +
+        'write again. STALE_PIN means a review re-affirmed a cited record mid-write — write again and it ' +
+        're-pins. Refuses NO_RESEARCHER, NO_THESIS, NOT_AUTHOR, STALE_HEAD, NOT_A_RECORD, NOT_ACQUIRED, ' +
+        'AWAITING_DERIVATION, UNKNOWN_TRAJECTORY_ID, EMPTY and STALE_PIN.',
+      inputSchema: addThesisVersionSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await addThesisVersionHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'get_thesis_context',
+    {
+      description:
+        'READ A THESIS\'S WORKING STATE: head, citations, gaps, history. Free; writes nothing. ANY ' +
+        'researcher may read ANY thesis — working state is gated from the public, not from colleagues. ' +
+        'Returns the thesis; the HEAD and the PUBLISHED version with their texts and each citation\'s pin ' +
+        'and whether it is argued; the unargued citations; the gap list at each decision in force; the ' +
+        'analysis state; the framings; and the HISTORY — every act on the thesis as its own attributed ' +
+        'row, derived and never logged — optionally only what happened after `since`. Refuses NO_THESIS.',
+      inputSchema: getThesisContextSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await getThesisContextHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'list_theses',
+    {
+      description:
+        'LIST THE PUBLISHED THESES, and your own when you are signed in. Free; writes nothing. Anyone ' +
+        'sees each PUBLISHED thesis — its claim, provision, publication date, author\'s handle and ' +
+        'version hash. A signed-in researcher also sees every thesis of their own, drafts included, ' +
+        'each with its head, its published version, whether the public sees the head, the framings ' +
+        'attached, and how many citations are unargued and gaps open — or, with `scope: \'all\'`, every ' +
+        'researcher\'s, each with its author\'s handle and whether it is theirs. Refuses NO_RESEARCHER at ' +
+        'scope all without a researcher, and nothing else.',
+      inputSchema: listThesesSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await listThesesHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'add_note',
+    {
+      description:
+        'NOTE AN OBSERVATION ON A THESIS OR A FRAMING — the researcher\'s words. Free; writes one note. ' +
+        'A note is attributed, never public, and never state: a note saying a gap is resolved resolves ' +
+        'nothing. Name exactly one target. Stored verbatim. Refuses NO_RESEARCHER, NEITHER (not exactly ' +
+        'one target), NO_THESIS, NO_FRAMING, NOT_AUTHOR and EMPTY.',
+      inputSchema: addNoteSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await addNoteHandler(input)) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // ANALYSIS AND GAPS — thesis step 22, docs/gf-thesis-flows.md T4 and A4 :1481–:1504.
+  // The critic reads the head and its opinion is stored beside it, audited; the researcher decides each gap; a
+  // FOIA request is drafted and written nowhere; the two appeals of a published thesis are a PUBLIC read.
+  // -------------------------------------------------------------------------
+
+  server.registerTool(
+    'run_analysis',
+    {
+      description:
+        'RUN THE CRITIC ON YOUR THESIS\'S HEAD — what a hostile reader would say. PAID: one critic call. It ' +
+        'reads the head\'s text, each cited record\'s current computed content, each cited trajectory and the gap ' +
+        'list, and stores ONE analysis with a verdict beside every assertion: each quoted sentence checked against ' +
+        'the text, each phrase attributed to a record PRESENT, ABSENT or UNCHECKED. Its suggested gaps are candidates ' +
+        'for decide_gap, not gaps; its strength grade gates nothing. Nothing is spent twice on the same input. ' +
+        'Refuses NO_RESEARCHER, NO_THESIS, NOT_AUTHOR, NO_HEAD, ANALYSIS_CURRENT (this exact input was analysed — ' +
+        'read it with get_thesis_context) and AWAITING_DERIVATION (naming the diff).',
+      inputSchema: runAnalysisSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await runAnalysisHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'decide_gap',
+    {
+      description:
+        'DECIDE ONE GAP OF YOUR THESIS — the researcher\'s decision, recorded. Free; writes one decision. A gap is ' +
+        'named by its gapId, or entered by its description. OPEN accepts it; CITED names a record the head cites ' +
+        '(no pin of its own); REQUESTED carries the FOIA request the researcher approved; CALLED carries the call ' +
+        'item — units and roles, never a person; CONCEDED and DISMISSED carry a reason. expectedSequence is the ' +
+        'sequence of the decision in force you read (0 for a new gap). Refuses NO_RESEARCHER, NO_THESIS, NOT_AUTHOR, ' +
+        'NO_HEAD, NO_SUCH_GAP, NOT_CITED, REASON_REQUIRED, REQUEST_REQUIRED, CALL_ITEM_REQUIRED and STALE_SEQUENCE ' +
+        '(the log moved — read and decide again).',
+      inputSchema: decideGapSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await decideGapHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'draft_foia_request',
+    {
+      description:
+        'DRAFT A FREEDOM-OF-INFORMATION REQUEST FOR ONE GAP — nothing is recorded. PAID: one drafter call. The ' +
+        'drafter reads the gap, the claim and each record the head cites with the paragraphs citing it, and returns ' +
+        'the letter, the authority, the legal basis and the records it rests on; the addresses come from the ' +
+        'platform\'s table, never the model, and a label it invented comes back in unresolvedLabels. The researcher ' +
+        'amends and approves it, then records it with decide_gap REQUESTED. Refuses NO_RESEARCHER, NO_THESIS, ' +
+        'NOT_AUTHOR, NO_HEAD and NO_SUCH_GAP.',
+      inputSchema: draftFoiaRequestSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await draftFoiaRequestHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'get_whistleblower_call',
+    {
+      description:
+        'READ A PUBLISHED THESIS\'S TWO APPEALS — its call and its FOIA requests. Free; public; no model. The call ' +
+        'is each gap CALLED and the requests each gap REQUESTED, as decided at or before the publication, in the ' +
+        'researcher\'s words, with the instruction to send a request under your own name. Anyone gets the same ' +
+        'answer; { live: false } when the thesis is unpublished, has no appeal, or does not exist. Refuses nothing.',
+      inputSchema: getWhistleblowerCallSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await getWhistleblowerCallHandler(input)) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // PUBLICATION — thesis step 23, docs/gf-thesis-flows.md T5, T6 and A4 :1506–:1518.
+  // The gate is read before the act; the act records its attempt refused or not and moves the pin only when the gate
+  // passes; the withdrawal is the author's and leaves a notice where the page was.
+  // -------------------------------------------------------------------------
+
+  server.registerTool(
+    'check_publication_readiness',
+    {
+      description:
+        'CHECK WHETHER A THESIS\'S HEAD CAN BE PUBLISHED — any researcher may ask; writes nothing. Free without a ' +
+        'rationale; PAID with one: one publication-assessor call. Answers every check of the gate in order — pass, ' +
+        'fail or examined none, what each examined and each failure\'s subject — and whether the head is publishable; ' +
+        'with a rationale, the assessor\'s opinion of it in advance, labelled as its opinion. On a head that is ' +
+        'already the published version it also reports FLAGGED citations and STALE_TRAJECTORY as information. ' +
+        'Refuses NO_THESIS.',
+      inputSchema: checkPublicationReadinessSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await checkPublicationReadinessHandler(input)) }],
+    }),
+  );
+
+  // AFTER PUBLICATION — thesis step 24, docs/gf-thesis-flows.md T6 :863–:882, A4 :1523–:1525. A GATED read that returns
+  // work and changes nothing: REVIEWS(caller), oldest first, stop-shaped. ARRIVED joins it at document plan step 32.
+  server.registerTool(
+    'list_thesis_reviews',
+    {
+      description:
+        'WHAT YOU OWE ON YOUR THESES — every published citation now FLAGGED, every cited trajectory the newest detection ' +
+        'pass no longer stands behind, every head citation not yet argued; oldest first, each with its material — for a ' +
+        'flagged citation, the pinned version beside the current one, why it moved and the review decision — and ONE ' +
+        'command to paste. The count comes first, and an empty list is an answer. With `scope: \'all\'`, what every ' +
+        'author owes, each entry naming its author and whether the thesis is yours; the commands stay the author\'s ' +
+        'to run. Writes nothing and calls no model. Refuses NO_RESEARCHER.',
+      inputSchema: listThesisReviewsSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await listThesisReviewsHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'publish_thesis',
+    {
+      description:
+        'PUBLISH YOUR THESIS\'S HEAD — the author\'s act. PAID: one publication-assessor call. Stores the ' +
+        'public-interest statement given, has the assessor read the rationale against the version and the appeals ' +
+        'that would publish with it, runs the gate, and records ONE attempt either way; only when every hard check ' +
+        'passes does the head become the published version, publicly and with no chain write. Answers the version, ' +
+        'its hash, when, overObjection (the assessor disputed the rationale and it was published anyway) and the ' +
+        'pages this made public. Refuses NO_RESEARCHER, NO_THESIS, NOT_AUTHOR, REASON_REQUIRED, NOTHING_NEW (the head ' +
+        'is already published) and NOT_PUBLISHABLE (each failed check with its subject — the draw was spent and the ' +
+        'attempt recorded).',
+      inputSchema: publishThesisSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await publishThesisHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'unpublish_thesis',
+    {
+      description:
+        'WITHDRAW YOUR PUBLISHED THESIS — the author\'s act. Free; writes one withdrawal and clears the published ' +
+        'version. The public page then shows a notice with the date — never the text, never the reason — and the ' +
+        'pages it opened stay public; nothing is deleted. A withdrawn version is never published again: write a new ' +
+        'version. Refuses NO_RESEARCHER, NO_THESIS, NOT_AUTHOR, NOT_PUBLISHED and REASON_REQUIRED.',
+      inputSchema: unpublishThesisSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await unpublishThesisHandler(input)) }],
     }),
   );
 

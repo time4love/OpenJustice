@@ -129,11 +129,30 @@ describe('MCP tool classification', () => {
     // `assess_framing` ADDED AT THESIS STEP 19 — one framing-assessor call per
     // round, and the thesis layer's first paid point. Its AUTHORITY is thesis A4
     // :1442, which marks the tool "WRITE · paid", with thesis refactor plan §7
-    // :262 ("the MCP surface is exactly A4's, and mcpToolClassification agrees").
-    // `run_analysis` lands under this same case at step 22.
-    for (const tool of ['scan_captures', 'assess_framing']) {
-      expect(WRITE_TOOLS.has(tool)).toBe(true);
-    }
+    // ("the MCP surface is exactly A4's, and mcpToolClassification agrees").
+    //
+    // `run_analysis` and `draft_foia_request` ADDED AT THESIS STEP 22 — one critic call and one drafter call. Their
+    // AUTHORITY is thesis A4 :1481 ("WRITE · paid") and :1496 ("GATED · paid"), never this comment.
+    //
+    // `check_publication_readiness` and `publish_thesis` ADDED AT THESIS STEP 23 — one publication-assessor call each.
+    // Their AUTHORITY is thesis A4 :1506 ("GATED · paid iff rationale") and :1510 ("WRITE · paid"), never this comment.
+    //
+    // `open_debate` and `respond_in_debate` ADDED 2026-09-15 (#454) — each ends in one promotion-assessor call
+    // (`assessAndRecord`, `services/respondInDebate.ts`), and both were gated with no case holding them there. Their
+    // AUTHORITY is evidence A4 :1117 and :1129 ("WRITE"), whose `does` sends the argument to the ASSESSOR; unlike
+    // thesis A4, evidence A4 carries no "paid" marker on either line.
+    const ungated = [
+      'scan_captures',
+      'assess_framing',
+      'run_analysis',
+      'draft_foia_request',
+      'check_publication_readiness',
+      'publish_thesis',
+      'open_debate',
+      'respond_in_debate',
+    ].filter((tool) => !WRITE_TOOLS.has(tool));
+    // Collected rather than asserted in a loop, so a failure NAMES the paid tool that lost its gate.
+    expect(ungated).toEqual([]);
   });
 
   it('gates the tools that persist rows on an otherwise read-shaped call', () => {
@@ -162,4 +181,96 @@ describe('MCP tool classification', () => {
   // embedding of prose, over a row that now carries no prose. The public read is
   // the CORPUS — `list_findings`, `resolve_record`, `verify_claim_text` — and the
   // trade-off this case existed to keep conscious is made there, at step 12.
+});
+
+// ---------------------------------------------------------------------------
+// THE SURFACE IS EXACTLY THE DESIGNS' — thesis refactor plan step 25's remainder and §7 ("the MCP surface is exactly
+// A4's, and mcpToolClassification agrees").
+//
+// The cases above hold that every registered tool is classified once; none of them holds WHICH tools are registered. A
+// tool registered with no design naming it passes them all, and so does a designed tool that silently left the server.
+// This list is that expected set, each name beside the design line that makes it a tool. It MOVES at every step that
+// registers or retires a tool — document refactor plan step 36 asserts it "equal A4's surface exactly" once documents
+// land — so a registration without a design line, or a retirement without a list edit, fails here by name.
+//
+// The authorities are the tool-contract appendices: interaction flows A5 (the corpus, the walk, the marking), evidence
+// flows A4, thesis flows A4 — and ui flows §6.1, the three corpus-wide reads that amend evidence A4 (UI-2, 2026-09-15).
+// Tools a design names but that are not built yet — document flows A4's, and `run_prosecutor`
+// ("later", thesis A4 :1527) — are NOT on the list: they join it at the step that registers them.
+// ---------------------------------------------------------------------------
+
+/** Every tool the server registers today, and the design line that names it. The list is the spec; the comment is not. */
+const DESIGNED_SURFACE: Readonly<Record<string, string>> = {
+  // interaction flows A5 — the corpus, the walk, the marking
+  survey_wayback_captures: 'interaction A5 :1075',
+  scan_captures: 'interaction A5 :1090',
+  approve_article_rules: 'interaction A5 :1141',
+  resolve_scan_stop: 'interaction A5 :1164',
+  reset_article_calibration: 'interaction A5 :1190',
+  get_article_rules: 'interaction A5 :1199',
+  list_captures: 'interaction A5 :1208',
+  get_rule_history: 'interaction A5 :1214',
+  list_pages: 'interaction A5 :1071 (2026-09-14)',
+  // evidence flows A4
+  list_findings: 'evidence A4 :1080',
+  get_diff_input: 'evidence A4 :1095',
+  verify_claim_text: 'evidence A4 :1101',
+  get_claim_trajectories: 'evidence A4 :1103',
+  resolve_record: 'evidence A4 :1105',
+  check_on_chain_status: 'evidence A4 :1111',
+  // ui flows §6.1 — the corpus across pages (UI-2)
+  list_corpus: 'ui flows §6.1 :236',
+  list_trajectories: 'ui flows §6.1 :244',
+  search_corpus: 'ui flows §6.1 :248',
+  open_debate: 'evidence A4 :1117',
+  respond_in_debate: 'evidence A4 :1129',
+  promote_from_debate: 'evidence A4 :1132',
+  get_debate: 'evidence A4 :1144',
+  list_evidence_reviews: 'evidence A4 :1146',
+  review_evidence: 'evidence A4 :1154',
+  // thesis flows A4
+  list_theses: 'thesis A4 :1426',
+  list_framings: 'thesis A4 :1432 (2026-09-14)',
+  open_framing: 'thesis A4 :1434',
+  assess_framing: 'thesis A4 :1442',
+  choose_framing: 'thesis A4 :1452',
+  get_framing: 'thesis A4 :1458',
+  create_thesis: 'thesis A4 :1461',
+  add_thesis_version: 'thesis A4 :1468',
+  get_thesis_context: 'thesis A4 :1476',
+  run_analysis: 'thesis A4 :1481',
+  decide_gap: 'thesis A4 :1488',
+  draft_foia_request: 'thesis A4 :1496',
+  get_whistleblower_call: 'thesis A4 :1501',
+  check_publication_readiness: 'thesis A4 :1506',
+  publish_thesis: 'thesis A4 :1510',
+  unpublish_thesis: 'thesis A4 :1516',
+  add_note: 'thesis A4 :1520',
+  list_thesis_reviews: 'thesis A4 :1523',
+  audit_thesis_claims: 'thesis A4 :1529 (unchanged)',
+  get_thesis_trajectory_citations: 'thesis A4 :1529 (unchanged)',
+  // No tool contract: the environment's identity, which every write is checked against before it is made — CLAUDE.md
+  // ("Identify the environment"), named as the acceptance read by evidence flows :670 and :739.
+  get_environment: 'CLAUDE.md; evidence flows :670, :739',
+};
+
+/** Names registered with no design line, and designed names not registered — both empty, or the surface drifted. */
+function surfaceDrift(registered: readonly string[], designed: readonly string[]): { undesigned: string[]; unregistered: string[] } {
+  const reg = new Set(registered);
+  const des = new Set(designed);
+  return {
+    undesigned: registered.filter((t) => !des.has(t)).sort(),
+    unregistered: designed.filter((t) => !reg.has(t)).sort(),
+  };
+}
+
+describe('the MCP surface is exactly the designs\' — thesis refactor plan step 25, §7', () => {
+  it('registers exactly the designed tools: none without a design line, none designed and missing', () => {
+    expect(surfaceDrift(registeredToolNames(), Object.keys(DESIGNED_SURFACE))).toEqual({ undesigned: [], unregistered: [] });
+  });
+
+  it('DETECTS both halves of drift — a tool registered with no design line, and a designed tool left unregistered', () => {
+    expect(surfaceDrift(['a', 'b', 'extra'], ['a', 'b'])).toEqual({ undesigned: ['extra'], unregistered: [] });
+    expect(surfaceDrift(['a'], ['a', 'gone'])).toEqual({ undesigned: [], unregistered: ['gone'] });
+  });
 });

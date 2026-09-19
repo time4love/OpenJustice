@@ -39,3 +39,19 @@ export function verdict(phrase: string, text: string | null): Verdict {
   if (text === null) return 'UNCHECKED';
   return normaliseClaim(text).includes(normaliseClaim(phrase)) ? 'PRESENT' : 'ABSENT';
 }
+
+/**
+ * The verdict over a record whose content is SEVERAL texts — a diff's chunks — asked of each text APART: PRESENT iff
+ * SOME ONE text carries the phrase, ABSENT otherwise. There is NO join, so no separator can be wrong: `normaliseClaim`
+ * collapses every separator to one space, and a joined search would report a phrase STRADDLING two chunks as PRESENT
+ * although no chunk says it. An EMPTY collection is content that was read and says nothing — asked once against the
+ * empty text, so ABSENT, never UNCHECKED.
+ *
+ * ADDED AT THESIS STEP 22, BY ADDITION, DECLARED (R48 chunk 3, REVIEW's L1): the framing assessor's audit and the
+ * critic's each spelled this fold, and both now CALL it — in the module that spells the three values, so no audit
+ * spells a verdict.
+ */
+export function verdictInAny(phrase: string, texts: readonly string[]): Verdict {
+  if (texts.length === 0) return verdict(phrase, '');
+  return texts.some((text) => verdict(phrase, text) === 'PRESENT') ? 'PRESENT' : 'ABSENT';
+}

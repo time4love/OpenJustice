@@ -2,7 +2,6 @@
 
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { SiteHeader } from '@/components/SiteHeader';
 
 // ---------------------------------------------------------------------------
 // PillarCard
@@ -57,8 +56,6 @@ export default function AboutPage() {
 
   return (
     <main className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <SiteHeader current="about" maxWidth="max-w-5xl" />
 
       {/* Hero */}
       <section className="bg-white border-b border-slate-200">

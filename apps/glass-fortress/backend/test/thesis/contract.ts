@@ -155,6 +155,10 @@ export const MODULES = {
     exports: { getThesisContextHandler: fn(20), getThesisContextSchema: table(20) },
   },
   'mcp/tools/addNote': { step: 20, exports: { addNoteHandler: fn(20), addNoteSchema: table(20) } },
+  // ADDED 2026-09-14, between steps 20 and 22, on the researcher's ruling: the step-19 record's F3 — nothing
+  // listed a researcher's framings, and step 20's staging exercise stopped on its first step for want of an
+  // id no tool could give. Carried as step 20's, the layer it reads; thesis A4 owes the amendment.
+  'mcp/tools/listFramings': { step: 20, exports: { listFramingsHandler: fn(20), listFramingsSchema: table(20) } },
   'mcp/tools/runAnalysis': { step: 22, exports: { runAnalysisHandler: fn(22), runAnalysisSchema: table(22) } },
   'mcp/tools/decideGap': { step: 22, exports: { decideGapHandler: fn(22), decideGapSchema: table(22) } },
   'mcp/tools/draftFoiaRequest': {
@@ -392,7 +396,6 @@ export type ThesisCode =
   | 'REQUEST_REQUIRED'
   | 'CALL_ITEM_REQUIRED'
   | 'STALE_SEQUENCE'
-  | 'NAMES_PERSON'
   | 'NO_SUCH_GAP'
   | 'NOTHING_NEW'
   | 'NOT_PUBLISHABLE'
@@ -416,6 +419,7 @@ export type ToolName =
   | 'publish_thesis'
   | 'unpublish_thesis'
   | 'add_note'
+  | 'list_framings'
   | 'list_thesis_reviews';
 
 export interface ToolContract {
@@ -426,10 +430,17 @@ export interface ToolContract {
   codes: readonly ThesisCode[];
   /** A code whose only arm crosses a model: in the set, OWED to its step, never claimed tested. */
   owed: readonly { code: ThesisCode; step: number }[];
+  /**
+   * The codes a tool refuses ONLY under a non-default `scope` — UI-2 (docs/gf-ui-refactor-plan.md UI-2 :161, §5 :903;
+   * docs/gf-ui-flows.md §7.1 :320–:321, A5 :1064): `scope: 'all'` without an identity is refused on every route and tool.
+   * Held by `test/thesis/scope.test.ts`' own equality and NEVER by `reads.test.ts` (KEEP), whose cases pass no `scope` and
+   * so produce none of these — which is why they are not in `codes`. Ruled 2026-09-15 (the researcher, R52).
+   */
+  scopeCodes?: readonly ThesisCode[];
 }
 
 export const TOOLS: Readonly<Record<ToolName, ToolContract>> = {
-  list_theses: { module: 'mcp/tools/listTheses', access: 'PUBLIC', paid: false, codes: [], owed: [] },
+  list_theses: { module: 'mcp/tools/listTheses', access: 'PUBLIC', paid: false, codes: [], owed: [], scopeCodes: ['NO_RESEARCHER'] },
   open_framing: {
     module: 'mcp/tools/openFraming',
     access: 'WRITE',
@@ -535,22 +546,27 @@ export const TOOLS: Readonly<Record<ToolName, ToolContract>> = {
       'NO_THESIS',
       'NOT_AUTHOR',
       'NO_HEAD',
+      // ADDED AT THESIS STEP 22, the researcher's ruling of 2026-09-14 (A4 :1492 as amended): a gapId the log does not
+      // hold with no description, or a gapId and a description that disagree — after NO_HEAD, before NOT_CITED.
+      'NO_SUCH_GAP',
       'NOT_CITED',
       'REASON_REQUIRED',
       'REQUEST_REQUIRED',
       'CALL_ITEM_REQUIRED',
       'STALE_SEQUENCE',
     ],
-    // A4 :1494: "checked by the same rule as T5" — T5's rule is the publication
-    // assessor's name list, a model nothing mocks at step 17. OWED TO 23, not 22 (the
-    // R42 follow-up, REVIEW's ruling): plan step 23 builds that assessor and its rule.
-    owed: [{ code: 'NAMES_PERSON', step: 23 }],
+    // NO NAMES_PERSON (the researcher's ruling, 2026-09-14, thesis step 23): a person named in a call item fails
+    // check 16 NAMES_NO_PERSON at publication, which examines the text AND the appeals that publish with it — so no
+    // decision refuses it and `decide_gap` stays unpaid. A4 :1494 amended in place 2026-09-14.
+    owed: [],
   },
   draft_foia_request: {
     module: 'mcp/tools/draftFoiaRequest',
     access: 'GATED',
     paid: true,
-    codes: ['NO_RESEARCHER', 'NO_THESIS', 'NOT_AUTHOR', 'NO_HEAD', 'NO_SUCH_GAP'],
+    // AWAITING_DERIVATION ADDED AT THESIS STEP 22 (the researcher's ruling on R48 chunk 4's Q4; A4 :1499 amended in
+    // place): the drafter is never handed content that does not exist, as the critic is not.
+    codes: ['NO_RESEARCHER', 'NO_THESIS', 'NOT_AUTHOR', 'NO_HEAD', 'NO_SUCH_GAP', 'AWAITING_DERIVATION'],
     owed: [],
   },
   // Q3b: a PUBLIC read refuses nothing — an id naming no thesis is `{ live: false }`.
@@ -598,6 +614,10 @@ export const TOOLS: Readonly<Record<ToolName, ToolContract>> = {
     codes: ['NO_RESEARCHER', 'NEITHER', 'NO_THESIS', 'NO_FRAMING', 'NOT_AUTHOR', 'EMPTY'],
     owed: [],
   },
+  // A GATED read that refuses nothing (2026-09-14, the researcher's ruling — see MODULES): every framing to
+  // any researcher, the same bytes with and without an identity; held in the unit project
+  // (`test/listFramings.test.ts`), which gates.
+  list_framings: { module: 'mcp/tools/listFramings', access: 'GATED', paid: false, codes: [], owed: [] },
   list_thesis_reviews: {
     module: 'mcp/tools/listThesisReviews',
     access: 'GATED',

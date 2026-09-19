@@ -2,7 +2,6 @@
 
 import { useState, useMemo, useId } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
-import { SiteHeader } from '@/components/SiteHeader';
 import { AuthGuard } from '@/components/AuthGuard';
 import { fetchJson } from '@/lib/api';
 import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
@@ -331,7 +330,6 @@ function PatternsContent() {
 
   return (
     <main className="min-h-screen bg-slate-50">
-      <SiteHeader current="home" />
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-6">
         <div>
           <h1 className="text-xl font-bold text-slate-900">{t('title')}</h1>

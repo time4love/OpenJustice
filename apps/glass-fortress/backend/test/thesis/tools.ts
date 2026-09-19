@@ -3,7 +3,21 @@ import { AFTER, BEFORE, DIFF_NAME, DIFF_ROW, CURRENT_VERSION, PAGE, URL } from '
 import { asked, db, rolledBack, store, written, writtenViaTx, type Row, type Write } from '../helpers/evidenceDouble';
 import { built } from './absent';
 import { MODULES, TOOLS, type ThesisCode, type ThesisRow, type ToolName, type WriteToolOnAThesis } from './contract';
-import { CLAIM, FRAMING, MENTION, NOTE, OPEN_GAP, PROVISION, ROUNDS, THESIS, TRAJECTORY_ID, VERSION, VERSION_TEXT } from './fixtures';
+import {
+  AUTHOR,
+  CLAIM,
+  FRAMING,
+  MENTION,
+  NOTE,
+  OPEN_GAP,
+  OTHER_RESEARCHER,
+  PROVISION,
+  ROUNDS,
+  THESIS,
+  TRAJECTORY_ID,
+  VERSION,
+  VERSION_TEXT,
+} from './fixtures';
 import { mentionRow } from './rows';
 
 // ---------------------------------------------------------------------------
@@ -55,6 +69,22 @@ const identity: { researcherId: string | null } = { researcherId: null };
  */
 export const researcherContextDouble = {
   getResearcherId: (): string | null => identity.researcherId,
+  /**
+   * `researcherContext.run` — UI-3, additive (R53 sketch §6-D9): the gated route adapter enters the context once per
+   * request, as `mcpRoutes.ts` does. The researcher is in context for `fn` and the one before is restored when it
+   * settles, so a request leaves nobody behind it.
+   */
+  researcherContext: {
+    run: async <T>(store: { researcherId: string }, fn: () => T): Promise<Awaited<T>> => {
+      const before = identity.researcherId;
+      identity.researcherId = store.researcherId;
+      try {
+        return await fn();
+      } finally {
+        identity.researcherId = before;
+      }
+    },
+  },
 };
 
 // --- the tripwire ------------------------------------------------------------
@@ -104,19 +134,67 @@ export function committed(): Write[] {
 }
 
 /**
+ * ONE WALK over the double's own delegates, read by both `delegatesCalled` and `delegateCalls`.
+ *
+ * It is a WALK and not a list because a list of delegates is an enumeration standing for a property —
+ * `test/helpers/evidenceDouble.ts` :471–:482 records that exact shape being rejected once already. A count
+ * built on a walk cannot go blind when a delegate is added: the `asked` log can, and did. `asked` is appended
+ * only by the opt-in `ask()` wrapper (`evidenceDouble.ts` :105–:108), and UI-2 added four delegates nobody
+ * wrapped — `trackedUrl.findUnique`, `trackedUrl.findMany`, `urlSnapshot.findMany`, `urlVersionDiff.findMany`
+ * — so a cost read from `asked` reports 15 where the body really makes 19.
+ */
+function eachDelegate(visit: (name: string, mock: jest.Mock) => void): void {
+  for (const [model, delegate] of Object.entries(db)) {
+    // `$transaction` is a function, not a delegate, and is never one of the queries a body COSTS — the same
+    // exclusion `evidenceDouble.ts`' `transactionClient()` states as "a function, not a delegate, and must
+    // never be wrapped". `delegatesCalled` kept it before this walk existed and keeps it now: it reports a
+    // NAME, and `$transaction` being named is a fact about the call, not a query counted twice. The divergence
+    // is deliberate and is why the two readers take different visitors rather than sharing one filter.
+    if (jest.isMockFunction(delegate)) {
+      visit(model, delegate);
+      continue;
+    }
+    if (typeof delegate !== 'object' || delegate === null) continue;
+    const methods: Readonly<Record<string, unknown>> = delegate;
+    for (const [op, method] of Object.entries(methods)) {
+      if (jest.isMockFunction(method)) visit(`${model}.${op}`, method);
+    }
+  }
+}
+
+/**
  * Every delegate method of the shared double called in this case, as `model.op` —
  * the jest config's `clearMocks` empties them before each case. The ORDER's property:
  * a call refused before any query leaves this empty, whichever delegates it would
  * have asked.
  */
 export function delegatesCalled(): string[] {
-  return Object.entries(db).flatMap(([model, delegate]) => {
-    if (jest.isMockFunction(delegate)) return delegate.mock.calls.length > 0 ? [model] : [];
-    const methods: Readonly<Record<string, unknown>> = delegate;
-    return Object.entries(methods).flatMap(([op, method]) =>
-      jest.isMockFunction(method) && method.mock.calls.length > 0 ? [`${model}.${op}`] : [],
-    );
+  const called: string[] = [];
+  eachDelegate((name, mock) => {
+    if (mock.mock.calls.length > 0) called.push(name);
   });
+  return called;
+}
+
+/**
+ * HOW MANY delegate calls the double has answered — the COMPLETE cost of a read, from the same walk
+ * `delegatesCalled` reports names from, so a delegate added tomorrow is counted without anyone editing this.
+ *
+ * `$transaction` is EXCLUDED here although `delegatesCalled` names it: it is one call that wraps others, and
+ * counting it would add one to the cost of every write path while adding no query. This read path opens no
+ * transaction at all — measured zero — so nothing in this chunk turns on it; the exclusion is stated because
+ * this file has 33 importers and the next caller may not be on a read path.
+ *
+ * Read it as a DIFFERENCE, before and after the act, rather than resetting anything: nothing else's mocks are
+ * disturbed, which is the `throughTransaction` marker shape (`evidenceDouble.ts` :462–:469).
+ */
+export function delegateCalls(): number {
+  let total = 0;
+  eachDelegate((name, mock) => {
+    if (name === '$transaction') return;
+    total += mock.mock.calls.length;
+  });
+  return total;
 }
 
 // --- reaching a handler --------------------------------------------------------
@@ -238,6 +316,20 @@ export function codeSetEquality(tool: ToolName): void {
     const owedCodes = owed.map((o) => o.code);
     const got = [...new Set([...(produced.get(tool) ?? []), ...owedCodes])].sort();
     expect(got).toEqual([...new Set([...codes, ...owedCodes])].sort());
+  });
+}
+
+/**
+ * The tool's equality over the codes it refuses ONLY under a non-default `scope` — `scopeCodes` (UI-2, ruled
+ * 2026-09-15): the same produced map, read against `TOOLS[tool].scopeCodes` and nothing else. Held by
+ * `scope.test.ts`, never by `reads.test.ts` (KEEP), whose cases pass no `scope` and so produce none of these; a tool
+ * with no `scopeCodes` has an empty set to equal. DEFINED LAST in its describe, as `codeSetEquality` is.
+ */
+export function scopeCodeSetEquality(tool: ToolName): void {
+  it(`${tool} — the codes its scope cases produced are contract.ts's scopeCodes exactly`, async () => {
+    await handlerOf(tool);
+    const got = [...(produced.get(tool) ?? [])].sort();
+    expect(got).toEqual([...(TOOLS[tool].scopeCodes ?? [])].sort());
   });
 }
 
@@ -367,6 +459,13 @@ export function seedThesis(over: Partial<ThesisRow> = {}): ThesisRow {
   store.mentions = thesis.headVersionId === null ? [] : [mentionRow(MENTION, thesis.publishedVersionId === VERSION.id)];
   store.framings = [FRAMING];
   store.framingRounds = [...ROUNDS];
+  // THE TWO RESEARCHERS, each with a handle — thesis step 20, additive (R47 §6-R8): `list_theses` names a
+  // published thesis's author by `Researcher.handle` (A4 :1427), and an author the store does not hold is an
+  // FK violation the handler refuses to paper over.
+  store.researchers = [
+    { id: AUTHOR, handle: 'חוקר_א' },
+    { id: OTHER_RESEARCHER, handle: 'watchdog_7' },
+  ];
   return thesis;
 }
 

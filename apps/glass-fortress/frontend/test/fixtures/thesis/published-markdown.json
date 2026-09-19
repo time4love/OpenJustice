@@ -1,0 +1,171 @@
+{
+  "thesisId": "cmfxthesisone000000000000",
+  "publicInterestStatement": "עניינה של בדיקה זו הוא ביכולתו של הציבור לשקול את סיכוניו של חיסון שהוצע לפעוטות.\n\nהרשומות עצמן פתוחות לכל, והעמוד שנבדק הוא <https://corona.health.gov.il/> בלבד.",
+  "claim": "העמוד הציבורי הציג מידע על תופעות לוואי ולאחר מכן הסיר אותו, בלי שהשינוי נאמר לציבור.",
+  "provision": "PATIENT_RIGHTS_13",
+  "version": {
+    "versionId": "cmfxversioncurrent0000000",
+    "text": "## מה נמצא בתיעוד\n\nהפסקה הזו נושאת **הדגשה**, *נטייה* ו~~מחיקה~~ — שלוש יכולות שהניסוח מול המודל מייצר.\n\n### שלוש הרמות\n\n#### הרמה השלישית\n\nהרשימה של הממצאים:\n\n- הפריט הראשון\n- הפריט השני\n  - פריט מקונן מתחתיו\n- הפריט השלישי\n\nוהסדר שבו הם התרחשו:\n\n1. ראשית\n2. שנית\n3. שלישית\n\n> ציטוט מתוך העמוד כפי שהוא נוסח באותו יום.\n\nערך בתוך השורה נכתב כ־`max-age=0` ובלוק שלם נראה כך:\n\n```json\n{ \"state\": \"ARCHIVED\" }\n```\n\n---\n\nהקישור המלא [אל העמוד הארכיוני](https://example.gov.il/covid/vaccine) ואוטולינק <https://example.gov.il/covid/faq>.\n\n| מועד | מצב | הערה |\n|:---|---:|:---:|\n| 28.6.2022 | נוכח | כפי שנוסח |\n| 5.8.2022 | הוסר | ללא הודעה |\n\n- [ ] פריט משימה שאינו חלק מהתזה\nהערת שוליים[^1] שאינה חלק מהתזה.\n\nכתובת חשופה https://example.gov.il/covid/archive נשארת טקסט, ו<b>תגית גולמית</b> נשארת כפי שנכתבה.\n",
+    "contentHash": "0x2929292929292929292929292929292929292929292929292929292929292929",
+    "publishedAt": "2026-09-10T09:30:00.000Z",
+    "author": "handle-fixture"
+  },
+  "citations": [
+    {
+      "kind": "EVIDENCE",
+      "name": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "pin": "0xe5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+      "record": {
+        "url": "https://www.example.gov.il/covid/vaccine",
+        "capture": "20210312090000"
+      },
+      "content": {
+        "kind": "CAPTURE",
+        "text": "הפסקה כפי שנשמרה בארכיון, עם המשפט על תופעות הלוואי."
+      },
+      "verified": {
+        "verified": true,
+        "captures": [
+          {
+            "capture": "20210312090000",
+            "attributed": true,
+            "anchoredHashMatchesDocumentHash": true
+          }
+        ]
+      },
+      "flag": {
+        "flagged": false,
+        "reasons": []
+      },
+      "argued": true,
+      "overObjection": false
+    },
+    {
+      "kind": "EVIDENCE",
+      "name": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "pin": "0xf6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6",
+      "record": {
+        "url": "https://www.example.gov.il/covid/vaccine",
+        "before": "20210301080000",
+        "after": "20210412100000"
+      },
+      "content": {
+        "kind": "DIFF",
+        "chunks": [
+          {
+            "side": "before",
+            "text": "הפסקה על תופעות הלוואי הופיעה כאן."
+          },
+          {
+            "side": "after",
+            "text": "הפסקה אינה מופיעה עוד."
+          }
+        ]
+      },
+      "verified": {
+        "notEvaluable": "NO_CAPTURE_ANCHORED"
+      },
+      "flag": {
+        "flagged": true,
+        "reasons": [
+          "NOT_CITATION_CURRENT"
+        ]
+      },
+      "argued": true,
+      "overObjection": true
+    },
+    {
+      "kind": "TRAJECTORY",
+      "name": "cmfxtrajectoryone00000000",
+      "resolves": true,
+      "claimText": "החיסון בטוח לחלוטין ואין תופעות לוואי מוכרות",
+      "url": "https://news.example.co.il/health/2021",
+      "transitions": 3,
+      "current": false
+    }
+  ],
+  "appeals": {
+    "call": [
+      {
+        "whatIsNeeded": "ההנחיה הפנימית שלפיה נוסחה ההודעה על תופעות הלוואי",
+        "whoWouldHaveSeenIt": "מי שערך את העמוד הציבורי באותה תקופה",
+        "unit": "היחידה לפרסומי אינטרנט",
+        "window": "1.3.2021 – 30.4.2021"
+      }
+    ],
+    "requests": [
+      {
+        "text": "תאריך: {{DATE}}\n\nאני, {{REQUESTER_NAME}}, מבקש/ת בהתאם לחוק חופש המידע את ההנחיה שעל פיה נוסח העמוד בין התאריכים האמורים.\n\n{{REQUESTER_NAME}}\n{{DATE}}",
+        "authority": "הממונה על חופש המידע",
+        "legalBasis": "חוק חופש המידע, התשנ\"ח-1998",
+        "addresses": [
+          "foia@example.gov.il"
+        ],
+        "restsOn": [
+          "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+        ]
+      }
+    ],
+    "intake": "שלחו את הבקשה בשמכם. ערוץ ההגשה עדיין אינו פתוח, והקריאה פתוחה."
+  },
+  "rationale": "הגרסה הזו נשענת על שתי רשומות שנשמרו בארכיון, ועל כן היא מתאימה לפרסום.",
+  "overObjection": true,
+  "analysisRun": true,
+  "history": [
+    {
+      "versionId": "cmfxversionprevious000000",
+      "contentHash": "0x3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a",
+      "publishedAt": "2026-09-02T08:00:00.000Z",
+      "citations": [
+        {
+          "kind": "EVIDENCE",
+          "name": "0xd4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+          "pin": "0x1818181818181818181818181818181818181818181818181818181818181818"
+        },
+        {
+          "kind": "EVIDENCE",
+          "name": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "pin": "0x0707070707070707070707070707070707070707070707070707070707070707"
+        },
+        {
+          "kind": "TRAJECTORY",
+          "name": "cmfxtrajectoryone00000000",
+          "pin": null
+        }
+      ]
+    },
+    {
+      "versionId": "cmfxversioncurrent0000000",
+      "contentHash": "0x2929292929292929292929292929292929292929292929292929292929292929",
+      "publishedAt": "2026-09-10T09:30:00.000Z",
+      "citations": [
+        {
+          "kind": "EVIDENCE",
+          "name": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "pin": "0xe5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5"
+        },
+        {
+          "kind": "EVIDENCE",
+          "name": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "pin": "0xf6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6"
+        },
+        {
+          "kind": "TRAJECTORY",
+          "name": "cmfxtrajectoryone00000000",
+          "pin": null
+        }
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "trackedUrlId": "cmfxpagealpha000000000000",
+      "url": "https://www.example.gov.il/covid/vaccine"
+    },
+    {
+      "trackedUrlId": "cmfxpagebeta0000000000000",
+      "url": "https://news.example.co.il/health/2021"
+    }
+  ]
+}

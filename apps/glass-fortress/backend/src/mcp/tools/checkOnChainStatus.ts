@@ -13,12 +13,12 @@ import {
 import { storedAttributionFor, type StoredAttribution } from '../../services/evidencePredicates';
 import {
   loadCaptures,
-  loadPage,
   resolveRecordByName,
   type Page,
+  type PageRef,
   type TimelineCapture,
 } from '../../services/corpusReads';
-import { answer, refusal, openPage, shared, type Refusal } from './evidenceRefusals';
+import { answer, refusal, openPage, pageByUrl, type Refusal } from './evidenceRefusals';
 
 // ---------------------------------------------------------------------------
 // check_on_chain_status — PUBLIC, RE-SCOPED TO A CAPTURE — evidence A4, §5.
@@ -93,40 +93,66 @@ export async function checkOnChainStatusHandler(input: {
   fileHash?: string;
 }): Promise<string> {
   return answer(async (): Promise<OnChainStatus | Refusal> => {
-    const subject = await subjectOf(input);
-    if ('error' in subject) return subject;
+    if (input.fileHash !== undefined && input.fileHash !== '') {
+      const subject = await recordSubject(input.fileHash);
+      if ('error' in subject) return subject;
+      return statusFor(subject);
+    }
+    if (input.url === undefined || input.url === '') {
+      return refusal(
+        'NOT_A_CAPTURE',
+        'Name what to check: a page and a capture (url, capture), or a record (fileHash).',
+      );
+    }
+    return chainStatusAt(pageByUrl(input.url), input.capture);
+  });
+}
 
-    const access = await openPage(subject.page);
-    if (access.refused !== null) return access.refused;
+/**
+ * THE ONE FUNCTION behind the tool's page-and-capture question and `GET /api/pages/:trackedUrlId/captures/:capture/chain`
+ * (docs/gf-ui-flows.md §6 :216–:217; UI-3): the page's row through its door's ref, the capture by its timestamp.
+ */
+export async function chainStatusAt(
+  ref: PageRef,
+  capture: string | undefined,
+): Promise<OnChainStatus | Refusal<'NOT_SURVEYED' | 'NOT_PUBLIC' | 'NOT_A_CAPTURE' | 'CHAIN_UNAVAILABLE'>> {
+  const subject = await captureSubject(ref, capture);
+  if ('error' in subject) return subject;
+  return statusFor(subject);
+}
 
-    const identity = await readChainIdentity();
-    const registry = {
-      chainId: identity.reachable ? identity.chainId : null,
-      registryAddress:
-        identity.registryAddress === null ? null : normaliseAddress(identity.registryAddress),
-    };
+/** The check itself, over what was asked about — the same for a capture named by its page and for a record's captures. */
+async function statusFor(subject: Subject): Promise<OnChainStatus | Refusal<'NOT_PUBLIC' | 'CHAIN_UNAVAILABLE'>> {
+  const access = await openPage(subject.page);
+  if (access.refused !== null) return access.refused;
 
-    let web3: Web3Service;
+  const identity = await readChainIdentity();
+  const registry = {
+    chainId: identity.reachable ? identity.chainId : null,
+    registryAddress:
+      identity.registryAddress === null ? null : normaliseAddress(identity.registryAddress),
+  };
+
+  let web3: Web3Service;
+  try {
+    web3 = new Web3Service();
+  } catch (err) {
+    return chainUnavailable(err);
+  }
+
+  const stored = await storedAttributionFor(subject.captures.map((c) => c.id));
+  const captures: CaptureStatus[] = [];
+  for (const capture of subject.captures) {
+    let claim: ClaimAttribution;
     try {
-      web3 = new Web3Service();
+      claim = await attributeClaim(web3, entryFromChain(web3), toBytes32(capture.documentHash));
     } catch (err) {
       return chainUnavailable(err);
     }
+    captures.push(statusOf(capture, claim, stored.get(capture.id)));
+  }
 
-    const stored = await storedAttributionFor(subject.captures.map((c) => c.id));
-    const captures: CaptureStatus[] = [];
-    for (const capture of subject.captures) {
-      let claim: ClaimAttribution;
-      try {
-        claim = await attributeClaim(web3, entryFromChain(web3), toBytes32(capture.documentHash));
-      } catch (err) {
-        return chainUnavailable(err);
-      }
-      captures.push(statusOf(capture, claim, stored.get(capture.id)));
-    }
-
-    return { page: { url: subject.page.url, public: access.public }, captures, registry };
-  });
+  return { page: { url: subject.page.url, public: access.public }, captures, registry };
 }
 
 /** One capture's answer: what the chain holds, and what the last stored check said. */
@@ -154,7 +180,7 @@ function statusOf(
  * that contradict each other are not a verdict" — and it is reported here rather
  * than swallowed, because the safe direction is to decide nothing.
  */
-function chainUnavailable(err: unknown): Refusal {
+function chainUnavailable(err: unknown): Refusal<'CHAIN_UNAVAILABLE'> {
   const message = err instanceof Error ? err.message : String(err);
   const kind = err instanceof RegistryReadError ? 'The registry answered inconsistently' : 'The registry could not be reached';
   return refusal(
@@ -189,39 +215,30 @@ interface Subject {
   captures: TimelineCapture[];
 }
 
-async function subjectOf(input: {
-  url?: string;
-  capture?: string;
-  fileHash?: string;
-}): Promise<Subject | Refusal> {
-  if (input.fileHash !== undefined && input.fileHash !== '') {
-    const resolved = await resolveRecordByName(input.fileHash);
-    if (resolved === null) {
-      return refusal(
-        'NOT_A_RECORD',
-        `${input.fileHash} names nothing the corpus holds, so there are no captures beneath it ` +
-          'to ask the chain about.',
-      );
-    }
-    const captures =
-      resolved.capture !== null
-        ? [resolved.capture]
-        : resolved.pair === null
-          ? []
-          : [resolved.pair.before, resolved.pair.after];
-    return { page: resolved.page, captures };
-  }
-
-  if (input.url === undefined || input.url === '') {
+/** A record's captures, by its name. */
+async function recordSubject(fileHash: string): Promise<Subject | Refusal<'NOT_A_RECORD'>> {
+  const resolved = await resolveRecordByName(fileHash);
+  if (resolved === null) {
     return refusal(
-      'NOT_A_CAPTURE',
-      'Name what to check: a page and a capture (url, capture), or a record (fileHash).',
+      'NOT_A_RECORD',
+      `${fileHash} names nothing the corpus holds, so there are no captures beneath it ` +
+        'to ask the chain about.',
     );
   }
-  const page = await loadPage(input.url);
-  if (page === null) return shared.notSurveyed(input.url);
+  const captures =
+    resolved.capture !== null
+      ? [resolved.capture]
+      : resolved.pair === null
+        ? []
+        : [resolved.pair.before, resolved.pair.after];
+  return { page: resolved.page, captures };
+}
 
-  const capture = input.capture;
+/** One capture of a page, by its timestamp — the page through its door's ref. */
+async function captureSubject(ref: PageRef, capture: string | undefined): Promise<Subject | Refusal<'NOT_SURVEYED' | 'NOT_A_CAPTURE'>> {
+  const page = await ref.load();
+  if (page === null) return ref.missing();
+
   if (capture === undefined || !isWaybackTimestamp(capture)) {
     return refusal(
       'NOT_A_CAPTURE',

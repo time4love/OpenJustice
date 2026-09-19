@@ -42,6 +42,18 @@ const NAMES = [
   // `services/evidencePredicates.ts` on the ruling of 2026-09-09.
   'movedBetween',
   'whereChunksWent',
+  // R57 CHUNK 3'S TWO. `verifiedFor` and `flaggedFor` are the PLURAL FORMS, and the plural IS the
+  // implementation: the singulars `verified` and `flagged` now read their answer out of the map one of these
+  // returns. So VERIFIED's one importable symbol is spelled `verifiedFor` and FLAGGED's is `flaggedFor`, and
+  // until they were listed here this half forbade a second spelling of NOTHING — the same gap `publishable`
+  // had between step 12 and step 15, recorded below. The existing pattern needs no change: it anchors on
+  // `function <name>[<(]`, so `function verifiedFor(` matches its OWN entry and never `verified`'s.
+  //
+  // THE SECOND SPELLING THIS FORBIDS IS A REAL ONE. A batching fold written inside `publishedThesis.ts` —
+  // exactly what chunk 3 was told not to build — would be a second implementation of VERIFIED beside the
+  // predicate's, and evidence A6 :1219 calls that "the copy that drifts". The decoy plants it there.
+  'verifiedFor',
+  'flaggedFor',
   // AND `contains` IS DELIBERATELY NOT HERE. It is module-private, and this
   // scan's own sentence is "every predicate of A3 has ONE **importable**
   // symbol" — a helper nobody can import cannot be a second spelling anyone
@@ -527,7 +539,21 @@ describe("the debate's own refusal codes are produced in ONE module", () => {
   // contract"). The debate's rule is untouched: `openDebate.ts` is still the one
   // module that produces the debate's record checks, and the case below still
   // holds that it produces every one of them.
-  const NOT_THE_DEBATE_S = ['services/openDebate.ts', 'services/framingRounds.ts'];
+  //
+  // A FIFTH, BY NAME AND FOR THE SAME REASON — thesis step 20. `services/thesisVersionWrite.ts` produces
+  // `NOT_ACQUIRED` for `add_thesis_version` and `create_thesis`, which thesis A4 :1473 gives the version write
+  // by name — a citation over a capture the corpus never acquired (R47 §6-R1). The framingRounds precedent,
+  // exactly: a different contract reusing one word.
+  //
+  // AND `mcp/tools/decideGap.ts`, BY NAME AND FOR THE SAME REASON — thesis step 22. It produces `NOT_CITED` for
+  // `decide_gap`, which thesis A4 :1492 gives that tool by name: a gap decided CITED naming a record the head does not
+  // cite (R48 F5). A different contract reusing one word; the debate's rule below is untouched.
+  const NOT_THE_DEBATE_S = [
+    'services/openDebate.ts',
+    'services/framingRounds.ts',
+    'services/thesisVersionWrite.ts',
+    'mcp/tools/decideGap.ts',
+  ];
 
   it('only services/openDebate.ts produces them', () => {
     const offenders = modules()
@@ -676,6 +702,9 @@ describe('every predicate of A3 has ONE importable symbol', () => {
       'whereChunksWent',
       // Evidence step 15's — A3's PUBLISHABLE(m), every conjunct a CALL.
       'publishable',
+      // R57 chunk 3's — the plural forms, which ARE the implementation of VERIFIED and FLAGGED.
+      'verifiedFor',
+      'flaggedFor',
     ];
     const declared = built.filter((name) =>
       new RegExp(`function\\s+${name}\\s*[<(]`).test(predicates?.code ?? ''),

@@ -190,3 +190,26 @@ export function elementsOf(provision: string | null): readonly { element: string
   if (shape === undefined) return [];
   return Object.entries(shape.elements).map(([element, means]) => ({ element, means }));
 }
+
+/**
+ * The provision's TITLE as this table holds it — what the public thesis page names the provision by
+ * (docs/gf-ui-flows.md §17 :529–:530; thesis A1 :1251–:1254). `null` when the thesis has no provision.
+ *
+ * WHY THIS ONE THROWS WHERE `elementsOf` ANSWERS `[]`. `elementsOf` is asked about a provision a framing
+ * PROPOSES, which may be anything a researcher types: an unknown one is refused by `open_framing`'s
+ * NO_PROVISION_SHAPE (thesis A4 :1438), so answering "no elements" there is the honest shape of a value the
+ * caller is about to refuse. This one is asked only about a PUBLISHED thesis, whose provision already passed
+ * that refusal — so a miss here does not mean "unknown provision", it means the table lost an entry that a
+ * published page still cites. That is a defect of this repository, not of the caller's input, and a public
+ * page must not answer it by quietly dropping its provision.
+ */
+export function provisionTitleOf(provision: string | null): string | null {
+  if (provision === null) return null;
+  // Typed as possibly undefined so the guard is NECESSARY under both debt ratchets (CLAUDE.md, the .at() note).
+  const shapes: Readonly<Record<string, ProvisionShape | undefined>> = PROVISIONS;
+  const shape = shapes[provision];
+  if (shape === undefined) {
+    throw new Error(`provisionTitleOf: '${provision}' is not in PROVISIONS — a published thesis cites a provision the table does not hold`);
+  }
+  return shape.title;
+}

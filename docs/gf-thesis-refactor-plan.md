@@ -153,6 +153,11 @@ resolves against a table that plan creates — amended 2026-09-05 (document refa
 
 *Verified by:* the T2 contract; two writes against one head, the second refused; `affirmed` moved
 between two writes, the second refused; `versions-immutable` green.
+Landed 2026-09-14 (PR #440 → `5280f54`); exercised on staging 2026-09-14 through the connector, unsteered — the
+first thesis, CLAIM_MISMATCH on one changed character, STALE_HEAD against a moved head, both pins computed and
+matched by data, the draft invisible to an anonymous `list_theses`; `STALE_PIN` not reachable live until a record is
+promoted. The two reads the run needed first (`list_framings`, `list_pages`, PR #441) and the findings by owner are
+`docs/gf-thesis-step-20-2026-09-14.md`.
 
 ### 21 · The argument's thesis side
 
@@ -161,6 +166,12 @@ After evidence step 13: the citing paragraph handed to the assessor by `open_deb
 
 *Verified by:* the T3 contract; `EVIDENCE_ARGUED` proven to fail on a re-pinned mention until it is
 argued again.
+Closed 2026-09-14 by this note, the researcher's ruling: built before its turn — evidence step 13 (PR #403; `open_debate`
+hands the assessor the citing paragraph and refuses NOT_CITED from the head's mention, `promote_from_debate` writes
+`debateSessionId` on the head's mention with STALE_PIN at promotion), evidence step 15 (PR #411; check 7 `EVIDENCE_ARGUED`)
+and thesis step 20 (PR #440; a re-pinned mention carries no argument). No case of the thesis suite names this step and
+its contract owes it no export; check 7 failing through the thesis GATE is step 23's case. Recorded in
+`docs/gf-thesis-step-20-2026-09-14.md` §4.
 
 ### 22 · Analysis and gaps
 
@@ -172,12 +183,20 @@ FINDINGS 77 and 78 of the staging critique runs — absence rendered as a durati
 *Verified by:* the T4 contract; `gap-id-stable`; a second `run_analysis` on the same input refused
 `ANALYSIS_CURRENT` — no call spent twice.
 
+Landed 2026-09-14 (PR #444 → `866e57d`, surface 34 → 38, no migration); exercised on staging 2026-09-14 through the
+connector, unsteered — the critic run once, two gaps entered by their words, a request drafted and recorded, the
+stale sequence refused, the public call empty to an anonymous caller; ten of twelve predictions held. Record:
+`docs/gf-thesis-step-22-2026-09-14.md` (its §3: a paid act with no author; the naming session; the placeholders).
+
 ### 23 · The gate, publication, the public reads
 
 The seventeen checks of A6 calling A3's predicates, `NAMES_NO_PERSON` with its examined count;
 `publish_thesis` writing a `PublicationAttempt`, refused or not; `unpublish_thesis` writing a
 `Withdrawal`; the three public routes of A5 serving text and resolved mentions, never TipTap and
 never model prose; PUBLIC_PAGE amended in evidence's predicate module.
+A PAID ACT RECORDS WHO SPENT IT: `ThesisAnalysis` gains `researcherId` (A2 amended 2026-09-14 on step 22's live run —
+the history's ANALYSIS row read `researcherId: null`); the column's migration lands here, the first since step 18 —
+amended 2026-09-14 (docs/gf-thesis-step-22-2026-09-14.md §3, Live-5).
 Checks 18 and 19 of the amended A6, and `CITES_EVIDENCE`'s document arm, are added by
 `docs/gf-document-refactor-plan.md` step 34: they read tables that plan creates — amended
 2026-09-05 (document refactor plan).
@@ -185,6 +204,12 @@ Checks 18 and 19 of the amended A6, and `CITES_EVIDENCE`'s document arm, are add
 *Verified by:* the T5 contract; `names-vacuity`; the shape test that no analysis, assessment or
 objection field reaches `GET /api/thesis/:id`; a withdrawn thesis answers a notice, a never-published
 one 404.
+
+Landed 2026-09-14 (PR #446 → `4b0dacf`, surface 38 → 41, one migration: `ThesisAnalysis.researcherId`, taken in the
+container); exercised on staging the same evening through the connector, unsteered — readiness free and paid, a
+publication refused and its attempt recorded, the public reads 404 to an anonymous caller, a withdrawal refused; every
+prediction held but two. Nothing was published: the run stopped before a publication, by the researcher's choice. Record:
+`docs/gf-thesis-step-23-2026-09-14.md`.
 
 ### 24 · After publication
 
@@ -195,6 +220,14 @@ plan creates — amended 2026-09-05 (document refactor plan).
 
 *Verified by:* on staging, a re-walk moving one cited record's content; the author's list shows it;
 `audit-theses` exits 2 before the new version and 0 after.
+
+Landed 2026-09-15 (PR #448 → `25e28e9`, surface 41 → 42, no migration): `audit-theses` run in the staging container over zero
+published versions, exit 0, not recorded on the board (a vacuous run is never proof); `list_thesis_reviews` read through the
+connector, unsteered, every prediction held and nothing written. The *Verified by* exercise needs a published thesis and is OWED
+to the first real publication. Record: `docs/gf-thesis-step-24-2026-09-15.md`.
+The first real publication ran 2026-09-15 (run B): the one staging thesis published through the connector, `audit-theses` in the
+container over it exit 0 and recorded on the integrity board; the re-walk exercise stays owed, deferred until the corpus is expanded.
+Record: `docs/gf-thesis-run-b-2026-09-15.md`.
 
 ### 25 · THE THESIS SWITCH — the researcher's word
 
@@ -214,6 +247,11 @@ with `thesis` in it; `get_environment`'s counts no longer name a removed table.
 Pulled forward as 11a-thesis — decided 2026-09-08, the note above step 17; the code half is done
 there, the schema half at step 18, and what remains here is the `thesis` project joining the
 required run and the set-equality assertion on `mcpToolClassification`.
+The remainder landed 2026-09-15: `npm test` — the required check — selects `thesis`, and with it `walk` and `evidence`,
+all green on every file (the two beyond this step's text on the researcher's ruling of the same day; the non-gating CI job
+retired); `mcpToolClassification` asserts the registered surface equals a list of the designed tools, each beside the
+interaction A5, evidence A4 or thesis A4 line that names it — moved at every step that registers a tool, asserted against
+A4 in full at document refactor plan step 36. With it, step 25 is closed by the note above.
 
 ### 26 · The one thesis, rewritten
 
@@ -286,7 +324,7 @@ its computed proof from then on.
   and `audit-theses` has been observed to fail before going green there;
 - the public page serves text, resolved citations, the appeals and the notice, and no model prose,
   by a shape test;
-- the frontend's change landed before step 25, and the page rendered a published thesis after it.
+- the frontend's change landed before step 25, and the page rendered a published thesis after it — **CLOSED 2026-09-18 by UI-5** (`docs/gf-ui-step-5-2026-09-18.md`): the public page renders run B’s published thesis from its live body, and the three-voices reading test passed.
 
 ## 8. HAZARDS, NAMED
 

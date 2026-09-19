@@ -4,7 +4,6 @@ import { useState, useMemo } from 'react';
 import { useTargetEntityName } from '@/lib/targetEntity';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { SiteHeader } from '@/components/SiteHeader';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
 import { fetchJson } from '@/lib/api';
 import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
@@ -147,8 +146,6 @@ export default function FiguresPage() {
 
   return (
     <main className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <SiteHeader current="figures" maxWidth="max-w-6xl" tagline={t('tagline')} />
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
         <div className="flex flex-col sm:flex-row gap-6 items-start">

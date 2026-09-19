@@ -250,7 +250,10 @@ export const DEBATE: DebateSessionRow = {
   closedAt: null,
 };
 
-/** An opinion on VERSION: a model and a prompt version, and no researcher (A2 :1313–:1318). */
+/**
+ * An opinion on VERSION: a model, a prompt version, and WHO SPENT THE CALL — A2 :1317 as amended 2026-09-14, the column
+ * landed at thesis step 23 (declared edit, the R49 sketch §f2): a paid act always records it.
+ */
 export const ANALYSIS: ThesisAnalysisRow = {
   id: 'analysis-1',
   versionId: VERSION.id,
@@ -259,6 +262,7 @@ export const ANALYSIS: ThesisAnalysisRow = {
   model: 'critic-model',
   promptVersion: 'critic-v1',
   runAt: at(13, 40),
+  researcherId: AUTHOR,
 };
 
 export const ATTEMPT: PublicationAttemptRow = {

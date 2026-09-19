@@ -25,6 +25,7 @@
 // hoisting (the factory runs before an `import`ed binding is assigned).
 // ---------------------------------------------------------------------------
 
+import { Prisma } from '@prisma/client';
 import { PAGE, URL } from './corpusFixture';
 
 export interface Row {
@@ -192,6 +193,35 @@ export const store = {
    * nothing is answered `[]`.
    */
   trajectories: [] as Row[],
+  /**
+   * The researchers `researcher.findMany` answers — thesis step 20, additive (R47 §6-R8): `list_theses` names
+   * a published thesis's author by HANDLE (thesis A4 :1427; `Researcher.handle`). Empty by default, so a suite
+   * that seeds nothing is answered `[]` — and a handler that needs an author the store does not hold throws.
+   */
+  researchers: [] as Row[],
+  /**
+   * The detection passes `claimTrajectoryComputation.findFirst` answers — thesis step 20, additive (R47 E6): a
+   * `#tr_` citation resolves through THE ONE RESOLVER, `resolveTrajectoryCitations`, which asks for each cited
+   * page's newest pass. Empty by default, so the answer is `null` — "no newer pass" — exactly as a database
+   * holding none would answer.
+   */
+  computations: [] as Row[],
+  /**
+   * THE PAGES a corpus-wide read finds — UI-2 (R52 sketch §e2), additive. Empty by default, and while empty the
+   * `trackedUrl` delegates answer `PAGE` / `[PAGE]` to any `where`, as they always did; a suite that seeds the list
+   * gets a lookup by `id` or `url` and a `findMany` over it — the `thesis.findUnique` :498–:505 fallback shape. A
+   * two-page world (a public page beside a private one) is unwritable without it.
+   */
+  pages: [] as Row[],
+  /**
+   * THE WALK'S READS, for the research routes — UI-3 (R53 sketch §e2), additive. `workListRows` is a page's whole work-list
+   * as `loadWorkListRows` reads it (the single `workList` row answers as it always did while this is empty); `rules` and
+   * `ruleMatches` are what `get_article_rules`, `list_captures` and `get_rule_history` ask for. Empty by default, so a
+   * suite that seeds none is answered as before.
+   */
+  workListRows: [] as Row[],
+  rules: [] as Row[],
+  ruleMatches: [] as Row[],
 };
 
 type ThesisRowsKey =
@@ -213,16 +243,23 @@ type ThesisRowsKey =
  * The rows are reached through `store[key]` at CALL time, never captured,
  * because `resetDouble` replaces each array.
  */
-function appendOnly(model: string, key: ThesisRowsKey) {
+function appendOnly(model: string, key: ThesisRowsKey, unique: readonly string[] = []) {
   return {
     // HONOURS ITS `where` — equality over every field it names, as
     // `thesisVersion.findMany` does (round 2, M2). A double that answered every
     // row whatever it was asked would let a query that forgot its `thesisId`
     // read another thesis's rows and pass.
+    //
+    // AND `{ in: [...] }` ON A FIELD — thesis step 20, additive (R47 E3): HISTORY
+    // reads a thesis's rounds by its framings' ids and its analyses by its
+    // versions' ids. Before this an `{ in }` condition was compared by `===` and
+    // answered `[]` SILENTLY. Any OTHER object condition REJECTS, so a query this
+    // double does not model fails loudly instead of agreeing with it.
     findMany: jest.fn(
       ask(model, 'findMany', (args?: { where?: Row }) => {
-        const where = Object.entries(args?.where ?? {});
-        return Promise.resolve(store[key].filter((row) => where.every(([field, value]) => row[field] === value)));
+        const tests = whereTests(model, args?.where);
+        if (!Array.isArray(tests)) return Promise.reject(tests);
+        return Promise.resolve(store[key].filter((row) => tests.every((test) => test(row))));
       }),
     ),
     findUnique: jest.fn(
@@ -230,7 +267,21 @@ function appendOnly(model: string, key: ThesisRowsKey) {
         Promise.resolve(store[key].find((r) => r['id'] === args.where?.id) ?? null),
       ),
     ),
+    // THE UNIQUE INDEX, MODELLED — thesis step 22, additive (R48 E7, REVIEW's Q5). Where the table declares one
+    // (`ThesisGapDecision @@unique([thesisId, gapId, sequence])`, `ThesisAnalysis @@unique([versionId,
+    // inputFingerprint])`), a row equal on every indexed column to a held row REJECTS with the P2002 Prisma raises,
+    // its `meta.target` naming the columns — and records nothing. Not an armed flag: a flag lets ANY caught error
+    // pass for the collision, and a caller that forgot to read `meta.target` would pass with it.
     create: jest.fn((args: { data: Row }) => {
+      if (unique.length > 0 && store[key].some((row) => unique.every((field) => row[field] === args.data[field]))) {
+        return Promise.reject(
+          new Prisma.PrismaClientKnownRequestError(`Unique constraint failed on the fields: (${unique.join(', ')})`, {
+            code: 'P2002',
+            clientVersion: 'double',
+            meta: { target: [...unique] },
+          }),
+        );
+      }
       record(model, 'create', args.data);
       const created = { id: `${model}-${String(store[key].length + 1)}`, ...args.data };
       store[key].push(created);
@@ -240,11 +291,148 @@ function appendOnly(model: string, key: ThesisRowsKey) {
 }
 
 /**
+ * A `where` as row tests: a plain value is an EQUALITY, `{ in: [...] }` is membership, and any other object
+ * condition is an Error naming what the double does not model — thesis step 20, additive (R47 E3–E5).
+ */
+function whereTests(model: string, where: Row | undefined): ((row: Row) => boolean)[] | Error {
+  const tests: ((row: Row) => boolean)[] = [];
+  for (const [field, cond] of Object.entries(where ?? {})) {
+    if (typeof cond !== 'object' || cond === null) {
+      tests.push((row) => row[field] === cond);
+    } else if ('in' in cond && Array.isArray(cond.in) && Object.keys(cond).length === 1) {
+      const wanted: readonly unknown[] = cond.in;
+      tests.push((row) => wanted.includes(row[field]));
+    } else {
+      return new Error(`the double does not model a ${model} where on ${field}: ${JSON.stringify(cond)}`);
+    }
+  }
+  return tests;
+}
+
+/**
+ * `{ publicationAttempts: { some: { outcome: X } } }` — `EVER_PUBLISHED`'s shape (services/evidencePredicates.ts) — as its
+ * outcome, or null for any other condition. Thesis step 23, additive (R49 §e6 E8, E9): one reader of the shape for both
+ * delegates that answer it, so the two cannot model it differently.
+ */
+function everPublishedOutcome(cond: unknown): string | null {
+  if (typeof cond !== 'object' || cond === null) return null;
+  const keys = Object.keys(cond);
+  if (keys.length !== 1 || keys[0] !== 'publicationAttempts') return null;
+  const attempts = (cond as { publicationAttempts: unknown }).publicationAttempts;
+  if (typeof attempts !== 'object' || attempts === null || JSON.stringify(Object.keys(attempts)) !== '["some"]') return null;
+  const some = (attempts as { some: unknown }).some;
+  if (typeof some !== 'object' || some === null || JSON.stringify(Object.keys(some)) !== '["outcome"]') return null;
+  const outcome = (some as { outcome: unknown }).outcome;
+  return typeof outcome === 'string' ? outcome : null;
+}
+
+/**
+ * THE VERSION LIST, as `thesisVersion.findMany` and `findFirst` read it — thesis step 23, ADDITIVE (R49 §e6 E9).
+ *
+ * THREE ARMS: a plain value is an EQUALITY (`thesisId` exactly as before, `id` newly), `{ in: [...] }` is membership, and
+ * `publicationAttempts: { some: { outcome } }` holds for a version the store's attempts name with that outcome. ANY OTHER
+ * KEY IS IGNORED — never a rejection — because before this every key but `thesisId` was ignored, and a caller written
+ * against that double must keep its answer (the R49 round-1 M1).
+ */
+function versionsWhere(where: Row | undefined): Row[] {
+  const tests: ((row: Row) => boolean)[] = [];
+  for (const [field, cond] of Object.entries(where ?? {})) {
+    if (field === 'publicationAttempts') {
+      const outcome = everPublishedOutcome({ publicationAttempts: cond });
+      if (outcome !== null) tests.push((row) => store.attempts.some((a) => a['versionId'] === row['id'] && a['outcome'] === outcome));
+    } else if (typeof cond !== 'object' || cond === null) {
+      tests.push((row) => row[field] === cond);
+    } else if ('in' in cond && Array.isArray(cond.in) && Object.keys(cond).length === 1) {
+      const wanted: readonly unknown[] = cond.in;
+      tests.push((row) => wanted.includes(row[field]));
+    }
+  }
+  return store.versions.filter((row) => tests.every((test) => test(row)));
+}
+
+/**
+ * A COMPARE-AND-SET, as Prisma's `updateMany` answers one — thesis step 20, additive (R47 E1, E2).
+ *
+ * Every `where` field is an EQUALITY, and a column the row does not carry reads as NULL — a database row has
+ * null, never "absent", and a thesis the double created without a head must match `headVersionId: null`.
+ * The rows matched are replaced in `rows` with `data` applied; the write is RECORDED only when a row was
+ * touched, since an `updateMany` that matched nothing wrote nothing. Answers `{ count }`, never a throw:
+ * the caller decides what a count of zero means.
+ */
+function compareAndSet(model: string, rows: Row[], args: { where: Row; data: Row }): { rows: Row[]; count: number } {
+  const matches = (row: Row): boolean =>
+    Object.entries(args.where).every(([field, value]) => (row[field] ?? null) === value);
+  const count = rows.filter(matches).length;
+  if (count > 0) record(model, 'updateMany', args.data);
+  return { rows: rows.map((row) => (matches(row) ? { ...row, ...args.data } : row)), count };
+}
+
+/**
  * The page every suite's fixtures sit on — IMPORTED from the corpus fixture, not
  * re-spelled. A second literal here would be a second answer to "which page is
  * this?", free to drift from the one the record names are computed against.
  */
 export { PAGE, URL };
+
+/**
+ * A page by `id` or `url` once a suite holds the page list; the one page to ANY `where` while it holds none — UI-2,
+ * additive. `resetDouble` re-installs it as `trackedUrl.findUnique`'s implementation (a `mockReturnValue` there would
+ * stand for every case after one that set it, and would answer PAGE to a url the list does not hold).
+ */
+export const defaultPageLookup = (args?: { where?: { id?: string; url?: string } }): Promise<Row | null> => {
+  if (store.pages.length === 0) return Promise.resolve(PAGE);
+  const where = args?.where ?? {};
+  return Promise.resolve(store.pages.find((p) => (where.id !== undefined ? p['id'] === where.id : p['url'] === where.url)) ?? null);
+};
+
+/**
+ * A `where` over rows that may LACK the fields it names — UI-2, additive, for the three corpus delegates that ignored
+ * every condition before (`urlSnapshot`, `urlVersionDiff` and the page-shaped arm of `evidence`): an EQUALITY is
+ * applied only where the row CARRIES the field, `{ in }` likewise, and every other condition is IGNORED — never a
+ * rejection, because the consumers of those delegates were written against a double that ignored everything
+ * (`ARCHIVED_CAPTURES_ONLY` sends `provenance` and `{ not: null }`, and no fixture row carries either). A row carrying
+ * the field asked for must match it, so a corpus of two pages answers each page its own rows.
+ */
+function carriedWhere(row: Row, where: Row | undefined): boolean {
+  for (const [field, cond] of Object.entries(where ?? {})) {
+    if (!(field in row)) continue;
+    if (typeof cond !== 'object' || cond === null) {
+      if (row[field] !== cond) return false;
+    } else if ('in' in cond && Array.isArray(cond.in) && Object.keys(cond).length === 1) {
+      const wanted: readonly unknown[] = cond.in;
+      if (!wanted.includes(row[field])) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * The page `publicPage` asks about — `{ OR: [{ snapshot: { trackedUrlId } }, { urlVersionDiff: { trackedUrlId } }] }`
+ * (services/evidencePredicates.ts :427–:430) — or null for any other `where`. UI-2, additive.
+ */
+function pageOfOr(where: Row | undefined): string | null {
+  const or = where?.['OR'];
+  if (!Array.isArray(or)) return null;
+  for (const arm of or) {
+    if (typeof arm !== 'object' || arm === null) continue;
+    for (const relation of ['snapshot', 'urlVersionDiff']) {
+      const inner = (arm as Row)[relation];
+      const id = typeof inner === 'object' && inner !== null ? (inner as Row)['trackedUrlId'] : undefined;
+      if (typeof id === 'string') return id;
+    }
+  }
+  return null;
+}
+
+/** An evidence row's page, through either relation — `undefined` when neither relation carries one (a legacy fixture). */
+function evidencePageOf(row: Row): string | undefined {
+  for (const relation of ['snapshot', 'urlVersionDiff']) {
+    const inner = row[relation];
+    const id = typeof inner === 'object' && inner !== null ? (inner as Row)['trackedUrlId'] : undefined;
+    if (typeof id === 'string') return id;
+  }
+  return undefined;
+}
 
 export const defaultSessionLookup = (args: {
   where: { id?: string; openKey?: string };
@@ -436,6 +624,15 @@ export const db = {
       if (store.thesis?.['id'] === id) store.thesis = updated;
       return Promise.resolve(updated);
     }),
+    // THE HEAD'S COMPARE-AND-SET — thesis step 20, additive (R47 E1). `update` above honours `where.id` alone,
+    // so a write against a head that moved could never lose; this honours every `where` field.
+    updateMany: jest.fn((args: { where: Row; data: Row }) => {
+      const { rows, count } = compareAndSet('thesis', store.theses, args);
+      store.theses = rows;
+      const held = store.thesis;
+      if (held !== null) store.thesis = rows.find((t) => t['id'] === held['id']) ?? held;
+      return Promise.resolve({ count });
+    }),
   },
   thesisVersion: {
     // BY ID ONCE A SUITE HOLDS THE VERSION LIST — thesis step 17, additive (7.2
@@ -452,13 +649,13 @@ export const db = {
     }),
     // THESIS STEP 17, additive. A version is created and never updated (A2), so
     // there is no `update` here for a writer to reach.
+    // THESIS STEP 23, ADDITIVE (R49 §e6 E9): equality, `in` and the EVER-PUBLISHED arm; any other key ignored, as
+    // every key but `thesisId` always was — `versionsWhere` says why.
     findMany: jest.fn(
-      ask('thesisVersion', 'findMany', (args: { where?: { thesisId?: string } }) => {
-        const thesisId = args.where?.thesisId;
-        return Promise.resolve(
-          thesisId === undefined ? store.versions : store.versions.filter((v) => v['thesisId'] === thesisId),
-        );
-      }),
+      ask('thesisVersion', 'findMany', (args?: { where?: Row }) => Promise.resolve(versionsWhere(args?.where))),
+    ),
+    findFirst: jest.fn(
+      ask('thesisVersion', 'findFirst', (args?: { where?: Row }) => Promise.resolve(versionsWhere(args?.where).at(0) ?? null)),
     ),
     create: jest.fn((args: { data: Row }) => {
       record('thesisVersion', 'create', args.data);
@@ -480,12 +677,21 @@ export const db = {
     // PUBLISHED's apart, and a double that answered every row to `{ versionId }`
     // would let a head-only reading pass a case about the published version.
     findMany: jest.fn(
-      ask('thesisMention', 'findMany', (args: { where?: { versionId?: string; kind?: string } }) => {
+      ask('thesisMention', 'findMany', (args: { where?: { versionId?: string | { in?: string[] }; kind?: string } }) => {
         const where = args.where ?? {};
         if (where.versionId === undefined) return Promise.resolve(store.mentions);
+        // AND `{ in }`, which `carriedWhere` already honours for every other delegate — R57 chunk 3's
+        // `citationRefsByVersion` reads the mentions of EVERY published version in one query, so that a thesis
+        // published five times costs one round trip and not five. Without this the hand-rolled `where` here
+        // compared a row's id to the CONDITION OBJECT and answered nothing, which reads as "that version cites
+        // nothing" rather than as an unsupported query.
+        const wanted =
+          typeof where.versionId === 'object' && where.versionId !== null
+            ? (where.versionId.in ?? [])
+            : [where.versionId];
         return Promise.resolve(
           store.mentions.filter(
-            (m) => m['versionId'] === where.versionId && (where.kind === undefined || m['kind'] === where.kind),
+            (m) => wanted.includes(String(m['versionId'])) && (where.kind === undefined || m['kind'] === where.kind),
           ),
         );
       }),
@@ -545,6 +751,11 @@ export const db = {
               const version = row['thesisVersion'];
               return typeof version === 'object' && version !== null && 'isPublished' in version && version.isPublished != null;
             });
+          } else if (field === 'thesisVersion' && everPublishedOutcome(cond) !== null) {
+            // THE EVER-PUBLISHED ARM — thesis step 23, additive (R49 §e6 E8): `publicPage` asks whether a version that
+            // ever had a PUBLISHED attempt cites a record of the page, over the attempts the store holds.
+            const outcome = everPublishedOutcome(cond);
+            tests.push((row) => store.attempts.some((a) => a['versionId'] === row['versionId'] && a['outcome'] === outcome));
           } else {
             return Promise.reject(
               new Error(`the double does not model a thesisMention count where on ${field}: ${JSON.stringify(cond)}`),
@@ -560,11 +771,19 @@ export const db = {
     }),
   },
   trackedUrl: {
-    findUnique: jest.fn(() => Promise.resolve(PAGE)),
-    findMany: jest.fn(() => Promise.resolve([PAGE])),
+    // BY ID OR URL ONCE A SUITE HOLDS THE PAGE LIST — UI-2, additive (`defaultPageLookup` says why).
+    findUnique: jest.fn(defaultPageLookup),
+    // `verify_claim_text` asks `findFirst({ where: { url } })` (services/archiveVerification.ts :259) — the same lookup.
+    findFirst: jest.fn(ask('trackedUrl', 'findFirst', defaultPageLookup)),
+    // EVERY SURVEYED PAGE — `[PAGE]` while no list is held, as always; the list, equality `where` honoured, once it is.
+    findMany: jest.fn((args?: { where?: Row }) =>
+      Promise.resolve(store.pages.length === 0 ? [PAGE] : store.pages.filter((p) => carriedWhere(p, args?.where))),
+    ),
   },
   urlSnapshot: {
-    findMany: jest.fn(() => Promise.resolve(store.captures)),
+    // A PAGE'S OWN CAPTURES once the rows carry `trackedUrlId` — UI-2, additive: equality and `{ in }` on fields the
+    // row carries, every other condition ignored as before (`carriedWhere`).
+    findMany: jest.fn((args?: { where?: Row }) => Promise.resolve(store.captures.filter((c) => carriedWhere(c, args?.where)))),
     // BY ID, from the same list `findMany` answers with. A double that returned
     // one fixed row would let a case about two captures pass while the code read
     // the wrong one.
@@ -572,7 +791,8 @@ export const db = {
       Promise.resolve(store.captures.find((c) => c['id'] === args.where.id) ?? null),
     ),
   },
-  urlVersionDiff: { findMany: jest.fn(() => Promise.resolve(store.diffs)) },
+  // A PAGE'S OWN DIFFS once the rows carry `trackedUrlId` — UI-2, additive, as `urlSnapshot` above.
+  urlVersionDiff: { findMany: jest.fn((args?: { where?: Row }) => Promise.resolve(store.diffs.filter((d) => carriedWhere(d, args?.where)))) },
   diffContentVersion: {
     // HONOURS ITS `where`, so a case can assert that phase 2 asked for the two
     // versions the entry shows and no others.
@@ -612,6 +832,21 @@ export const db = {
         return Promise.resolve(disagrees ? null : held);
       }),
     ),
+    // A PAGE'S WORK-LIST — thesis step 20, additive (R47 E4): the version write's second pass over a page's
+    // rows, for a record name over a capture that was never ACQUIRED (§6-R1). Equality only — the pass
+    // filters outcome and hash in code — and any object condition REJECTS. The held row answers only a
+    // `where` naming ITS page.
+    findMany: jest.fn(
+      ask('cdxIndexEntry', 'findMany', (args?: { where?: Row }) => {
+        // A WHOLE WORK-LIST once a suite holds one — UI-3, additive: the rows the `where` names by a field they carry,
+        // in the order seeded (`loadWorkListRows` asks timestamp order; the suite seeds in it).
+        if (store.workListRows.length > 0) return Promise.resolve(store.workListRows.filter((r) => carriedWhere(r, args?.where)));
+        const tests = whereTests('cdxIndexEntry', args?.where);
+        if (!Array.isArray(tests)) return Promise.reject(tests);
+        const held = store.workList;
+        return Promise.resolve(held !== null && tests.every((test) => test(held)) ? [held] : []);
+      }),
+    ),
   },
   textVersion: {
     findFirst: jest.fn(() => Promise.resolve(store.textVersions.at(0) ?? null)),
@@ -626,7 +861,20 @@ export const db = {
       );
     }),
   },
-  pageDecision: { findUnique: jest.fn(() => Promise.resolve(store.pageDecisions.at(0) ?? null)) },
+  pageDecision: {
+    findUnique: jest.fn(() => Promise.resolve(store.pageDecisions.at(0) ?? null)),
+    // A PAGE'S DECISION LOG — UI-3, additive: the rows the `where` names by a field they carry, in the order seeded
+    // (the walk's reads ask `sequence` order; the suite seeds in it).
+    findMany: jest.fn(ask('pageDecision', 'findMany', (args?: { where?: Row }) => Promise.resolve(store.pageDecisions.filter((d) => carriedWhere(d, args?.where))))),
+  },
+  // THE PAGE'S RULES AND WHAT THEY MATCHED — UI-3, additive, for the walk's three reads behind the research routes.
+  rule: {
+    findMany: jest.fn(ask('rule', 'findMany', (args?: { where?: Row }) => Promise.resolve(store.rules.filter((r) => carriedWhere(r, args?.where))))),
+    findUnique: jest.fn(ask('rule', 'findUnique', (args?: { where?: { id?: string } }) => Promise.resolve(store.rules.find((r) => r['id'] === args?.where?.id) ?? null))),
+  },
+  ruleMatch: {
+    findMany: jest.fn(ask('ruleMatch', 'findMany', (args?: { where?: Row }) => Promise.resolve(store.ruleMatches.filter((m) => carriedWhere(m, args?.where))))),
+  },
   integrityCheck: {
     // NEWEST FIRST and filtered by subject, because that is what
     // `storedAttributionFor` asks: it folds "newest wins" over the answer, so a
@@ -676,13 +924,37 @@ export const db = {
     // through the other delegate, or check 17 answers from a row the case says
     // does not exist and `evidenceInputSoundness.ts:185-188`'s "absent from
     // rows" rule goes unexercised.
+    // AND THE PAGE-SHAPED `where` `publicPage` sends — UI-2, additive: a row whose relation carries the page asked for
+    // answers; a row whose relations carry NO page (every legacy fixture) answers as it always did. Without this a
+    // second page read PUBLIC through the first page's evidence rows.
     findMany: jest.fn(
-      ask('evidence', 'findMany', (args: { where?: { fileHash?: { in?: string[] } } }) => {
-        const wanted = args.where?.fileHash?.in ?? null;
+      ask('evidence', 'findMany', (args: { where?: Row }) => {
+        const named = args.where?.['fileHash'];
+        const wanted =
+          typeof named === 'object' && named !== null && Array.isArray((named as Row)['in']) ? ((named as Row)['in'] as unknown[]) : null;
+        const page = pageOfOr(args.where);
+        // THE SAME SINGLE-ROW FALLBACK `findUnique` ABOVE HAS, and it is here for the same stated reason: to
+        // keep "every suite written against the single-row fixture green". R57 chunk 3 moved VERIFIED's read
+        // from `findUnique` to `findMany` (one query for a whole set instead of one per citation), and without
+        // this the two delegates disagreed about the SAME fixture — a case that set `store.evidence` answered
+        // a row through one and nothing through the other, so a predicate reported NOT_PROMOTED about a record
+        // the case had plainly promoted. The fallback fires only when a NAME was asked for and `evidenceRows`
+        // holds none of them, which is exactly the legacy shape; a case that sets `evidenceRows` is untouched.
+        const held = store.evidence;
+        const rows = store.evidenceRows.filter((r) => {
+            if (wanted !== null && !wanted.includes(String(r['fileHash']))) return false;
+            if (page === null) return true;
+            const own = evidencePageOf(r);
+            return own === undefined || own === page;
+          });
+        if (rows.length === 0 && wanted !== null && held !== null) {
+          const its = held['fileHash'];
+          const matches = its === undefined || wanted.includes(String(its));
+          const ownPage = evidencePageOf(held);
+          if (matches && (page === null || ownPage === undefined || ownPage === page)) return Promise.resolve([held]);
+        }
         return Promise.resolve(
-          wanted === null
-            ? store.evidenceRows
-            : store.evidenceRows.filter((r) => wanted.includes(String(r['fileHash']))),
+          rows,
         );
       }),
     ),
@@ -777,6 +1049,37 @@ export const db = {
       }),
     ),
   },
+  // A PAGE'S NEWEST DETECTION PASS — thesis step 20, additive (R47 E6). Equality on the `where`, the newest by
+  // `computedAt` when the caller orders `desc` (the one order the resolver sends), and any other `orderBy`
+  // REJECTS rather than agreeing with it.
+  claimTrajectoryComputation: {
+    findFirst: jest.fn(
+      ask('claimTrajectoryComputation', 'findFirst', (args?: { where?: Row; orderBy?: Row }) => {
+        const tests = whereTests('claimTrajectoryComputation', args?.where);
+        if (!Array.isArray(tests)) return Promise.reject(tests);
+        const order = JSON.stringify(args?.orderBy ?? null);
+        if (order !== JSON.stringify({ computedAt: 'desc' })) {
+          return Promise.reject(new Error(`the double does not model a claimTrajectoryComputation orderBy ${order}`));
+        }
+        const newest = store.computations
+          .filter((row) => tests.every((test) => test(row)))
+          .sort((a, b) => Number(b['computedAt']) - Number(a['computedAt']));
+        return Promise.resolve(newest.at(0) ?? null);
+      }),
+    ),
+    // THE PASS FOR ONE STATE — UI-2, additive: `readComputation` (services/claimTrajectory.ts :768–:776) asks by the
+    // compound key `trackedUrlId_sourceStateHash` and includes the pass's rows; the stored read `list_trajectories`
+    // and the KEEP tool's cache hit both go through it, and a HIT is what lets the equality case run with no write.
+    findUnique: jest.fn(
+      ask('claimTrajectoryComputation', 'findUnique', (args: { where: { trackedUrlId_sourceStateHash?: { trackedUrlId: string; sourceStateHash: string } } }) => {
+        const key = args.where.trackedUrlId_sourceStateHash;
+        if (key === undefined) return Promise.reject(new Error('the double models claimTrajectoryComputation.findUnique by trackedUrlId_sourceStateHash only'));
+        const row = store.computations.find((c) => c['trackedUrlId'] === key.trackedUrlId && c['sourceStateHash'] === key.sourceStateHash);
+        if (row === undefined) return Promise.resolve(null);
+        return Promise.resolve({ ...row, trajectories: store.trajectories.filter((t) => t['computationId'] === row['id']) });
+      }),
+    ),
+  },
   // THE THESIS LAYER'S APPEND-ONLY TABLES — thesis step 17, additive (A2).
   //
   // THE FRAMING ALONE ALSO UPDATES (7.3). A2 marks its ROUNDS append-only
@@ -797,6 +1100,13 @@ export const db = {
       store.framings = store.framings.map((f) => (f['id'] === id ? updated : f));
       return Promise.resolve(updated);
     }),
+    // THE ATTACHMENT'S COMPARE-AND-SET — thesis step 20, additive (R47 E2): `create_thesis` attaches a framing
+    // only while it is attached to nothing (`where: { id, thesisId: null }`).
+    updateMany: jest.fn((args: { where: Row; data: Row }) => {
+      const { rows, count } = compareAndSet('framing', store.framings, args);
+      store.framings = rows;
+      return Promise.resolve({ count });
+    }),
   },
   framingRound: {
     ...appendOnly('framingRound', 'framingRounds'),
@@ -812,11 +1122,29 @@ export const db = {
       return Promise.resolve(created);
     }),
   },
-  thesisAnalysis: appendOnly('thesisAnalysis', 'analyses'),
-  thesisGapDecision: appendOnly('thesisGapDecision', 'gapDecisions'),
+  thesisAnalysis: appendOnly('thesisAnalysis', 'analyses', ['versionId', 'inputFingerprint']),
+  thesisGapDecision: appendOnly('thesisGapDecision', 'gapDecisions', ['thesisId', 'gapId', 'sequence']),
   publicationAttempt: appendOnly('publicationAttempt', 'attempts'),
   withdrawal: appendOnly('withdrawal', 'withdrawals'),
   note: appendOnly('note', 'notes'),
+  // THE AUTHORS `list_theses` names — thesis step 20, additive (R47 E5): `{ id: { in } }` and equality, any
+  // other operator REJECTS.
+  researcher: {
+    findMany: jest.fn(
+      ask('researcher', 'findMany', (args?: { where?: Row }) => {
+        const tests = whereTests('researcher', args?.where);
+        if (!Array.isArray(tests)) return Promise.reject(tests);
+        return Promise.resolve(store.researchers.filter((row) => tests.every((test) => test(row))));
+      }),
+    ),
+    // THE GATE'S LOOKUP — UI-3, additive: `requireResearcher` asks `{ supabaseUserId }`. STRICT equality on every field
+    // the `where` names — a researcher row lacking the field is not a match, or a login would find someone else.
+    findUnique: jest.fn(
+      ask('researcher', 'findUnique', (args?: { where?: Row }) =>
+        Promise.resolve(store.researchers.find((row) => Object.entries(args?.where ?? {}).every(([field, v]) => row[field] === v)) ?? null),
+      ),
+    ),
+  },
   $transaction: jest.fn(defaultTransaction),
 };
 
@@ -863,7 +1191,13 @@ export function resetDouble(): void {
   store.notes = [];
   store.debates = [];
   store.trajectories = [];
+  store.researchers = [];
+  store.computations = [];
+  store.pages = [];
+  store.workListRows = [];
+  store.rules = [];
+  store.ruleMatches = [];
   db.debateSession.findUnique.mockImplementation(defaultSessionLookup);
   db.$transaction.mockImplementation(defaultTransaction);
-  db.trackedUrl.findUnique.mockReturnValue(Promise.resolve(PAGE));
+  db.trackedUrl.findUnique.mockImplementation(defaultPageLookup);
 }

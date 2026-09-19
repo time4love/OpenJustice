@@ -5,7 +5,6 @@ import { useSearchParams } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
-import { SiteHeader } from '@/components/SiteHeader';
 import { useAuth } from '@/context/AuthContext';
 import type { ThesisSummary as FullThesisSummary } from '@/types/thesis';
 import { strengthBadgeClass } from '@/components/StrengthBadge';
@@ -93,8 +92,6 @@ export default function ThesesPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <SiteHeader current="theses" maxWidth="max-w-5xl" tagline={t('tagline')} />
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
         {/* Title row */}

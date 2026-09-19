@@ -43,6 +43,7 @@ model Researcher {
   framings           Framing[]
   framingRounds      FramingRound[]
   gapDecisions       ThesisGapDecision[]
+  thesisAnalyses     ThesisAnalysis[]
   publicationAttempts PublicationAttempt[]
   withdrawals        Withdrawal[]
   notes              Note[]
@@ -693,6 +694,9 @@ model ThesisAnalysis {
   model            String
   promptVersion    String
   runAt            DateTime      @default(now())
+  /// Who spent the call — a paid act always records it (thesis A2 :1317, amended 2026-09-14).
+  researcherId     String
+  researcher       Researcher    @relation(fields: [researcherId], references: [id], onDelete: Restrict)
 
   @@unique([versionId, inputFingerprint])
 }

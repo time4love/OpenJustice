@@ -66,6 +66,21 @@ export const READ_TOOLS = new Set([
   'get_diff_input',
   'resolve_record',
   'check_on_chain_status',
+  // THE CORPUS ACROSS PAGES — UI-2, docs/gf-ui-flows.md §6.1 :226–:257, §28. Three reads over the same loader as
+  // list_findings; `scope` decides, never identity (evidence A4 :1074 as amended): `public` answers over PUBLIC_PAGE
+  // pages for everyone and reads no caller; `all` refuses NO_RESEARCHER without a bearer and answers over every
+  // surveyed page. None invokes a model, fetches the archive or writes — search_corpus reads the STORED text.
+  'list_corpus',
+  'list_trajectories',
+  'search_corpus',
+  // THE THESIS LIST — thesis step 20, A4 :1426: PUBLIC. It writes nothing and spends nothing, and its
+  // published entries are the same for everyone; a researcher's bearer token, resolved by identifyViewer,
+  // adds their own theses beside them — access, not a second behaviour.
+  'list_theses',
+  // THE WHISTLEBLOWER CALL — thesis step 22, A4 :1501: PUBLIC. It writes nothing, calls no model and reads no caller:
+  // the two appeals of a PUBLISHED thesis, the same bytes for everyone, and `{ live: false }` for an unpublished or
+  // missing one alike — so it tells an anonymous caller nothing about drafts (step 17's Q3b).
+  'get_whistleblower_call',
 ]);
 
 export const WRITE_TOOLS = new Set([
@@ -93,6 +108,10 @@ export const WRITE_TOOLS = new Set([
   // history, including what it removed from each capture it matched. Gated for
   // the same reason as the other two — and this one re-derives held bytes.
   'get_rule_history',
+  // THE PAGE LIST — 2026-09-14, the researcher's ruling (the step-19 record's F3). Writes nothing and
+  // calls no model; gated on the walk reads' ground: the SET of surveyed pages is a researcher's working
+  // state until a thesis publishes — `list_findings` refuses NOT_PUBLIC per page for the same reason.
+  'list_pages',
   // One RESET decision; every rule created before it loses authority. Gated for
   // the obvious reason, and named rather than omitted.
   'reset_article_calibration',
@@ -166,6 +185,41 @@ export const WRITE_TOOLS = new Set([
   'assess_framing',
   'choose_framing',
   'get_framing',
+  // THE FRAMING LIST — 2026-09-14, the researcher's ruling (the step-19 record's F3): a session driven by
+  // the tools alone had no way to find a framing. Writes nothing and calls no model; gated as `get_framing`
+  // is — every framing is working state carrying a model's opinions, gated from the public, not from
+  // colleagues (thesis §9 :1002–:1004).
+  'list_framings',
+  // THE VERSION WRITE — thesis step 20, docs/gf-thesis-flows.md T2, §9 and A4 :1461–:1479, :1520.
+  //
+  // Three WRITE, attributed and refused without a researcher: the thesis and its versions, and a note.
+  // None spends. `get_thesis_context` writes nothing and calls no model, and is gated all the same: A4
+  // :1476 calls it a GATED read, and it returns a thesis's working state — its head, unargued citations,
+  // gaps and history — which is exactly what a published page never shows. The standing precedent is
+  // `get_framing`, `get_debate` and the walk's three reads (interaction A5 :1071–:1072).
+  'create_thesis',
+  'add_thesis_version',
+  'add_note',
+  'get_thesis_context',
+  // ANALYSIS AND GAPS — thesis step 22, A4 :1481–:1499. `run_analysis` WRITES an analysis and SPENDS one critic call;
+  // `decide_gap` WRITES a decision, attributed; `draft_foia_request` writes nothing and SPENDS one drafter call — A4
+  // :1496 calls it GATED, and a draw paid for by an anonymous caller is the exposure this set exists to keep out.
+  'run_analysis',
+  'decide_gap',
+  'draft_foia_request',
+  // PUBLICATION — thesis step 23, A4 :1506–:1518. `check_publication_readiness` writes nothing and SPENDS one
+  // publication-assessor call when given a rationale — A4 :1506 calls it GATED, and a draw an anonymous caller could
+  // trigger is the exposure this set exists to keep out; without one it still returns a draft thesis's working state.
+  // `publish_thesis` WRITES an attempt and the pin, attributed, and SPENDS one assessor call (A4 :1510);
+  // `unpublish_thesis` nulls the pin and WRITES a withdrawal, attributed (A4 :1516).
+  'check_publication_readiness',
+  'publish_thesis',
+  'unpublish_thesis',
+  // AFTER PUBLICATION — thesis step 24, A4 :1523–:1525. `list_thesis_reviews` writes nothing and calls no model, and is
+  // gated all the same: A4 calls it a GATED read, and it names the DRAFT citations of an author's unpublished theses —
+  // working state a public read never reveals. It refuses without a researcher, since REVIEWS(caller) has no subject
+  // otherwise. The standing precedent is `list_evidence_reviews`.
+  'list_thesis_reviews',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -308,13 +362,12 @@ async function resolveResearcher(req: Request, res: Response): Promise<{ researc
 // ---------------------------------------------------------------------------
 // identifyViewer
 //
-// Read tools stay open, but some are VIEWER-DEPENDENT: get_thesis_context and
-// get_whistleblower_call show an anonymous caller the published version and an
-// approved researcher the head. So a read call that carries a bearer token is
-// identified if it can be, and treated as anonymous if it cannot — never
-// refused. The tool output names the viewer it answered for, so a researcher
-// whose token has lapsed sees `viewer: PUBLIC` rather than mistaking the
-// public view for the head.
+// Read tools stay open, but some are VIEWER-DEPENDENT: list_theses shows an
+// anonymous caller the published theses and a researcher their own beside them,
+// and the corpus reads open every page to a researcher. So a read call that
+// carries a bearer token is identified if it can be, and treated as anonymous if
+// it cannot — never refused. (get_thesis_context is not among them: it is a
+// GATED read in WRITE_TOOLS, thesis A4 :1476.)
 // ---------------------------------------------------------------------------
 
 async function identifyViewer(req: Request): Promise<string | undefined> {

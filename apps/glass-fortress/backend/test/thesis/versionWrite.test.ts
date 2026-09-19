@@ -294,6 +294,9 @@ describe('add_thesis_version — A4 :1468–:1474 (thesis step 20)', () => {
       ['#ev_0x followed by 63 hex', `#ev_0x${'a'.repeat(63)}`],
       ['#ev_0x followed by a non-hex character', `#ev_0xg${'a'.repeat(63)}`],
       ['#ev_ followed by nothing', '#ev_'],
+      // THE RESEARCHER'S RULING, R47 round 2 (§6-R2): `#doc_` is RECOGNISED before document plan step 33
+      // adds the kind — refused, never passed over as text. Not malformed; the shape's label says what it is.
+      ['#doc_ followed by a commitment, before document step 33', `#doc_0x${'ab'.repeat(32)}`],
     ] as const) {
       it(`a malformed token — ${shape} — refuses NOT_A_RECORD, never a plain string (A1 :1245)`, async () => {
         seedThesis();

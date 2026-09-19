@@ -1,0 +1,21 @@
+{
+  "live": true,
+  "thesisId": "cmfxthesisone000000000000",
+  "publishedVersionId": "cmfxversioncurrent0000000",
+  "call": [],
+  "requests": [
+    {
+      "text": "תאריך: {{DATE}}\n\nאני, {{REQUESTER_NAME}}, מבקש/ת בהתאם לחוק חופש המידע את ההנחיה שעל פיה נוסח העמוד בין התאריכים האמורים.\n\n{{REQUESTER_NAME}}\n{{DATE}}",
+      "authority": "הממונה על חופש המידע",
+      "legalBasis": "חוק חופש המידע, התשנ\"ח-1998",
+      "addresses": [
+        "foia@example.gov.il"
+      ],
+      "restsOn": [
+        "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+      ]
+    }
+  ],
+  "intake": "שלחו את הבקשה בשמכם. ערוץ ההגשה עדיין אינו פתוח, והקריאה פתוחה."
+}

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useTranslations } from 'next-intl';
 
 type CopyState = 'idle' | 'copied' | 'failed';
 
@@ -23,16 +22,17 @@ function CheckIcon() {
 }
 
 /**
- * A value the reader is meant to paste somewhere, with a copy button.
+ * THE COPY CONTROL — docs/gf-ui-flows.md §4 :170–:176. One per thing, carrying the CHAT-READY form of a value,
+ * and **labelled by what the value is FOR, never by what it is**: "copy for a new conversation", not "copy id".
  *
- * The failure branch is the point. `navigator.clipboard` is undefined on any
- * non-secure origin that is not localhost, and permission can be refused even
- * where it exists — so a button that reports "copied" unconditionally reports
- * success for something that did not happen. It says so instead, and the text
- * stays selectable, which is the fallback a reader can actually act on.
+ * `showValue` decides whether the value is also READ. A URL is read; a hash, a cuid or a wayback timestamp is not
+ * (§4 :167–:170) — a COPY control and the VERIFY disclosure are their only two homes, and `no-id-as-text` holds it.
+ *
+ * The failure branch is the point, as before: `navigator.clipboard` is undefined on a non-secure origin and
+ * permission can be refused, so a button that always says "copied" reports success for something that did not
+ * happen. It says so, and the value stays selectable.
  */
-export function CopyableCode({ value }: { value: string }) {
-  const tc = useTranslations('common');
+export function CopyableCode({ value, label, showValue = false }: { value: string; label: string; showValue?: boolean }) {
   const [state, setState] = useState<CopyState>('idle');
 
   // Self-cancelling, so an unmount mid-timeout cannot set state on a dead component.
@@ -52,44 +52,27 @@ export function CopyableCode({ value }: { value: string }) {
     }
   }
 
-  const label =
-    state === 'copied' ? tc('copied') : state === 'failed' ? tc('copyFailed') : tc('copy');
-
   return (
-    <div>
-      <div className="flex items-stretch gap-2 bg-slate-900 rounded-lg overflow-hidden">
-        <code
-          dir="ltr"
-          className="flex-1 min-w-0 text-emerald-400 text-xs sm:text-sm font-mono px-3 py-2.5 overflow-x-auto text-left whitespace-nowrap"
-        >
+    <span data-copy className="inline-flex items-center gap-2">
+      {showValue ? (
+        <code data-copy-value={value} dir="ltr" className="min-w-0 overflow-x-auto rounded bg-ink px-2 py-1 font-mono text-value text-paper">
           {value}
         </code>
-        <button
-          type="button"
-          onClick={() => void copy()}
-          aria-label={label}
-          title={label}
-          className={`shrink-0 px-3 flex items-center justify-center border-s transition-colors ${
-            state === 'copied'
-              ? 'border-emerald-800 text-emerald-400'
-              : state === 'failed'
-                ? 'border-amber-800 text-amber-400'
-                : 'border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          {state === 'copied' ? <CheckIcon /> : <CopyIcon />}
-        </button>
-      </div>
-
-      {/* Announced to assistive tech, and shown outright when the copy failed —
-          silence would leave the reader believing it worked. */}
-      <p
-        role="status"
-        aria-live="polite"
-        className={state === 'failed' ? 'mt-2 text-xs text-amber-400' : 'sr-only'}
+      ) : null}
+      <button
+        type="button"
+        onClick={() => void copy()}
+        aria-label={label}
+        title={label}
+        {...(showValue ? {} : { 'data-copy-value': value })}
+        className="inline-flex items-center gap-1 rounded border border-line px-2 py-1 text-xs text-ink hover:bg-paper-deep"
       >
+        {state === 'copied' ? <CheckIcon /> : <CopyIcon />}
+        {label}
+      </button>
+      <span role="status" aria-live="polite" className="sr-only">
         {state === 'idle' ? '' : label}
-      </p>
-    </div>
+      </span>
+    </span>
   );
 }

@@ -1,22 +1,18 @@
 import { z } from 'zod';
 import {
   captureName,
+  captureRow,
   diffName,
+  diffRow,
   loadCaptures,
   loadDiffs,
   loadEvidenceLinkage,
-  loadPage,
-  opinionOf,
-  pairName,
-  type EvidenceLinkage,
-  type Opinion,
+  type CaptureEntry,
+  type DiffEntry,
+  type PageRef,
 } from '../../services/corpusReads';
-import {
-  currentVersionOf,
-  narrowed,
-  storedAttributionFor,
-} from '../../services/evidencePredicates';
-import { answer, openPage, shared, type Refusal } from './evidenceRefusals';
+import { currentVersionOf, storedAttributionFor } from '../../services/evidencePredicates';
+import { answer, openPage, pageByUrl, type Refusal } from './evidenceRefusals';
 
 // ---------------------------------------------------------------------------
 // list_findings({ url }) — PUBLIC — docs/gf-evidence-flows.md A4.
@@ -51,38 +47,6 @@ export const listFindingsSchema = {
   url: z.url().describe('The page — exact URL, as it was surveyed'),
 };
 
-interface AnchorReport {
-  documentHash: string;
-  /**
-   * THREE VALUES, THREE FACTS. true — the registry holds this capture's
-   * `documentHash` and our registrar submitted it. false — it does not, or
-   * someone else did. null — no verdict was ever stored under the current rule,
-   * which is neither of those and must never be read as "no".
-   */
-  attributed: boolean | null;
-}
-
-interface CaptureEntry {
-  capture: string;
-  snapshotDate: string;
-  fileHash: string;
-  textHash: string;
-  textExtractionVersion: string;
-  anchor: AnchorReport;
-  evidence: EvidenceLinkage | null;
-}
-
-interface DiffEntry {
-  before: string;
-  after: string;
-  fileHash: string;
-  current: { contentVersionHash: string; chunks: unknown } | null;
-  awaitingDerivation: boolean;
-  opinion: Opinion | null;
-  narrowed: boolean;
-  evidence: EvidenceLinkage | null;
-}
-
 interface Findings {
   page: { url: string; public: boolean };
   /**
@@ -95,82 +59,46 @@ interface Findings {
   diffs: DiffEntry[];
 }
 
+/** THE ONE FUNCTION behind the tool and `GET /api/pages/:trackedUrlId/findings` (docs/gf-ui-flows.md §6 :212, :221–:223). */
+export async function findingsOf(ref: PageRef): Promise<Findings | Refusal<'NOT_SURVEYED' | 'NOT_PUBLIC'>> {
+  const page = await ref.load();
+  if (page === null) return ref.missing();
+
+  const access = await openPage(page);
+  if (access.refused !== null) return access.refused;
+
+  const captures = await loadCaptures(page.id);
+  const diffs = await loadDiffs(page.id);
+
+  // ONE query for every capture's stored anchor verdict, and NO chain call:
+  // a public timeline that asked the chain once per capture would be
+  // unbounded work for an anonymous caller. `check_on_chain_status` is where
+  // the chain is asked, bounded by one record.
+  const attribution = await storedAttributionFor(captures.map((c) => c.id));
+
+  const names = [
+    ...captures.map((c) => captureName(page, c)),
+    ...diffs.map((d) => diffName(page, d)),
+  ];
+  const linkage = await loadEvidenceLinkage(names);
+
+  // The ACQUIRED captures are what NARROWED reads: a capture between two
+  // endpoints narrows the pair only if the corpus holds its text (§7).
+  const acquired = captures.map((c) => c.capture);
+
+  const awaitingDerivation = diffs.filter(
+    (diff) => !currentVersionOf({ kind: 'DIFF', before: diff.before, after: diff.after, versions: diff.versions }).defined,
+  ).length;
+
+  return {
+    page: { url: page.url, public: access.public },
+    counts: { captures: captures.length, diffs: diffs.length, awaitingDerivation },
+    // THE ROWS ARE `corpusReads`' — one composition for this read and for `list_corpus` across pages (UI-2).
+    captures: captures.map((capture) => captureRow(page, capture, attribution, linkage)),
+    diffs: diffs.map((diff) => diffRow(page, diff, acquired, linkage)),
+  };
+}
+
 export async function listFindingsHandler(input: { url: string }): Promise<string> {
-  return answer(async (): Promise<Findings | Refusal> => {
-    const page = await loadPage(input.url);
-    if (page === null) return shared.notSurveyed(input.url);
-
-    const access = await openPage(page);
-    if (access.refused !== null) return access.refused;
-
-    const captures = await loadCaptures(page.id);
-    const diffs = await loadDiffs(page.id);
-
-    // ONE query for every capture's stored anchor verdict, and NO chain call:
-    // a public timeline that asked the chain once per capture would be
-    // unbounded work for an anonymous caller. `check_on_chain_status` is where
-    // the chain is asked, bounded by one record.
-    const attribution = await storedAttributionFor(captures.map((c) => c.id));
-
-    const names = [
-      ...captures.map((c) => captureName(page, c)),
-      ...diffs.map((d) => diffName(page, d)),
-    ];
-    const linkage = await loadEvidenceLinkage(names);
-
-    // The ACQUIRED captures are what NARROWED reads: a capture between two
-    // endpoints narrows the pair only if the corpus holds its text (§7).
-    const acquired = captures.map((c) => c.capture);
-
-    const awaitingDerivation = diffs.filter(
-      (diff) => !currentVersionOf({ kind: 'DIFF', before: diff.before, after: diff.after, versions: diff.versions }).defined,
-    ).length;
-
-    return {
-      page: { url: page.url, public: access.public },
-      counts: { captures: captures.length, diffs: diffs.length, awaitingDerivation },
-      captures: captures.map((capture) => {
-        const fileHash = captureName(page, capture);
-        return {
-          capture: capture.capture,
-          snapshotDate: capture.snapshotDate,
-          fileHash,
-          textHash: capture.textHash,
-          textExtractionVersion: capture.textExtractionVersion,
-          anchor: {
-            documentHash: capture.documentHash,
-            attributed: attribution.get(capture.id)?.attributed ?? null,
-          },
-          evidence: linkage.get(fileHash) ?? null,
-        };
-      }),
-      diffs: diffs.map((diff) => {
-        const fileHash = diffName(page, diff);
-        const current = currentVersionOf({
-          kind: 'DIFF',
-          before: diff.before,
-          after: diff.after,
-          versions: diff.versions,
-        });
-        return {
-          before: diff.before.capture,
-          after: diff.after.capture,
-          fileHash,
-          current: current.defined
-            ? {
-                contentVersionHash: current.contentVersionHash,
-                chunks: current.kind === 'DIFF' ? current.version.chunks : null,
-              }
-            : null,
-          awaitingDerivation: !current.defined,
-          opinion:
-            current.defined && current.kind === 'DIFF'
-              ? opinionOf(current.version.classification, pairName(diff))
-              : null,
-          narrowed: narrowed({ before: diff.before.capture, after: diff.after.capture }, acquired),
-          evidence: linkage.get(fileHash) ?? null,
-        };
-      }),
-    };
-  });
+  return answer(() => findingsOf(pageByUrl(input.url)));
 }

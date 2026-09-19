@@ -1071,7 +1071,7 @@ a date instead of a timestamp refuses `NOT_A_CAPTURE` rather than guessing. Wher
 undefined the tool refuses `AWAITING_DERIVATION` and names the diff; nothing evaluates against a
 version that does not exist.
 
-**PUBLIC reads take no identity and answer identically for everyone.** Access to a page's
+**PUBLIC reads take no identity and answer identically for everyone.** Access to a page's Amended by docs/gf-ui-flows.md §6.1 (2026-09-15): three corpus-wide reads — `list_corpus`, `list_trajectories`, `search_corpus` — each with `scope: 'public' | 'all'`, and `list_corpus`'s `pages` facet.
 timeline is gated by PUBLIC_PAGE for a caller without identity — that is access, not a second
 behaviour: the output never depends on who asks. GATED reads answer only a researcher, by the
 flows' precedent that working state is not published evidence.
@@ -1098,9 +1098,9 @@ get_diff_input({ url, before, after })                                    PUBLIC
   refuses   NOT_SURVEYED · NOT_PUBLIC · NOT_A_CAPTURE · NO_SUCH_DIFF (the pair is not one the
             walk wrote) · AWAITING_DERIVATION
 
-verify_claim_text({ url, phrase })                                         PUBLIC · unchanged
-  does      the corpus read by text, over current text versions; gated by PUBLIC_PAGE as above
-get_claim_trajectories({ url })  PUBLIC · one page's trajectories, identical for everyone, gated by PUBLIC_PAGE as above; its shape is the read-tool design §10 names · amended 2026-09-04 (pre-design triage, docs/gf-pre-design-plans-triage-2026-09-04.md)
+verify_claim_text({ url, phrase })                                         GATED — amended by docs/gf-ui-flows.md §6 (2026-09-15, #487): each call reaches the Internet Archive, unbounded work against a free service; one capture's raw-archive check, for a researcher
+  does      the corpus read by text against the raw archive and the stored text; the public search is search_corpus (the stored register)
+get_claim_trajectories({ url })  GATED — amended 2026-09-15 (docs/gf-ui-flows.md §6): it computes and writes on a miss; the public read of one page's trajectories is list_trajectories({ scope: 'public', page }) · its shape is the read-tool design §10 names · amended 2026-09-04 (pre-design triage, docs/gf-pre-design-plans-triage-2026-09-04.md)
 
 resolve_record({ fileHash })                                               PUBLIC · ⚠️ to build
   does      what a stranger holding a citation needs: the record the name resolves to — kind,
@@ -1185,7 +1185,7 @@ flows §9, replaced by `add_document`, and their records were never citable here
 
 ### A5. Routes
 
-**This design adds no route and no browser page.** Its human moments — the debate, the reviews
+**This design adds no route and no browser page.** Its human moments — the debate, the reviews — amended by docs/gf-ui-flows.md §5 (2026-09-15): no WRITE route; the PUBLIC reads of A4 answer as routes, one function serving tool and route.
 list, the decisions — are chat and tools; the stop-shaped list is a tool's return, not a page.
 
 The evidence routes as built — `/search`, `/latest`, `/timeline`, `/:id`, `/key-figures`,

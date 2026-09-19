@@ -5,6 +5,7 @@ import { OUTCOMES, rulesUnderAuthority, stale, trusted, type Outcome, type Rule 
 import { loadWorkListRows } from '../rows';
 import { pendingStopOf, type Stop } from '../stop';
 import { markingUrl } from '../markingUrl';
+import type { PageRef } from '../../services/corpusReads';
 import { answer, shared, type Refusal } from '../refusals';
 
 // ---------------------------------------------------------------------------
@@ -47,58 +48,62 @@ interface ArticleRules {
 const zeroCounts = (): Record<Outcome, number> =>
   Object.fromEntries(OUTCOMES.map((outcome) => [outcome, 0])) as Record<Outcome, number>;
 
-export async function getArticleRulesHandler(input: { url: string }): Promise<string> {
-  return answer(async (): Promise<ArticleRules | Refusal> => {
-    const page = await prisma.trackedUrl.findUnique({ where: { url: input.url } });
-    if (page === null) return shared.notSurveyed(input.url);
+/** THE ONE FUNCTION behind the tool and `GET /api/research/pages/:trackedUrlId/rules` (UI-3): the page through its door's ref. */
+export async function articleRulesOf(ref: PageRef): Promise<ArticleRules | Refusal<'NOT_SURVEYED'>> {
+  const page = await ref.load();
+  if (page === null) return ref.missing();
 
-    const rows = await loadWorkListRows(prisma, page.id);
-    const rules: Rule[] = await prisma.rule.findMany({ where: { trackedUrlId: page.id } });
-    const decisions = await prisma.pageDecision.findMany({
-      where: { trackedUrlId: page.id },
-      orderBy: { sequence: 'asc' },
-    });
-    const matches = await prisma.ruleMatch.findMany({
-      where: { ruleId: { in: rules.map((r) => r.id) }, matchedNodes: { gt: 0 } },
-    });
-
-    // The latest timestamp at which each rule matched anything. The where
-    // above already excludes zero matches; the filter is applied here as well
-    // so the two cannot disagree.
-    const lastMatched = new Map<string, string>();
-    for (const m of matches) {
-      if (m.matchedNodes <= 0) continue;
-      const current = lastMatched.get(m.ruleId);
-      if (current === undefined || current < m.waybackTimestamp) lastMatched.set(m.ruleId, m.waybackTimestamp);
-    }
-
-    const listed = rulesUnderAuthority(rules, decisions).map((rule) => ({
-      ruleId: rule.id,
-      selector: rule.selector,
-      validFrom: rule.validFrom,
-      validTo: rule.validTo,
-      trusted: trusted(rule, decisions) === 'TRUSTED',
-      lastMatched: lastMatched.get(rule.id) ?? null,
-    }));
-
-    const counts = zeroCounts();
-    for (const row of rows) counts[row.outcome] += 1;
-
-    const pending = rows.find((row) => pendingStopOf(row) !== null);
-    const stop = pending === undefined ? null : pendingStopOf(pending);
-    const pendingStop =
-      pending !== undefined && stop !== null
-        ? { capture: pending.waybackTimestamp, ...stop, markingUrl: markingUrl(page.id, pending.waybackTimestamp) }
-        : null;
-
-    const newest = decisions.at(-1);
-    return {
-      rules: listed,
-      pendingStop,
-      counts,
-      stale: rows.filter((row) => stale(row, rules, decisions, TEXT_EXTRACTION_VERSION)).length,
-      decisions: decisions.length,
-      lastDecisionAt: newest?.createdAt ?? null,
-    };
+  const rows = await loadWorkListRows(prisma, page.id);
+  const rules: Rule[] = await prisma.rule.findMany({ where: { trackedUrlId: page.id } });
+  const decisions = await prisma.pageDecision.findMany({
+    where: { trackedUrlId: page.id },
+    orderBy: { sequence: 'asc' },
   });
+  const matches = await prisma.ruleMatch.findMany({
+    where: { ruleId: { in: rules.map((r) => r.id) }, matchedNodes: { gt: 0 } },
+  });
+
+  // The latest timestamp at which each rule matched anything. The where
+  // above already excludes zero matches; the filter is applied here as well
+  // so the two cannot disagree.
+  const lastMatched = new Map<string, string>();
+  for (const m of matches) {
+    if (m.matchedNodes <= 0) continue;
+    const current = lastMatched.get(m.ruleId);
+    if (current === undefined || current < m.waybackTimestamp) lastMatched.set(m.ruleId, m.waybackTimestamp);
+  }
+
+  const listed = rulesUnderAuthority(rules, decisions).map((rule) => ({
+    ruleId: rule.id,
+    selector: rule.selector,
+    validFrom: rule.validFrom,
+    validTo: rule.validTo,
+    trusted: trusted(rule, decisions) === 'TRUSTED',
+    lastMatched: lastMatched.get(rule.id) ?? null,
+  }));
+
+  const counts = zeroCounts();
+  for (const row of rows) counts[row.outcome] += 1;
+
+  const pending = rows.find((row) => pendingStopOf(row) !== null);
+  const stop = pending === undefined ? null : pendingStopOf(pending);
+  const pendingStop =
+    pending !== undefined && stop !== null
+      ? { capture: pending.waybackTimestamp, ...stop, markingUrl: markingUrl(page.id, pending.waybackTimestamp) }
+      : null;
+
+  const newest = decisions.at(-1);
+  return {
+    rules: listed,
+    pendingStop,
+    counts,
+    stale: rows.filter((row) => stale(row, rules, decisions, TEXT_EXTRACTION_VERSION)).length,
+    decisions: decisions.length,
+    lastDecisionAt: newest?.createdAt ?? null,
+  };
+}
+
+export async function getArticleRulesHandler(input: { url: string }): Promise<string> {
+  const ref: PageRef = { load: () => prisma.trackedUrl.findUnique({ where: { url: input.url } }), missing: () => shared.notSurveyed(input.url) };
+  return answer(() => articleRulesOf(ref));
 }

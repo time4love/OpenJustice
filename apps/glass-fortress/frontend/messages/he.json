@@ -3,21 +3,42 @@
     "appName": "צדק לעם - תיק הקורונה",
     "operational": "פעיל",
     "nav": {
-      "home": "בית",
-      "evidence": "ראיות",
-      "submitEvidence": "+ הגש ראיה",
+      "corpus": "הארכיון",
       "about": "אודות",
-      "forensics": "פורנזיקה",
-      "figures": "דמויות",
-      "theses": "תזות",
-      "calls": "חקירות",
-      "login": "כניסה",
       "safety": "הגנה",
-      "guide": "מדריך"
+      "researchers": "לחוקרים",
+      "research": "מחקר",
+      "admin": "ניהול",
+      "figures": "דמויות",
+      "theses": "תזות"
+    },
+    "chrome": {
+      "navLabel": "ניווט ראשי",
+      "openNav": "פתיחת התפריט",
+      "closeNav": "סגירת התפריט",
+      "otherLocale": "English",
+      "search": "חיפוש בארכיון",
+      "sidebarResize": "שינוי רוחב התפריט",
+      "paneResize": "שינוי רוחב החלונית",
+      "collapse": "קיפול התפריט",
+      "expand": "הרחבת התפריט",
+      "panelLabel": "לשוניות החלונית",
+      "back": "חזרה"
+    },
+    "footer": {
+      "source": "קוד המקור של האתר פתוח לציבור"
     },
     "copy": "העתקה",
     "copied": "הועתק",
-    "copyFailed": "ההעתקה נכשלה — סמנו את הטקסט והעתיקו ידנית"
+    "copyFailed": "ההעתקה נכשלה — סמנו את הטקסט והעתיקו ידנית",
+    "disclaimer": {
+      "short": "ניתוח משפטי בתום לב בעניין ציבורי, המבוסס על ראיות מתועדות. אינו קביעה שיפוטית.",
+      "full": "כל הטענות המוצגות מבוססות על ראיות מתועדות ומהוות ניתוח משפטי בתום לב בעניין ציבורי. אין בהן קביעה שיפוטית. הפלטפורמה מציגה חומר לצורך חקירה ציבורית בלבד."
+    },
+    "loading": "טוען"
+  },
+  "metadata": {
+    "description": "ארכיון ציבורי של עמודי אינטרנט מתקופת הקורונה, כפי שנשמרו בארכיון האינטרנט ועוגנו ב-SHA-256 ברשת Base, והתזות שחוקרים בונים עליו."
   },
   "dashboard": {
     "tagline": "ראיות · פלטפורמת גילוי משפטי",
@@ -584,7 +605,103 @@
     "viewsLabel": "תצוגות התזה",
     "close": "סגירה",
     "openEvidence": "פתיחת הראיה",
-    "sourcesTitle": "מקורות"
+    "sourcesTitle": "מקורות",
+    "page": {
+      "copyThesis": "העתקה לשיחה חדשה",
+      "byline": "{handle} · פורסם ב־{date}",
+      "notice": "התזה הוסרה מפרסום בידי המחבר/ת ב־{date}.",
+      "notFound": "לא נמצאה תזה שפורסמה בכתובת זו."
+    },
+    "marks": {
+      "verified": "מאומת מול העוגן",
+      "flagged": "מסומן",
+      "argued": "נטען בדיון",
+      "overObjection": "למרות התנגדות המעריך",
+      "analysisRun": "על גרסה זו הורץ ניתוח",
+      "publishedOverObjection": "פורסם למרות התנגדות המעריך",
+      "trajectoryCurrent": "המעבר החדש ביותר מסכים",
+      "trajectoryStale": "המעבר החדש ביותר אינו מסכים",
+      "trajectoryUnresolved": "מסלול שלא נמצא"
+    },
+    "chip": {
+      "unresolved": "ציטוט שלא נמצא",
+      "repinned": "צוטטה אז גרסת תוכן אחרת של הרשומה",
+      "notCurrent": "רשומה שהגרסה הנוכחית אינה מצטטת",
+      "capture": "{domain} · {date}",
+      "diff": "{domain} · {before}–{after}"
+    },
+    "sheet": {
+      "close": "סגירה",
+      "capture": "צילום של העמוד מ־{date}",
+      "diff": "שינוי בעמוד בין {before} ל־{after}",
+      "before": "לפני",
+      "after": "אחרי",
+      "attributed": "עוגן בידי הפלטפורמה",
+      "hashMatches": "הגיבוב המעוגן זהה לגיבוב המסמך",
+      "attributionUnread": "העיגון טרם נבדק",
+      "notEvaluable": "לא ניתן לבדוק: {reason}",
+      "flag": {
+        "WITHDRAWN": "הרשומה נמשכה",
+        "NOT_CITATION_CURRENT": "התוכן המצוטט השתנה ולא אושר מחדש",
+        "SHED": "הפלטפורמה אינה מחזיקה עוד בתוכן הרשומה"
+      },
+      "argued": "נטען בדיון: כן",
+      "overObjection": "למרות התנגדות המעריך: {answer}",
+      "yes": "כן",
+      "no": "לא",
+      "openPage": "כל מה שנשמר מהעמוד",
+      "openRecord": "עמוד הרשומה",
+      "copyToken": "העתקת הציטוט לשיחה",
+      "transitions": "{count, plural, one {מעבר אחד} other {# מעברים}}",
+      "andMore": "…ועוד {count}"
+    },
+    "appeals": {
+      "heading": "פניות לציבור",
+      "request": "בקשת חופש מידע, מוכנה לשליחה",
+      "authority": "אל",
+      "legalBasis": "בסיס חוקי",
+      "addresses": "כתובות",
+      "restsOn": "נשענת על",
+      "copyRequest": "העתקת נוסח הבקשה",
+      "call": "מסמך שמישהו אולי ראה",
+      "whatIsNeeded": "מה דרוש",
+      "whoWouldHaveSeenIt": "מי עשוי היה לראות אותו",
+      "unit": "יחידה",
+      "window": "תקופה",
+      "prepareLetter": "להכנת המכתב"
+    },
+    "case": {
+      "heading": "נימוקי הפרסום"
+    },
+    "history": {
+      "heading": "גרסאות שפורסמו",
+      "row": "{date} · {handle}",
+      "current": "הגרסה הנוכחית",
+      "withdrawn": "הפרסום בוטל בידי המחבר/ת ב־{date}",
+      "whatChanged": "מה השתנה",
+      "diffHeading": "מה השתנה בין {from} ל־{to}",
+      "movedPins": "ציטוטים שהגרסה המצוטטת שלהם השתנתה",
+      "pinMoved": "הגרסה המצוטטת השתנתה",
+      "diffUnavailable": "לא ניתן לטעון את הגרסה כעת"
+    },
+    "pages": {
+      "heading": "העמודים",
+      "counterweight": "כל מה שנבחן בעמודים האלה, מה שצוטט ומה שלא צוטט, פתוח לעיון:"
+    },
+    "verify": {
+      "summary": "לבדיקת הערכים",
+      "versionHash": "גיבוב הגרסה",
+      "recordName": "שם הרשומה",
+      "trajectoryId": "מזהה המסלול",
+      "pin": "גרסת התוכן המצוטטת",
+      "copyValue": "העתקה לבדיקה",
+      "how": "גיבוב הגרסה הוא SHA-256 של טקסט הגרסה, והוא אינו רשום בשום שרשרת. שם הרשומה וגרסת התוכן מזהים את מה שצוטט; עמוד הרשומה מראה כיצד לבדוק אותה מול ארכיון האינטרנט ומול השרשרת."
+    },
+    "version": {
+      "banner": "זו גרסה קודמת שפורסמה.",
+      "toCurrent": "לגרסה הנוכחית"
+    },
+    "foiaNameFallback": "[שם מגיש/ת הבקשה]"
   },
   "call": {
     "heroLabel": "קריאה לעדים פנימיים",
@@ -628,7 +745,14 @@
     "indexAllCases": "{count} חקירות",
     "notPublished": "תזה זו טרם פורסמה.",
     "researcherPreviewDraft": "תצוגת חוקר — תזה זו היא טיוטה. הציבור אינו רואה קריאה.",
-    "researcherPreviewBehind": "תצוגת חוקר — הקריאה הציבורית מפגרת ב-{count} גרסאות אחרי הגרסה הנוכחית."
+    "researcherPreviewBehind": "תצוגת חוקר — הקריאה הציבורית מפגרת ב-{count} גרסאות אחרי הגרסה הנוכחית.",
+    "page": {
+      "toThesis": "לתזה המלאה",
+      "callHeading": "קריאה למי שראה את המסמכים",
+      "requestsHeading": "בקשות חופש מידע",
+      "howHeading": "איך לשלוח",
+      "notLive": "אין פנייה פתוחה לציבור בתזה זו."
+    }
   },
   "home": {
     "heroTag": "תיק הקורונה",
@@ -1833,5 +1957,25 @@
     "markedEmpty": "עדיין לא סומן דבר — לחצו על רכיב במבנה.",
     "collapseToolbox": "כווצו את ארגז הכלים",
     "expandToolbox": "פתחו את ארגז הכלים"
+  },
+  "corpus": {
+    "title": "הארכיון",
+    "empty": "עדיין לא נפתח אף דף — דף נפתח כשתזה שפורסמה מצטטת אותו",
+    "interval": "{first} – {last}",
+    "records": "{count} רשומות"
+  },
+  "provision": {
+    "NUREMBERG_1": "קוד נירנברג, סעיף 1",
+    "NUREMBERG_2": "קוד נירנברג, סעיף 2",
+    "NUREMBERG_3": "קוד נירנברג, סעיף 3",
+    "NUREMBERG_4": "קוד נירנברג, סעיף 4",
+    "NUREMBERG_5": "קוד נירנברג, סעיף 5",
+    "NUREMBERG_6": "קוד נירנברג, סעיף 6",
+    "NUREMBERG_7": "קוד נירנברג, סעיף 7",
+    "NUREMBERG_8": "קוד נירנברג, סעיף 8",
+    "NUREMBERG_9": "קוד נירנברג, סעיף 9",
+    "NUREMBERG_10": "קוד נירנברג, סעיף 10",
+    "PATIENT_RIGHTS_13": "חוק זכויות החולה, סעיף 13",
+    "ADMIN_DISCLOSURE_DUTY": "חובת הגילוי המנהלית"
   }
 }

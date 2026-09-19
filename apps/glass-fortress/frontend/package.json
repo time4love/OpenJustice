@@ -7,6 +7,7 @@
     "build": "npm run check:guide && next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "jest",
     "check:guide": "node scripts/check-guide-content.mjs"
   },
   "dependencies": {
@@ -16,6 +17,7 @@
     "@tiptap/starter-kit": "^3.29.0",
     "@tiptap/suggestion": "^3.29.0",
     "framer-motion": "^12.43.0",
+    "markdown-it": "^14.1.0",
     "next": "16.2.11",
     "next-intl": "^4.13.4",
     "react": "19.2.4",
@@ -25,13 +27,22 @@
     "@parcel/watcher-linux-x64-glibc": "2.6.0"
   },
   "devDependencies": {
+    "@next/env": "16.2.11",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.3",
+    "@types/jest": "30.0.0",
+    "@types/markdown-it": "^14.1.2",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
+    "jest": "30.5.1",
+    "jest-environment-jsdom": "30.5.1",
     "tailwindcss": "^4",
+    "ts-node": "10.9.2",
     "typescript": "^5"
   }
 }

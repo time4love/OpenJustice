@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { viewerCaptureUrl } from '../lib/archiveHttp';
 import { ARCHIVED_CAPTURES_ONLY, requireArchived } from '../lib/archivedCaptures';
 import { normaliseClaim } from '../lib/normalise';
+import { WRITE_TRANSACTION } from '../walk/pageLog';
 
 // ---------------------------------------------------------------------------
 // Following one claim across a page's whole archived history.
@@ -862,7 +863,7 @@ async function persistComputation(
     });
 
     return { computedAt: computation.computedAt.toISOString(), stored };
-  });
+  }, WRITE_TRANSACTION);
 }
 
 /**

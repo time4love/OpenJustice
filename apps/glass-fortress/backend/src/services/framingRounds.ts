@@ -1,8 +1,19 @@
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { asJsonColumn } from '../lib/jsonColumn';
+import { isUniqueViolation } from '../lib/uniqueViolation';
 import { recordId, type Record as CorpusRecord } from '../lib/evidenceIdentity';
-import { acquiredNeighbours, chunksOf, loadDiffByPair, loadPage, lookupCapture, pairName } from './corpusReads';
+import {
+  acquiredNeighbours,
+  chunksOf,
+  loadDiffByPair,
+  loadPage,
+  lookupCapture,
+  pairName,
+  type Page,
+  type TimelineCapture,
+  type TimelineDiff,
+} from './corpusReads';
 import { currentVersionOf } from './evidencePredicates';
 import { resolveTrajectoryCitations } from './trajectoryCitation';
 import type { AssessedRecord, AssessedTrajectory } from './framingAssessor';
@@ -100,7 +111,9 @@ export async function appendRound(input: {
   try {
     return await createAt(input, await nextSequence(input.framingId));
   } catch (err) {
-    if (!isSequenceCollision(err)) throw err;
+    // A P2002 whose target names the round's `sequence` — the ONE spelling (thesis step 22, R18), asked for exactly
+    // the column this function read before it: behaviour-preserving.
+    if (!isUniqueViolation(err, ['sequence'])) throw err;
     return createAt(input, await nextSequence(input.framingId));
   }
 }
@@ -125,13 +138,6 @@ async function createAt(
   });
 }
 
-/** A P2002 whose target is the round's (framingId, sequence) index, and nothing else. */
-function isSequenceCollision(err: unknown): boolean {
-  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false;
-  const target = err.meta?.target;
-  const names = typeof target === 'string' ? [target] : Array.isArray(target) ? target : [];
-  return names.some((t) => typeof t === 'string' && t.includes('sequence'));
-}
 
 // ---------------------------------------------------------------------------
 // WHAT THE ASSESSOR IS HANDED — the COMPUTED register, and only that (T1 :226–:231).
@@ -211,21 +217,11 @@ export async function loadRecords(
     }
 
     if (second === undefined) {
-      const current = currentVersionOf({ kind: 'CAPTURE', capture: first });
-      if (!current.defined) {
+      const content = await currentContentOf(page, { kind: 'CAPTURE', capture: first });
+      if (content === 'AWAITING_DERIVATION') {
         return refusal('AWAITING_DERIVATION', `The capture ${first.capture} has no current text version.`);
       }
-      const snapshot = await prisma.urlSnapshot.findUnique({
-        where: { id: first.id },
-        select: { text: true },
-      });
-      if (snapshot === null) {
-        throw new Error(
-          `loadRecords: capture ${first.capture} passed every check but its snapshot could not be ` +
-            'loaded. The corpus cannot hold a record and not hold it.',
-        );
-      }
-      loaded.push({ label, kind: 'CAPTURE', url: page.url, capture: first.capture, text: snapshot.text });
+      loaded.push({ label, ...content });
       continue;
     }
 
@@ -238,16 +234,8 @@ export async function loadRecords(
           'this page holds.',
       );
     }
-    const current = currentVersionOf({
-      kind: 'DIFF',
-      before: diff.before,
-      after: diff.after,
-      versions: diff.versions,
-    });
-    // Narrowed on `kind` as well as on `defined`, so `version` is in scope without
-    // a non-null assertion: for a DIFF input the two say the same thing, and only
-    // one of them says it to the compiler (`services/openDebate.ts`' own reason).
-    if (!current.defined || current.kind !== 'DIFF') {
+    const content = await currentContentOf(page, { kind: 'DIFF', diff });
+    if (content === 'AWAITING_DERIVATION') {
       // NAMES THE DIFF (A4 :1422–:1423) — by the page and the pair's two
       // timestamps, which is how evidence A1 :890–:891 names a DIFF record.
       return refusal(
@@ -257,20 +245,62 @@ export async function loadRecords(
           'against yet — run scan_captures on this page and assess the framing again.',
       );
     }
-    loaded.push({
-      label,
-      kind: 'DIFF',
-      url: page.url,
-      before: diff.before.capture,
-      after: diff.after.capture,
-      // side and text ONLY: survival is the CHECK's verdict ABOUT a chunk, not
-      // part of what the chunk says, and evidence A1 :911 keeps it out of the
-      // content version's hash for the same reason.
-      chunks: chunksOf(current.version.chunks, pairName(diff)).map((c) => ({ side: c.side, text: c.text })),
-    });
+    loaded.push({ label, ...content });
   }
 
   return loaded;
+}
+
+/** A record's CURRENT computed content — what an assessor, the critic and the drafter are handed. */
+export type ComputedContent =
+  | { kind: 'CAPTURE'; url: string; capture: string; text: string }
+  | { kind: 'DIFF'; url: string; before: string; after: string; chunks: { side: string; text: string }[] };
+
+/**
+ * The CURRENT computed content of ONE record — a capture's current text, or a pair's CURRENT version's chunks — or
+ * AWAITING_DERIVATION where CURRENT is undefined, for the caller to word.
+ *
+ * ONE SPELLING (thesis step 22, the researcher's ruling R19): `loadRecords` reaches a record from a name a framing
+ * tool was given; the critic and the drafter reach it from a citation's name. Both hand a model the SAME register,
+ * so both call this — never a second body of the loading.
+ */
+export async function currentContentOf(
+  page: Page,
+  record: { kind: 'CAPTURE'; capture: TimelineCapture } | { kind: 'DIFF'; diff: TimelineDiff },
+): Promise<ComputedContent | 'AWAITING_DERIVATION'> {
+  if (record.kind === 'CAPTURE') {
+    const { capture } = record;
+    const current = currentVersionOf({ kind: 'CAPTURE', capture });
+    if (!current.defined) return 'AWAITING_DERIVATION';
+    const snapshot = await prisma.urlSnapshot.findUnique({
+      where: { id: capture.id },
+      select: { text: true },
+    });
+    if (snapshot === null) {
+      throw new Error(
+        `currentContentOf: capture ${capture.capture} passed every check but its snapshot could not be ` +
+          'loaded. The corpus cannot hold a record and not hold it.',
+      );
+    }
+    return { kind: 'CAPTURE', url: page.url, capture: capture.capture, text: snapshot.text };
+  }
+
+  const { diff } = record;
+  const current = currentVersionOf({ kind: 'DIFF', before: diff.before, after: diff.after, versions: diff.versions });
+  // Narrowed on `kind` as well as on `defined`, so `version` is in scope without
+  // a non-null assertion: for a DIFF input the two say the same thing, and only
+  // one of them says it to the compiler (`services/openDebate.ts`' own reason).
+  if (!current.defined || current.kind !== 'DIFF') return 'AWAITING_DERIVATION';
+  return {
+    kind: 'DIFF',
+    url: page.url,
+    before: diff.before.capture,
+    after: diff.after.capture,
+    // side and text ONLY: survival is the CHECK's verdict ABOUT a chunk, not
+    // part of what the chunk says, and evidence A1 :911 keeps it out of the
+    // content version's hash for the same reason.
+    chunks: chunksOf(current.version.chunks, pairName(diff)).map((c) => ({ side: c.side, text: c.text })),
+  };
 }
 
 /** The record's name as evidence A1 gives it — used by the round's stored element map. */

@@ -417,7 +417,7 @@ describe('ARGUED — three clauses, and each one removes a different way of bein
 // RED BY NAME — THE ARM THIS TREE CANNOT YET EVALUATE.
 // ---------------------------------------------------------------------------
 
-describe('PUBLIC_PAGE — the EVER PUBLISHED arm, owed to thesis step 24', () => {
+describe('PUBLIC_PAGE — the EVER PUBLISHED arm, thesis step 23', () => {
   it('a page cited by a WITHDRAWN published version stays PUBLIC — opened pages stay open', async () => {
     // Evidence A3 as AMENDED BY THESIS T6: PUBLIC_PAGE holds for a page that any
     // version EVER published cited — "v = PUBLISHED(t) now, or v names a

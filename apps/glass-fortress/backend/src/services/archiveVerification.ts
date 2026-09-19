@@ -12,7 +12,7 @@ import {
 } from '../lib/archiveHttp';
 // FROM `htmlText`, NOT `archiveText`: the raw reading needs no DOM, and a verifier
 // that loaded Readability's module would load jsdom for nothing (R45).
-import { extractRawText, normaliseForPresence, timestampToDate } from '../lib/htmlText';
+import { extractRawText, normaliseForPresence, phrasePresent, timestampToDate } from '../lib/htmlText';
 
 // ---------------------------------------------------------------------------
 // Checking a claim against the archive.
@@ -362,7 +362,6 @@ export async function checkPhraseAtCaptures(
   });
   const storedByTimestamp = new Map(storedRows.map((r) => [r.waybackTimestamp, r.text]));
 
-  const needle = normaliseForPresence(phrase);
   const checks: CaptureCheck[] = [];
   // Sequential on purpose — the Internet Archive is a free service and the
   // scanner already paces itself against it.
@@ -371,7 +370,7 @@ export async function checkPhraseAtCaptures(
       await checkOneCapture(
         url,
         capture,
-        needle,
+        phrase,
         storedByTimestamp.get(capture.waybackTimestamp),
         cache,
       ),
@@ -383,7 +382,7 @@ export async function checkPhraseAtCaptures(
 async function checkOneCapture(
   url: string,
   target: ArchiveCapture,
-  needle: string,
+  phrase: string,
   storedText: string | undefined,
   cache?: CaptureHtmlCache,
 ): Promise<CaptureCheck> {
@@ -412,8 +411,11 @@ async function checkOneCapture(
     };
   }
 
+  // Normalised once for the character counts; the ONE rule (`lib/htmlText.phrasePresent`, shared with `search_corpus`)
+  // normalises again, which collapses the same whitespace to the same string — it is the verdict, the counts are what
+  // it was read over.
   const rawText = normaliseForPresence(extractRawText(html));
-  const presentInRawArchive = rawText.includes(needle);
+  const presentInRawArchive = phrasePresent(rawText, phrase);
 
   if (storedText === undefined) {
     return {
@@ -427,7 +429,7 @@ async function checkOneCapture(
   }
 
   const stored = normaliseForPresence(storedText);
-  const presentInStoredSnapshot = stored.includes(needle);
+  const presentInStoredSnapshot = phrasePresent(stored, phrase);
 
   return {
     ...base,

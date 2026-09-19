@@ -171,6 +171,40 @@ describe('POST /api/mcp — write tool auth', () => {
     );
   });
 
+  it('returns 401 with WWW-Authenticate for an anonymous get_thesis_context — a GATED read, gated at the route (thesis A4 :1476; interaction A5 :1071–:1072)', async () => {
+    // Its handler asks no identity, so the ROUTE is the only thing between an
+    // anonymous caller and a thesis's working state — heads, unargued citations,
+    // gaps and history that a published page never shows.
+    const res = await request(app)
+      .post('/api/mcp')
+      .send({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_thesis_context', arguments: { thesisId: 't1' } } });
+    expect(res.status).toBe(401);
+    expect(res.headers['www-authenticate']).toContain('resource_metadata=');
+  });
+
+  for (const [tool, why] of [
+    ['list_framings', 'every framing is working state carrying a model\'s opinions (thesis §9 :1002–:1004)'],
+    ['list_pages', 'the set of surveyed pages is working state until a thesis publishes (evidence §5)'],
+    // THESIS STEP 22 (A4 :1481–:1499): a paid critic draw, a decision written, a paid drafter draw.
+    ['run_analysis', 'it writes an analysis and spends one critic call (A4 :1481)'],
+    ['decide_gap', 'it writes a gap decision, attributed (A4 :1488)'],
+    ['draft_foia_request', 'it spends one drafter call though it writes nothing (A4 :1496, GATED · paid)'],
+    // THESIS STEP 23 (A4 :1506–:1518): readiness spends with a rationale, the act writes and spends, the withdrawal writes.
+    ['check_publication_readiness', 'it spends one assessor call when given a rationale, writing nothing (A4 :1506, GATED · paid iff rationale)'],
+    ['publish_thesis', 'it writes an attempt and the pin, and spends one assessor call (A4 :1510)'],
+    ['unpublish_thesis', 'it nulls the pin and writes a withdrawal, attributed (A4 :1516)'],
+    // THESIS STEP 24 (A4 :1523–:1525): the author's list names the draft citations of unpublished theses.
+    ['list_thesis_reviews', "it names the draft citations of an author's unpublished theses (A4 :1523)"],
+  ] as const) {
+    it(`returns 401 with WWW-Authenticate for an anonymous ${tool} — a GATED read, gated at the route: ${why}`, async () => {
+      const res = await request(app)
+        .post('/api/mcp')
+        .send({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: {} } });
+      expect(res.status).toBe(401);
+      expect(res.headers['www-authenticate']).toContain('resource_metadata=');
+    });
+  }
+
   it('returns 401 for write tool call with wrong token', async () => {
     const res = await request(app)
       .post('/api/mcp')
@@ -296,8 +330,10 @@ describe('POST /api/mcp — OAuth access token auth', () => {
 
 // ===========================================================================
 // Read tools are open but VIEWER-DEPENDENT: a valid token identifies the
-// caller for get_thesis_context / get_whistleblower_call; an absent or bad
-// token means anonymous — never a refusal.
+// caller for list_theses, which adds a researcher's own theses beside the
+// published ones; an absent or bad token means anonymous — never a refusal.
+// (get_thesis_context was this describe's subject until thesis step 20 made it
+// the GATED read thesis A4 :1476 calls it.)
 // ===========================================================================
 
 describe('POST /api/mcp — read tool viewer identification', () => {
@@ -305,7 +341,7 @@ describe('POST /api/mcp — read tool viewer identification', () => {
     jsonrpc: '2.0',
     id: 1,
     method: 'tools/call',
-    params: { name: 'get_thesis_context', arguments: { thesisId: 't1' } },
+    params: { name: 'list_theses', arguments: {} },
   };
 
   /** The researcher id visible to the tool handler at the moment the server is created. */
@@ -348,6 +384,29 @@ describe('POST /api/mcp — read tool viewer identification', () => {
     expect(res.status).toBe(200);
     expect(seenResearcherId()).toBeNull();
   });
+
+  it('answers an anonymous get_whistleblower_call — a PUBLIC read, never 401 (thesis A4 :1501; step 17 Q3b)', async () => {
+    const res = await request(app)
+      .post('/api/mcp')
+      .send({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_whistleblower_call', arguments: { thesisId: 't1' } } });
+    expect(res.status).toBe(200);
+    expect(seenResearcherId()).toBeNull();
+  });
+
+  // THE CORPUS ACROSS PAGES — UI-2 (docs/gf-ui-flows.md §6.1): three READ tools, open at the route as list_findings is;
+  // a bearer identifies the viewer, an absent one is anonymous — `scope` decides inside the handler, never the route.
+  it.each(['list_corpus', 'list_trajectories', 'search_corpus'])(
+    'passes through an anonymous %s — a READ tool, never 401 — and identifies a bearer for it (UI-2; ui flows §6.1)',
+    async (tool) => {
+      const body = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: { scope: 'public', phrase: 'x' } } };
+      const anonymous = await request(app).post('/api/mcp').send(body);
+      expect(anonymous.status).toBe(200);
+      expect(seenResearcherId()).toBeNull();
+      const signedIn = await request(app).post('/api/mcp').set('Authorization', `Bearer ${VALID_TOKEN}`).send(body);
+      expect(signedIn.status).toBe(200);
+      expect(seenResearcherId()).toBe('r-1');
+    },
+  );
 
   it('treats an unapproved researcher as anonymous on a read', async () => {
     mockAccessTokenFind.mockResolvedValueOnce({ accountId: 'r-oauth-2', scopes: new Set(['mcp:write']) });

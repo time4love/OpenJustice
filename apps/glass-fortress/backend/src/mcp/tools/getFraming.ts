@@ -65,20 +65,23 @@ function project(round: Round): ProjectedRound {
   };
 }
 
+/** THE ONE FUNCTION behind the tool and `GET /api/research/framings/:id` (UI-3). */
+export async function framingOf(input: { framingId: string }): Promise<GetFramingAnswer | Refusal<'NO_FRAMING'>> {
+  const framing = await loadFraming(input.framingId);
+  if (framing === null) {
+    return refusal('NO_FRAMING', `No framing ${input.framingId}.`);
+  }
+  const rounds = await roundsOf(input.framingId);
+  return {
+    framingId: framing.id,
+    question: framing.question,
+    provision: framing.provision,
+    thesisId: framing.thesisId,
+    researcherId: framing.researcherId,
+    rounds: rounds.map(project),
+  };
+}
+
 export async function getFramingHandler(input: { framingId: string }): Promise<string> {
-  return answer(async (): Promise<GetFramingAnswer | Refusal> => {
-    const framing = await loadFraming(input.framingId);
-    if (framing === null) {
-      return refusal('NO_FRAMING', `No framing ${input.framingId}.`);
-    }
-    const rounds = await roundsOf(input.framingId);
-    return {
-      framingId: framing.id,
-      question: framing.question,
-      provision: framing.provision,
-      thesisId: framing.thesisId,
-      researcherId: framing.researcherId,
-      rounds: rounds.map(project),
-    };
-  });
+  return answer(() => framingOf(input));
 }

@@ -1,7 +1,6 @@
 'use client';
 
 import { useTranslations, useLocale } from 'next-intl';
-import { SiteHeader } from '@/components/SiteHeader';
 import { MCP_SERVER_URL } from '@/lib/api';
 import { CopyableCode } from '@/components/CopyableCode';
 
@@ -24,12 +23,12 @@ const TOOLS = [
 
 export default function ResearchersPage() {
   const t = useTranslations('researchers');
+  // The COPY control is labelled by what the value is FOR (§4 :174); `common.copy` is the approved label until UI-9 rewrites this page.
+  const tc = useTranslations('common');
   const locale = useLocale();
 
   return (
     <main className="min-h-screen bg-white">
-      {/* Header */}
-      <SiteHeader current="researchers" />
 
       {/* Hero */}
       <section className="bg-slate-900 text-white">
@@ -78,7 +77,7 @@ export default function ResearchersPage() {
 
           <div className="mb-8">
             <p className="text-xs text-slate-400 uppercase tracking-wide mb-1.5">{t('connectServerLabel')}</p>
-            <CopyableCode value={MCP_SERVER_URL} />
+            <CopyableCode value={MCP_SERVER_URL} label={tc('copy')} showValue />
           </div>
 
           <div className="space-y-6">

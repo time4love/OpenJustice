@@ -8,10 +8,20 @@
 // unconditionally, and every case below was observed RED against it first.
 //
 // FIXTURES, AND THEY STAND IN FOR A STAGING EXERCISE THAT CANNOT HAPPEN YET.
-// Nothing in this tree creates a thesis, a version or a mention, so on staging
-// this instrument's honest answer is two zero counts. Thesis step 24's exercise
-// is "exits 2 before the new version and 0 after"; the EXIT-1 breakage that
-// proves the gate held belongs to no later step, and it is this file's.
+// Staging holds one thesis and it has never been published, so this instrument's
+// honest answer there is three zero counts. Thesis step 24's exercise — "exits 2
+// before the new version and 0 after" — waits on the first real publication (the
+// researcher's ruling, 2026-09-14); the EXIT-1 breakage that proves the gate held
+// belongs to no later step, and it is this file's.
+//
+// COMPLETED AT THESIS STEP 24 (the R50 sketch §d, D11–D13, D18). The audit reads ONE
+// `evaluatePublication` per published version, so every case's world holds what that
+// evaluation loads: the version row, a framing that CHOSE its claim after an assessed
+// round, and the corpus beneath the cited records — `loadHead` resolves every EVIDENCE
+// name through it. TRAJECTORY_CURRENT and CLAIM_FRAMED join the evidence half; the
+// NOT ANSWERABLE arm left, unreachable: a DOCUMENT citation cannot be resolved by the
+// corpus, so its version THROWS (k′), and a version citing a document is audited from
+// document refactor plan :396 (step 34).
 // ---------------------------------------------------------------------------
 
 jest.mock('../../src/lib/prisma', () => ({
@@ -22,6 +32,11 @@ import { asked, resetDouble, store, written, type Row } from '../helpers/evidenc
 import { AFTER, BEFORE, CAPTURE_NAME, CURRENT_VERSION, DIFF_NAME, URL, anchorCheck } from '../helpers/corpusFixture';
 import { auditTheses, exitCodeFor, formatThesisAudit } from '../../src/services/auditTheses';
 import * as predicates from '../../src/services/evidencePredicates';
+import * as publicationEvaluation from '../../src/services/publicationEvaluation';
+import * as thesisPredicates from '../../src/services/thesisPredicates';
+import { FRAMING, ROUNDS, THESIS, TRAJECTORY_ID, VERSION } from '../thesis/fixtures';
+import { CURRENCIES, trajectoriesAre, trajectoriesUnresolved } from '../thesis/gateWorld';
+import { seedCorpus } from '../thesis/tools';
 
 const withPage = (c: Record<string, unknown>): Row => ({ ...c, trackedUrl: { url: URL } });
 const BEFORE_ROW = withPage(BEFORE);
@@ -84,11 +99,35 @@ function mention(
   };
 }
 
-/** One published thesis citing one record, and the anchor checks the walk stored. */
+/** A trajectory citation on a version — no pin, no debate (thesis A2). */
+function trajectoryMention(id: string, over: { thesisId?: string; versionId?: string; published?: boolean } = {}): Row {
+  const thesisId = over.thesisId ?? 'thesis-1';
+  return {
+    id,
+    versionId: over.versionId ?? 'version-1',
+    kind: 'TRAJECTORY',
+    name: TRAJECTORY_ID,
+    contentVersionHash: null,
+    debateSessionId: null,
+    thesisVersion: { thesisId, isPublished: over.published === false ? null : { id: thesisId } },
+    debateSession: null,
+  };
+}
+
+/**
+ * One published thesis citing one record, and the anchor checks the walk stored — AND what the ONE evaluation loads
+ * (D12, thesis step 24): each thesis whole, its published version, a framing that CHOSE the version's claim after an
+ * assessed round, and the corpus beneath the cited records.
+ */
 function published(
-  over: { mentions?: Row[]; rows?: Row[]; checks?: Row[]; theses?: Row[] } = {},
+  over: { mentions?: Row[]; rows?: Row[]; checks?: Row[]; theses?: { id: string; publishedVersionId: string | null }[] } = {},
 ): void {
-  store.theses = over.theses ?? [{ id: 'thesis-1', publishedVersionId: 'version-1' }];
+  seedCorpus();
+  const theses = over.theses ?? [{ id: 'thesis-1', publishedVersionId: 'version-1' }];
+  store.theses = theses.map((t) => ({ ...THESIS, ...t, headVersionId: t.publishedVersionId ?? VERSION.id }));
+  store.versions = theses.flatMap((t) => (t.publishedVersionId === null ? [] : [{ ...VERSION, id: t.publishedVersionId, thesisId: t.id }]));
+  store.framings = theses.map((t) => ({ ...FRAMING, id: `framing-of-${t.id}`, thesisId: t.id }));
+  store.framingRounds = theses.flatMap((t) => ROUNDS.map((r) => ({ ...r, id: `${r.id}-of-${t.id}`, framingId: `framing-of-${t.id}` })));
   store.mentions = over.mentions ?? [mention('mention-1', DIFF_NAME)];
   store.evidenceRows = over.rows ?? [diffRow()];
   store.evidence = store.evidenceRows[0] ?? null;
@@ -161,20 +200,69 @@ describe('EXIT 1 — a failure whose REASON no flag names: the gate did not hold
     expect(report.unpublishable.map((f) => [f.conjunct, f.reason])).toEqual([['INPUT_SOUND', 'INPUT_UNSOUND']]);
   });
 
-  it('a version citing a DOCUMENT record that fails nothing — exit NOT 0, under NOT ANSWERABLE and not among the failures', async () => {
-    // R38 round 3's M6: `evaluable: false` had no exit, and in practice fell
-    // through to 0 — an instrument reporting the gate held about a citation it
-    // never graded. It is not exit 2 either: exit 2 is the FLAG's, and a
-    // non-evaluable citation carries none. The exit is shared with a failure;
-    // the WORDS are not.
-    published({ mentions: [mention('mention-1', DOCUMENT_NAME)], rows: [documentRow()], checks: [] });
+  it('(c) a published trajectory NO stored pass holds — exit 1, under THE GATE DID NOT HOLD', async () => {
+    published({ mentions: [mention('mention-1', DIFF_NAME), trajectoryMention('mention-t')] });
+    trajectoriesUnresolved();
     const report = await auditTheses();
 
     expect(exitCodeFor(report)).toBe(1);
-    expect(report.unpublishable).toEqual([]);
-    expect(report.notAnswerable.map((n) => [n.mentionId, n.reason])).toEqual([['mention-1', 'DOCUMENT_CLASS_NOT_BUILT']]);
-    expect(formatThesisAudit(report)).toContain('NOT ANSWERABLE: 1 citations.');
-    expect(formatThesisAudit(report)).not.toContain('THE GATE DID NOT HOLD');
+    expect(report.unresolved.map((t) => [t.versionId, t.trajectoryId])).toEqual([['version-1', TRAJECTORY_ID]]);
+    expect(formatThesisAudit(report)).toContain('THE GATE DID NOT HOLD');
+  });
+
+  it('(d) a published version whose claim NO framing chose — CLAIM_FRAMED false, exit 1', async () => {
+    published();
+    store.framingRounds = store.framingRounds.map((r) => (r['type'] === 'CHOSEN' ? { ...r, content: { ...(r['content'] as Row), claim: 'טענה אחרת' } } : r));
+    const report = await auditTheses();
+
+    expect(exitCodeFor(report)).toBe(1);
+    expect(report.unframed).toEqual([{ thesisId: 'thesis-1', versionId: 'version-1' }]);
+  });
+
+  it('(g) the evaluation\'s claimFramed IS what is read — stubbed false over a framed world, exit 1', async () => {
+    published();
+    const real = publicationEvaluation.evaluatePublication;
+    jest
+      .spyOn(publicationEvaluation, 'evaluatePublication')
+      .mockImplementation(async (versionId, assessment) => ({ ...(await real(versionId, assessment)), claimFramed: false }));
+    const report = await auditTheses();
+
+    expect(exitCodeFor(report)).toBe(1);
+    expect(report.unframed.map((u) => u.versionId)).toEqual(['version-1']);
+  });
+
+  it('(e) a stale trajectory AND an evidence citation NOT_ARGUED on one version — exit 1 outranks exit 2, and both are listed', async () => {
+    published({
+      mentions: [
+        mention('mention-1', DIFF_NAME, { debate: { status: 'OPEN', recordFileHash: DIFF_NAME, thesisId: 'thesis-1' } }),
+        trajectoryMention('mention-t'),
+      ],
+    });
+    trajectoriesAre(CURRENCIES.RECOMPUTED_DISAGREES);
+    const report = await auditTheses();
+
+    expect([report.unpublishable.map((f) => f.reason), report.stale.map((t) => t.trajectoryId)]).toEqual([['NOT_ARGUED'], [TRAJECTORY_ID]]);
+    expect(exitCodeFor(report)).toBe(1);
+  });
+});
+
+describe('THROWN — a malformed load inside the ONE evaluation is never answered as "the gate held" (q7; §6-D18)', () => {
+  it('(k) a published citation whose name NO corpus record resolves — auditTheses() REJECTS naming the version, and nothing is swallowed', async () => {
+    const NOWHERE = `0x${'ab'.repeat(32)}`;
+    published({ mentions: [mention('mention-1', NOWHERE)], rows: [] });
+
+    await expect(auditTheses()).rejects.toThrow(new RegExp(`version-1.*${NOWHERE}`));
+  });
+
+  it("(k′) a version citing a DOCUMENT record — auditTheses() REJECTS naming the version and the citation's record; the report is never produced (moved from the NOT ANSWERABLE case)", async () => {
+    // R38 round 3's M6 kept the PROPERTY this case holds: a citation nobody graded is never reported as the gate holding.
+    // Before thesis step 24 it exited 1 under NOT ANSWERABLE. Since the audit reads the ONE evaluation, the corpus cannot
+    // resolve a DOCUMENT's name and the evaluation throws first — so there is no report to be read as a pass, and
+    // `runOperationalScript` exits 1 on the throw (test/operationalScriptExit.test.ts). Documents are citable, and this
+    // version audited, from document refactor plan :396 (step 34).
+    published({ mentions: [mention('mention-1', DOCUMENT_NAME)], rows: [documentRow()], checks: [] });
+
+    await expect(auditTheses()).rejects.toThrow(new RegExp(`version-1.*${DOCUMENT_NAME}`));
   });
 });
 
@@ -186,6 +274,38 @@ describe('EXIT 2 — a failure whose REASON the flag names: an expected state, l
     expect(exitCodeFor(report)).toBe(2);
     expect(report.flagged.map((f) => [f.conjunct, f.reason])).toEqual([['RECORD_PROMOTED', 'WITHDRAWN']]);
     expect(report.blocks[0]?.mentions[0]?.flag).toEqual(['WITHDRAWN']);
+  });
+
+  it('(a) a published trajectory the newest pass DISAGREES with — exit 2, listed under STALE_TRAJECTORY', async () => {
+    published({ mentions: [mention('mention-1', DIFF_NAME), trajectoryMention('mention-t')] });
+    trajectoriesAre(CURRENCIES.RECOMPUTED_DISAGREES);
+    const report = await auditTheses();
+
+    expect(exitCodeFor(report)).toBe(2);
+    expect(report.stale.map((t) => [t.versionId, t.trajectoryId, t.state])).toEqual([['version-1', TRAJECTORY_ID, 'RECOMPUTED_DISAGREES']]);
+    // THE THIRD COUNT, above zero (chunk 3 round 1, M1): one trajectory citation examined, and the report's third line says so.
+    expect(report.trajectories).toBe(1);
+    expect(formatThesisAudit(report).split('\n').at(2)).toBe('TRAJECTORY citations: 1');
+    expect(formatThesisAudit(report)).toContain('STALE_TRAJECTORY');
+  });
+
+  it('(b) a published trajectory the newest pass NO LONGER FOLLOWS — exit 2: STALE_TRAJECTORY through the ONE predicate', async () => {
+    published({ mentions: [mention('mention-1', DIFF_NAME), trajectoryMention('mention-t')] });
+    trajectoriesAre(CURRENCIES.NOT_FOLLOWED_BY_LATEST);
+    const report = await auditTheses();
+
+    expect(exitCodeFor(report)).toBe(2);
+    expect(report.stale.map((t) => t.state)).toEqual(['NOT_FOLLOWED_BY_LATEST']);
+  });
+
+  it('(f) `trajectoryCurrent` IS what decides — stubbed false over an AGREEING world, exit 2', async () => {
+    published({ mentions: [mention('mention-1', DIFF_NAME), trajectoryMention('mention-t')] });
+    trajectoriesAre(CURRENCIES.RECOMPUTED_AGREES);
+    jest.spyOn(thesisPredicates, 'trajectoryCurrent').mockReturnValue(false);
+    const report = await auditTheses();
+
+    expect(exitCodeFor(report)).toBe(2);
+    expect(report.stale.map((t) => t.state)).toEqual(['RECOMPUTED_AGREES']);
   });
 
   it('a published citation whose pin is not CURRENT', async () => {
@@ -251,7 +371,7 @@ describe('the routing across versions, and the pass', () => {
     ]);
   });
 
-  it('ZERO published versions — exit 0, and the first two lines are the COUNTS', async () => {
+  it('(i) ZERO published versions — exit 0, the first THREE lines are the COUNTS, and NOT EXAMINED names what A7 does not audit', async () => {
     // Evidence A6 :1202, thesis A6 :1588, thesis A7 :1656-:1657 — "a pass that
     // examined nothing says zero, never nothing". Not a refusal: the question
     // "is any published citation unpublishable?" has a true answer at zero.
@@ -260,10 +380,23 @@ describe('the routing across versions, and the pass', () => {
     const text = formatThesisAudit(report);
 
     expect(exitCodeFor(report)).toBe(0);
-    expect(text.split('\n').slice(0, 2)).toEqual(['Published versions: 0', 'EVIDENCE citations: 0']);
+    expect(text.split('\n').slice(0, 3)).toEqual(['Published versions: 0', 'EVIDENCE citations: 0', 'TRAJECTORY citations: 0']);
     expect(text).toContain('this is a true answer about the');
-    expect(text).toContain('NOT ANSWERABLE: 0 citations.');
-    expect(text).toContain('NOT EXAMINED');
+    const notExamined = text.slice(text.indexOf('NOT EXAMINED'));
+    for (const named of ['CURRENT_ANALYSIS', 'GAPS_DECIDED', 'public-interest', 'publication assessment', 'SHED']) {
+      expect(notExamined).toContain(named);
+    }
+    expect(text).not.toContain('NOT ANSWERABLE');
+  });
+
+  it('(h) a HEAD-only TRAJECTORY citation is NOT examined — the non-firing control for the new arm', async () => {
+    published({ theses: [{ id: 'thesis-1', publishedVersionId: null }], mentions: [trajectoryMention('mention-t', { published: false })], rows: [] });
+    const resolve = trajectoriesAre(CURRENCIES.RECOMPUTED_DISAGREES);
+    const report = await auditTheses();
+
+    expect([report.versions, report.trajectories, report.stale]).toEqual([0, 0, []]);
+    expect(resolve).not.toHaveBeenCalled();
+    expect(exitCodeFor(report)).toBe(0);
   });
 
   it('a HEAD-only citation is NOT examined — the non-firing control', async () => {
@@ -301,6 +434,16 @@ describe('READ-ONLY by construction', () => {
   it('WRITES NOTHING — an instrument that could repair would verify its own repair', async () => {
     published({ rows: [diffRow({ status: 'WITHDRAWN' })] });
     await auditTheses();
+    expect(written).toEqual([]);
+  });
+
+  it('(j) WRITES NOTHING with the new arms — a stale trajectory and an unframed claim graded, no row written', async () => {
+    published({ mentions: [mention('mention-1', DIFF_NAME), trajectoryMention('mention-t')] });
+    store.framingRounds = store.framingRounds.map((r) => (r['type'] === 'CHOSEN' ? { ...r, content: { ...(r['content'] as Row), claim: 'טענה אחרת' } } : r));
+    trajectoriesAre(CURRENCIES.RECOMPUTED_DISAGREES);
+    const report = await auditTheses();
+
+    expect([report.stale.length, report.unframed.length]).toEqual([1, 1]);
     expect(written).toEqual([]);
   });
 });

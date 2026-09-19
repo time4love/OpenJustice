@@ -82,18 +82,27 @@ const RETIRED_EVIDENCE_TOOLS = [
 // 19 — so a single merged list would have to be un-merged the first time a name
 // comes back. Each list leaves when its layer's successors land.
 //
+// `add_thesis_version` AND `get_thesis_context` LEFT at thesis step 20 (R47, REVIEW's ruling): thesis A4 keeps
+// both as re-shaped tools (:1468, :1476) and its retired block (:1539–:1551) names neither; their successors
+// land under the same names at step 20.
+//
+// `get_whistleblower_call` LEFT at thesis step 22 (R48 F2, REVIEW's ruling), for the same reason: A4 :1501 keeps it
+// re-shaped — PUBLIC, derived from CALLED and REQUESTED gaps, no model — and the retired block names it not.
+//
+// `check_publication_readiness`, `publish_thesis` AND `unpublish_thesis` LEFT at thesis step 23, for the same reason:
+// A4 :1506–:1518 keeps all three re-shaped — readiness over A6's gate, the act with its attempt and its pin, the
+// withdrawal — and the retired block names none of them; their successors land under the same names at step 23.
+//
 // `suggest_thesis` is on A4's retired block and has never been registered in this
 // tree; it is listed for the reason `enrich_evidence_with_history` is — a name
 // held absent costs nothing, and the one nobody wrote down is the one that
 // returns.
 const RETIRED_THESIS_TOOLS = [
   'create_thesis_draft',
-  'add_thesis_version',
   'run_ai_analysis',
   'get_research_agenda',
   'generate_foia_request',
   'get_figure_dossier',
-  'get_thesis_context',
   'open_thesis_framing',
   'assess_thesis_framing',
   'get_thesis_framing',
@@ -102,10 +111,6 @@ const RETIRED_THESIS_TOOLS = [
   'get_session_summary',
   'add_session_note',
   'cite_trajectories',
-  'get_whistleblower_call',
-  'publish_thesis',
-  'unpublish_thesis',
-  'check_publication_readiness',
   'suggest_thesis',
   'start_tutorial',
   'preview_diff_classification',
@@ -141,6 +146,16 @@ const RETIRED_THESIS_MODULES = [
   'utils/parseMentions',
   'lib/evidenceRecord',
   'lib/summaryProvenance',
+  // THE CRITIC'S TWO LEGACY PROMPTS — retired at thesis step 22 with their successor `prompts/thesisCritique`
+  // (thesis T4 :589, :712–:714; R48 §6-R25, §9-9, the `prompts/intakeAgentClassification` precedent below).
+  'prompts/devilsAdvocateCritique',
+  'prompts/thesisFalsification',
+  // THE DRAFTER'S LEGACY PROMPT — retired at thesis step 22 with its successor `prompts/foiaRequestDrafting` (T4
+  // :715–:716: the gap's two strings and no record).
+  'prompts/foiaLetterDrafting',
+  // THE PUBLICATION ASSESSOR'S LEGACY PROMPT — retired at thesis step 23 with its successor `prompts/publicationAssessment`
+  // (T5 :763–:765: OFFICIAL_CAPACITY and GAP_ACTIONABILITY retired; the R49 sketch §d3, approved 2026-09-14).
+  'prompts/thesisPublicationAssessment',
 ];
 
 // THE DOCUMENT TOOLS RETIRED BY document flows §9, added in the document third
@@ -406,8 +421,8 @@ describe('EXPECTED RED UNTIL STEP 8 — no file under src names a retired concep
       .toEqual([]);
     // The thesis halves — one assertion per new shape, and the module one uses the
     // sibling form, which is the spelling this scan was corrected for.
-    expect(RETIRED_THESIS_TOOLS.filter((t) => `server.tool('publish_thesis', …)`.includes(t)))
-      .toEqual(['publish_thesis']);
+    expect(RETIRED_THESIS_TOOLS.filter((t) => `server.tool('run_ai_analysis', …)`.includes(t)))
+      .toEqual(['run_ai_analysis']);
     expect(importedModules('services/x.ts', `import { p } from './thesisPublication';`))
       .toContain('services/thesisPublication');
     // The document halves — one assertion per shape, the module one in the
@@ -495,6 +510,40 @@ describe("the THESIS layer's retired names that hold today — routes and delega
     expect(RETIRED_THESIS_DELEGATES.test('await tx.researchSessionEvent.create({ data });')).toBe(true);
     expect(RETIRED_THESIS_DELEGATES.test('await prisma.keyFigure.findMany({});')).toBe(true);
     expect(RETIRED_THESIS_DELEGATES.test('await prisma.debateSession.findUnique({ where });')).toBe(false);
+  });
+});
+
+// UI-3 (docs/gf-ui-refactor-plan.md :261–:264, :944; docs/gf-ui-flows.md §6 :269–:273): the two routes the UI plan
+// retires, as SENTENCES no file under src may say again — `/api/forensics` (every surveyed page to anyone, and
+// trajectories with no PUBLIC_PAGE gate) and `/api/stats` (a count of drafts, served anonymously). Code only: a
+// comment recording the retirement is not a live surface.
+describe("the UI layer's retired routes (UI-3, the R53 sketch §c6)", () => {
+  const RETIRED_UI_ROUTES = [/\/api\/forensics\b/, /\/api\/stats\b/];
+
+  it('no file under src says a retired UI-3 route', () => {
+    const offenders = srcModules()
+      .map(({ file, code }) => ({ file, routes: RETIRED_UI_ROUTES.filter((r) => r.test(code)).map(String) }))
+      .filter((m) => m.routes.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
+  it('DETECTS both sentences — and the survivors, and a comment recording the retirement, do not fire', () => {
+    for (const sentence of [
+      "app.use('/api/forensics', forensicsRouter)",
+      "app.get('/api/stats', h)",
+      'fetch(`/api/forensics/tracked/${id}/trajectories`)',
+    ]) {
+      expect(RETIRED_UI_ROUTES.some((r) => r.test(sentence))).toBe(true);
+    }
+    for (const survivor of [
+      "app.use('/api/corpus', corpusRouter)",
+      "'/api/pages/:trackedUrlId/trajectories'",
+      "'/api/research/pages'",
+      "'/api/reports/patterns'",
+      codeOf('// GET /api/stats was retired at UI-3\nconst a = 1;'),
+    ]) {
+      expect(RETIRED_UI_ROUTES.some((r) => r.test(survivor))).toBe(false);
+    }
   });
 });
 

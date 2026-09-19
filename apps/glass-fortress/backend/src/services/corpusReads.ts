@@ -2,8 +2,18 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { recordId, isWaybackTimestamp, type RecordId } from '../lib/evidenceIdentity';
+import { phrasePresent } from '../lib/htmlText';
+import type { ComputeResult, ChangeSpan } from './claimTrajectory';
 import { CLASSIFICATION_KEYS } from './recordDiff';
-import { recomputable, type ContentVersionProvenance } from './evidencePredicates';
+import {
+  currentVersionOf,
+  narrowed,
+  publicPage,
+  recomputable,
+  storedAttributionFor,
+  type ContentVersionProvenance,
+  type StoredAttribution,
+} from './evidencePredicates';
 
 // ---------------------------------------------------------------------------
 // THE CORPUS, AS THE PUBLIC READS IT — docs/gf-evidence-flows.md §5 and A4.
@@ -39,6 +49,22 @@ export interface Page {
 
 export async function loadPage(url: string): Promise<Page | null> {
   return prisma.trackedUrl.findUnique({ where: { url }, select: { id: true, url: true } });
+}
+
+/** The page, by the name a ROUTE has for it (docs/gf-ui-flows.md §6 :221: routes name a page by `trackedUrlId`). */
+export async function loadPageById(trackedUrlId: string): Promise<Page | null> {
+  return prisma.trackedUrl.findUnique({ where: { id: trackedUrlId }, select: { id: true, url: true } });
+}
+
+/**
+ * A page NAMED AT A DOOR and not yet looked up: the one lookup of its row, and the refusal for its absence
+ * (docs/gf-ui-flows.md §6 :221–:223; UI-3). A read's core calls `load()` exactly where its refusal order places the
+ * lookup, so the tool (by url) and the route (by id) load one row once and refuse NOT_SURVEYED alike. The door
+ * supplies `missing` — this module words no refusal.
+ */
+export interface PageRef {
+  load(): Promise<Page | null>;
+  missing(): { error: string; code: 'NOT_SURVEYED' };
 }
 
 /** A capture as the public timeline shows it — the corpus record, never the work-list row. */
@@ -117,14 +143,47 @@ function named(row: {
   };
 }
 
+/**
+ * Which page a row belongs to. The select always asks for `trackedUrlId`, so in production it is always
+ * there; a row that arrives without it when exactly ONE page was asked for belongs to that page, because the
+ * query's own `where` constrained it. Without this the grouping DROPS such a row silently, which is how the
+ * first spelling of these plurals returned an empty timeline for every page.
+ */
+function pageOfRow(row: { trackedUrlId?: string | null }, asked: readonly string[]): string | null {
+  if (typeof row.trackedUrlId === 'string') return row.trackedUrlId;
+  return asked.length === 1 ? (asked[0] ?? null) : null;
+}
+
+/**
+ * Every ACQUIRED capture of THESE pages, by page id — ONE query whatever the number of pages.
+ *
+ * THE PLURAL IS THE IMPLEMENTATION and the singular below delegates to it. The order, the `named` filter and
+ * the select live here, once: a second place that built the same list would be a second answer to "what has
+ * this page got", which is the shape `storedAttributionFor` already states as "ONE QUERY FOR THE WHOLE PAGE".
+ *
+ * The map has an entry for EVERY id asked for, so a caller's lookup is total and a page with no captures is
+ * an empty list rather than an `undefined` that reads like a missing page.
+ */
+export async function capturesByPage(trackedUrlIds: readonly string[]): Promise<Map<string, TimelineCapture[]>> {
+  const byPage = new Map<string, TimelineCapture[]>(trackedUrlIds.map((id) => [id, []]));
+  if (trackedUrlIds.length === 0) return byPage;
+  const rows = await prisma.urlSnapshot.findMany({
+    where: { trackedUrlId: { in: [...trackedUrlIds] }, waybackTimestamp: { not: null } },
+    orderBy: { waybackTimestamp: 'asc' },
+    select: { ...CAPTURE_SELECT, trackedUrlId: true },
+  });
+  for (const row of rows) {
+    const capture = named(row);
+    if (capture === null) continue;
+    const page = pageOfRow(row, trackedUrlIds);
+    if (page !== null) byPage.get(page)?.push(capture);
+  }
+  return byPage;
+}
+
 /** Every ACQUIRED capture of a page, in TIMESTAMP order. */
 export async function loadCaptures(trackedUrlId: string): Promise<TimelineCapture[]> {
-  const rows = await prisma.urlSnapshot.findMany({
-    where: { trackedUrlId, waybackTimestamp: { not: null } },
-    orderBy: { waybackTimestamp: 'asc' },
-    select: CAPTURE_SELECT,
-  });
-  return rows.map(named).filter((c): c is TimelineCapture => c !== null);
+  return (await capturesByPage([trackedUrlId])).get(trackedUrlId) ?? [];
 }
 
 /**
@@ -136,32 +195,46 @@ export async function loadCaptures(trackedUrlId: string): Promise<TimelineCaptur
  * any other (§7).
  */
 export async function loadDiffs(trackedUrlId: string): Promise<TimelineDiff[]> {
+  return (await diffsByPage([trackedUrlId])).get(trackedUrlId) ?? [];
+}
+
+/**
+ * Every diff of THESE pages, by page id — ONE query whatever the number of pages. The plural is the
+ * implementation; `loadDiffs` above delegates to it, and the one spelling of timestamp order lives here.
+ */
+export async function diffsByPage(trackedUrlIds: readonly string[]): Promise<Map<string, TimelineDiff[]>> {
+  const byPage = new Map<string, TimelineDiff[]>(trackedUrlIds.map((id) => [id, []]));
+  if (trackedUrlIds.length === 0) return byPage;
   const rows = await prisma.urlVersionDiff.findMany({
-    where: { trackedUrlId },
+    where: { trackedUrlId: { in: [...trackedUrlIds] } },
     select: {
       id: true,
+      trackedUrlId: true,
       beforeSnapshot: { select: CAPTURE_SELECT },
       afterSnapshot: { select: CAPTURE_SELECT },
       contentVersions: { select: VERSION_SELECT },
     },
   });
-  const diffs: TimelineDiff[] = [];
   for (const row of rows) {
     const before = named(row.beforeSnapshot);
     const after = named(row.afterSnapshot);
     if (before === null || after === null) continue;
-    diffs.push({ id: row.id, before, after, versions: row.contentVersions });
+    const page = pageOfRow(row, trackedUrlIds);
+    if (page !== null) byPage.get(page)?.push({ id: row.id, before, after, versions: row.contentVersions });
   }
   // ONE SPELLING OF TIMESTAMP ORDER. A wayback timestamp is fourteen
   // fixed-width digits, so `<` IS chronological order — the same comparison
   // `intervening` makes over the same values. `localeCompare` was a second
   // spelling of it here: same answer today, a different one under any locale
   // that collates digits differently, and two rules where the design has one.
-  return diffs.sort((a, b) => {
-    if (a.after.capture !== b.after.capture) return a.after.capture < b.after.capture ? -1 : 1;
-    if (a.before.capture === b.before.capture) return 0;
-    return a.before.capture < b.before.capture ? -1 : 1;
-  });
+  for (const diffs of byPage.values()) {
+    diffs.sort((a, b) => {
+      if (a.after.capture !== b.after.capture) return a.after.capture < b.after.capture ? -1 : 1;
+      if (a.before.capture === b.before.capture) return 0;
+      return a.before.capture < b.before.capture ? -1 : 1;
+    });
+  }
+  return byPage;
 }
 
 // ---------------------------------------------------------------------------
@@ -421,43 +494,119 @@ export interface ResolvedRecord {
  * `documentHash`, with a write path that can mis-write it."
  */
 export async function resolveRecordByName(fileHash: string): Promise<ResolvedRecord | null> {
-  const promoted = await prisma.evidence.findUnique({
-    where: { fileHash },
+  return (await recordsByName([fileHash])).get(fileHash) ?? null;
+}
+
+/**
+ * RECORDS BY NAME — ONE pass over the corpus for the WHOLE set, however many names are asked for.
+ *
+ * THIS IS THE IMPLEMENTATION and `resolveRecordByName` above delegates to it. A published thesis body asks
+ * for every record it cites at once; asking one name at a time made the corpus pass run once per citation,
+ * which is four queries per mention for an answer the same four queries give for all of them.
+ *
+ * IT FOLDS THE READS, IT DOES NOT CACHE THE PREDICATE. `recomputable` is still asked of every (name ×
+ * candidate) pair, in memory, exactly as before — evidence A3 :1060–:1063 licenses caching an OBSERVATION and
+ * never a predicate, and nothing here stores a verdict. What is shared is the ROWS, which are the same rows
+ * for every name.
+ *
+ * The map has an entry for every name asked for; a name the corpus cannot derive maps to `null`, which is
+ * A4's `NOT_A_RECORD` and not an absence to be confused with a missing key.
+ */
+export async function recordsByName(fileHashes: readonly string[]): Promise<Map<string, ResolvedRecord | null>> {
+  const wanted = [...new Set(fileHashes)];
+  const resolved = new Map<string, ResolvedRecord | null>(wanted.map((name) => [name, null]));
+  if (wanted.length === 0) return resolved;
+
+  // The promoted names' own pages first — one indexed lookup for the whole set rather than one each.
+  const promoted = await prisma.evidence.findMany({
+    where: { fileHash: { in: wanted } },
     select: {
+      fileHash: true,
       kind: true,
       snapshot: { select: { trackedUrlId: true } },
       urlVersionDiff: { select: { trackedUrlId: true } },
     },
   });
-  const pageId =
-    promoted?.snapshot?.trackedUrlId ?? promoted?.urlVersionDiff?.trackedUrlId ?? null;
-  if (pageId !== null) {
-    const resolved = await searchPage(pageId, fileHash);
-    if (resolved !== null) return resolved;
+  const promotedPage = new Map<string, string>();
+  for (const row of promoted) {
+    const pageId = row.snapshot?.trackedUrlId ?? row.urlVersionDiff?.trackedUrlId ?? null;
+    if (pageId !== null) promotedPage.set(row.fileHash, pageId);
   }
 
+  // Every page the set could resolve against. A promoted name's page is already among them, so the corpus is
+  // walked ONCE and not once per name: the pass is linear in the corpus, and it now runs a single time.
   const pages = await prisma.trackedUrl.findMany({ select: { id: true, url: true } });
-  for (const page of pages) {
-    if (page.id === pageId) continue; // already searched
-    const resolved = await searchPage(page.id, fileHash);
-    if (resolved !== null) return resolved;
+  const searchable = pages.length === 0 ? [] : pages;
+  const ids = searchable.map((page) => page.id);
+  const captures = await capturesByPage(ids);
+  const diffs = await diffsByPage(ids);
+
+  for (const name of wanted) {
+    // The promoted name's own page first, then the rest — the order the singular read had, preserved because
+    // a name is answered by the FIRST page whose record satisfies RECOMPUTABLE.
+    const first = promotedPage.get(name);
+    const order = first === undefined ? searchable : [...searchable.filter((p) => p.id === first), ...searchable.filter((p) => p.id !== first)];
+    for (const page of order) {
+      const found = matchInPage(name, page, captures.get(page.id) ?? [], diffs.get(page.id) ?? []);
+      if (found !== null) {
+        resolved.set(name, found);
+        break;
+      }
+    }
   }
-  return null;
+  return resolved;
 }
 
-/** Every record of one page, named, until one matches. */
-async function searchPage(pageId: string, fileHash: string): Promise<ResolvedRecord | null> {
-  const page = await prisma.trackedUrl.findUnique({
-    where: { id: pageId },
-    select: { id: true, url: true },
-  });
-  if (page === null) return null;
+/**
+ * THE TEXT EACH PIN NAMES, by `snapshotId` + `textHash` — TWO queries, whatever the number of pins, and ZERO
+ * when no CAPTURE is cited.
+ *
+ * A capture citation pins either the capture's CURRENT text (`urlSnapshot.text`) or a superseded extraction of
+ * it (`textVersion`), and the singular form asked one of those per citation. Both are asked once here for the
+ * whole set, and `pinnedContent` becomes a pure function over the answer.
+ *
+ * The key is `snapshotId + '\u0000' + textHash`: a text is identified by the capture it belongs to AND the
+ * extraction that produced it, and neither alone is unique.
+ */
+export async function heldTextsFor(pins: readonly { snapshotId: string; textHash: string }[]): Promise<Map<string, string>> {
+  const texts = new Map<string, string>();
+  if (pins.length === 0) return texts;
+  const snapshotIds = [...new Set(pins.map((pin) => pin.snapshotId))];
 
+  const current = await prisma.urlSnapshot.findMany({
+    where: { id: { in: snapshotIds } },
+    select: { id: true, textHash: true, text: true },
+  });
+  for (const row of current) texts.set(heldTextKey(row.id, row.textHash), row.text);
+
+  // Only the pins the current text did not answer need the superseded extractions.
+  const outstanding = pins.filter((pin) => !texts.has(heldTextKey(pin.snapshotId, pin.textHash)));
+  // THE KEPT EXTRACTIONS, by the compound key the schema declares (`@@unique([snapshotId, textHash])`) — one
+  // read per OUTSTANDING pin, which is the pins whose capture has since moved off the text they name. That is
+  // the rare arm: a citation normally pins the capture's current text, which the one read above answered for
+  // all of them. Reading them by key rather than by `snapshotId in` keeps the query the singular form made,
+  // and a superseded pin is the only thing that costs a round trip of its own.
+  for (const pin of outstanding) {
+    const kept = await prisma.textVersion.findUnique({
+      where: { snapshotId_textHash: { snapshotId: pin.snapshotId, textHash: pin.textHash } },
+      select: { text: true },
+    });
+    if (kept !== null) texts.set(heldTextKey(pin.snapshotId, pin.textHash), kept.text);
+  }
+  return texts;
+}
+
+/** The one spelling of the key `heldTextsFor` answers by. */
+export function heldTextKey(snapshotId: string, textHash: string): string {
+  return `${snapshotId}\u0000${textHash}`;
+}
+
+/** Every record of one page, named, until one matches — in memory, over rows already read. */
+function matchInPage(fileHash: string, page: Page, captures: readonly TimelineCapture[], diffs: readonly TimelineDiff[]): ResolvedRecord | null {
   // THROUGH THE PREDICATE, not through a private comparison. RECOMPUTABLE is
   // "e.fileHash = ID(the record it is keyed to)", and resolving a name is that
   // same equality asked of every record the corpus holds — so it is asked with
   // the same function, and a name that does not satisfy it does not resolve.
-  const captures = await loadCaptures(page.id);
   for (const capture of captures) {
     const { recomputable: matches, expected } = recomputable(fileHash, {
       kind: 'CAPTURE',
@@ -469,7 +618,6 @@ async function searchPage(pageId: string, fileHash: string): Promise<ResolvedRec
     }
   }
 
-  const diffs = await loadDiffs(page.id);
   for (const diff of diffs) {
     const { recomputable: matches, expected } = recomputable(fileHash, {
       kind: 'DIFF',
@@ -486,6 +634,74 @@ async function searchPage(pageId: string, fileHash: string): Promise<ResolvedRec
         pair: { before: diff.before, after: diff.after },
         diff,
       };
+    }
+  }
+  return null;
+}
+
+/** A record name over a capture the corpus holds no body for — what a citation of it is refused with. */
+export interface UnacquiredRecord {
+  page: Page;
+  /** The capture that was never ACQUIRED, by its archive timestamp. */
+  capture: string;
+  /** Its work-list outcome — SKIPPED, DUPLICATE, IDENTICAL, … never ACQUIRED. */
+  outcome: string;
+  /** The ACQUIRED captures on either side of it, as `acquiredNeighbours` names them. */
+  neighbours: { before: string | null; after: string | null };
+}
+
+/**
+ * A record name that `resolveRecordByName` could not find, read against what the walk FETCHED and did not
+ * keep — thesis step 20, the researcher's ruling (R47 §6-R1).
+ *
+ * A name is derived from a url, a timestamp and the SHA-256 of the bytes as served (evidence A1), and a
+ * work-list row that the walk fetched carries exactly that digest as `rawBytesHash` whatever its outcome.
+ * So a name may be over a capture the corpus never ACQUIRED: the CAPTURE name over the row, or a DIFF name
+ * over the row and an acquired neighbour — the pair the walk would have written had it kept the capture.
+ * Such a citation names something real that the corpus holds no text for, which is NOT_ACQUIRED, never
+ * NOT_A_RECORD. Anything else is null.
+ *
+ * THROUGH THE PREDICATE, as `searchPage` asks it: each candidate is `recomputable`'s equality. Linear in
+ * the work-list, and reached only after the corpus pass missed. The page's ACQUIRED captures are loaded ONCE
+ * through `loadCaptures` — the one spelling of that list — and each row's neighbours are read from it.
+ */
+export async function resolveUnacquiredByName(fileHash: string): Promise<UnacquiredRecord | null> {
+  const pages = await prisma.trackedUrl.findMany({ select: { id: true, url: true } });
+  for (const page of pages) {
+    const rows = await prisma.cdxIndexEntry.findMany({
+      where: { trackedUrlId: page.id },
+      select: { waybackTimestamp: true, status: true, rawBytesHash: true },
+    });
+    const unkept = rows.filter(
+      (row): row is typeof row & { rawBytesHash: string } => row.status !== 'ACQUIRED' && row.rawBytesHash !== null,
+    );
+    if (unkept.length === 0) continue;
+
+    // Timestamp order: fourteen fixed-width digits, so `<` is chronological (`loadDiffs`' one spelling).
+    const acquired = await loadCaptures(page.id);
+    for (const row of unkept) {
+      const capture = { waybackTimestamp: row.waybackTimestamp, documentHash: row.rawBytesHash };
+      const before = acquired.filter((c) => c.capture < row.waybackTimestamp).at(-1) ?? null;
+      const after = acquired.find((c) => c.capture > row.waybackTimestamp) ?? null;
+      const endpoint = (c: TimelineCapture): { waybackTimestamp: string; documentHash: string } => ({
+        waybackTimestamp: c.capture,
+        documentHash: c.documentHash,
+      });
+
+      const names =
+        recomputable(fileHash, { kind: 'CAPTURE', url: page.url, capture }).recomputable ||
+        (before !== null &&
+          recomputable(fileHash, { kind: 'DIFF', url: page.url, before: endpoint(before), after: capture }).recomputable) ||
+        (after !== null &&
+          recomputable(fileHash, { kind: 'DIFF', url: page.url, before: capture, after: endpoint(after) }).recomputable);
+      if (names) {
+        return {
+          page,
+          capture: row.waybackTimestamp,
+          outcome: row.status,
+          neighbours: { before: before?.capture ?? null, after: after?.capture ?? null },
+        };
+      }
     }
   }
   return null;
@@ -560,4 +776,387 @@ export async function loadEvidenceLinkage(
     linkage.set(row.fileHash, { fileHash: row.fileHash, status: row.status, citedBy });
   }
   return linkage;
+}
+
+// ---------------------------------------------------------------------------
+// THE ROWS A TIMELINE IS MADE OF — composed ONCE, for the per-page read and
+// for the corpus across pages (UI-2, docs/gf-ui-refactor-plan.md UI-2
+// :178–:183 "one loader, three callers, no second query"). Moved here from
+// `mcp/tools/listFindings.ts` and `mcp/tools/getClaimTrajectories.ts` on the
+// researcher's ruling of 2026-09-15, so that `list_corpus` at one page and
+// `list_findings` are one composition and not two held equal by a test alone.
+// ---------------------------------------------------------------------------
+
+export interface AnchorReport {
+  documentHash: string;
+  /**
+   * THREE VALUES, THREE FACTS. true — the registry holds this capture's
+   * `documentHash` and our registrar submitted it. false — it does not, or
+   * someone else did. null — no verdict was ever stored under the current rule,
+   * which is neither of those and must never be read as "no".
+   */
+  attributed: boolean | null;
+}
+
+export interface CaptureEntry {
+  capture: string;
+  snapshotDate: string;
+  fileHash: string;
+  textHash: string;
+  textExtractionVersion: string;
+  anchor: AnchorReport;
+  evidence: EvidenceLinkage | null;
+}
+
+export interface DiffEntry {
+  before: string;
+  after: string;
+  fileHash: string;
+  current: { contentVersionHash: string; chunks: unknown } | null;
+  awaitingDerivation: boolean;
+  opinion: Opinion | null;
+  narrowed: boolean;
+  evidence: EvidenceLinkage | null;
+}
+
+/** A capture's row of the timeline (evidence A4 :1082–:1083), from the stored anchor verdict and the promotion linkage. */
+export function captureRow(
+  page: Page,
+  capture: TimelineCapture,
+  attribution: ReadonlyMap<string, StoredAttribution>,
+  linkage: ReadonlyMap<string, EvidenceLinkage>,
+): CaptureEntry {
+  const fileHash = captureName(page, capture);
+  return {
+    capture: capture.capture,
+    snapshotDate: capture.snapshotDate,
+    fileHash,
+    textHash: capture.textHash,
+    textExtractionVersion: capture.textExtractionVersion,
+    anchor: {
+      documentHash: capture.documentHash,
+      attributed: attribution.get(capture.id)?.attributed ?? null,
+    },
+    evidence: linkage.get(fileHash) ?? null,
+  };
+}
+
+/**
+ * A diff's row of the timeline (evidence A4 :1084–:1090): the pair, CURRENT's chunks or the named absence, the opinion
+ * in its own register, NARROWED over the page's ACQUIRED captures, and the promotion linkage.
+ */
+export function diffRow(
+  page: Page,
+  diff: TimelineDiff,
+  acquired: readonly string[],
+  linkage: ReadonlyMap<string, EvidenceLinkage>,
+): DiffEntry {
+  const fileHash = diffName(page, diff);
+  const current = currentVersionOf({
+    kind: 'DIFF',
+    before: diff.before,
+    after: diff.after,
+    versions: diff.versions,
+  });
+  return {
+    before: diff.before.capture,
+    after: diff.after.capture,
+    fileHash,
+    current: current.defined
+      ? {
+          contentVersionHash: current.contentVersionHash,
+          chunks: current.kind === 'DIFF' ? current.version.chunks : null,
+        }
+      : null,
+    awaitingDerivation: !current.defined,
+    opinion:
+      current.defined && current.kind === 'DIFF'
+        ? opinionOf(current.version.classification, pairName(diff))
+        : null,
+    narrowed: narrowed({ before: diff.before.capture, after: diff.after.capture }, acquired),
+    evidence: linkage.get(fileHash) ?? null,
+  };
+}
+
+/** One finding of a detection pass as `get_claim_trajectories` reports it: a group of claims that moved as a unit. */
+export interface TrajectoryFinding {
+  patternHash: string;
+  /** The state this group was detected against — travels with the finding, which gets copied out of its envelope. */
+  sourceStateHash: string;
+  transitions: number;
+  firstSeen: string;
+  lastSeen: string;
+  finalState: 'PRESENT' | 'REMOVED';
+  claimCount: number;
+  changes: ChangeSpan[];
+  /** trajectoryId is the citable identity; a group has none of its own, so every member is cited. */
+  claims: { trajectoryId: string; claimHash: string; claimText: string }[];
+}
+
+/** The findings of a pass, one per group, each carrying the pass's state hash (evidence A4 :1103). */
+export function trajectoryFindings(result: ComputeResult): TrajectoryFinding[] {
+  return result.groups.map((g) => ({
+    patternHash: g.patternHash,
+    sourceStateHash: result.provenance.sourceStateHash,
+    transitions: g.transitions,
+    firstSeen: g.firstSeen,
+    lastSeen: g.lastSeen,
+    finalState: g.finalState,
+    claimCount: g.claims.length,
+    changes: g.changes,
+    claims: g.claims.map((c) => ({
+      trajectoryId: c.id,
+      claimHash: c.claimHash,
+      claimText: c.claimText,
+    })),
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// THE CORPUS ACROSS PAGES — docs/gf-ui-flows.md §6.1 :226–:257 and §28
+// :746–:753; docs/gf-ui-refactor-plan.md UI-2 (2026-09-15). `list_corpus`,
+// `list_trajectories` and `search_corpus` are this module's loaders over EVERY
+// page of a scope, with the per-page rows above composed once for both. Still
+// no refusal is decided here (the tools do that, through `evidenceRefusals`)
+// and nothing is written: a corpus-wide read is a read, never a transaction.
+//
+// `scope` DECIDES, NEVER IDENTITY. `pagesInScope` reads no caller: `public` is
+// PUBLIC_PAGE's set (the predicate CALLED per page), `all` every surveyed page.
+// ---------------------------------------------------------------------------
+
+/**
+ * How many entries one call answers, and the most a caller may ask for — ONE
+ * operational parameter (interaction flows A8; plan UI-2 :174), named in UI-2's
+ * dated doc and never a judgement about the corpus.
+ */
+export const CORPUS_READ_LIMIT = 100;
+
+/** A day, as `since` and `until` name one — YYYY-MM-DD, inclusive at both ends. */
+export const DAY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'a day, YYYY-MM-DD');
+
+export type CorpusScope = 'public' | 'all';
+
+/** A page of the scope, with whether a published thesis has opened it — `publicPage`, CALLED. */
+export interface ScopedPage extends Page {
+  public: boolean;
+}
+
+/** Code-unit order — the order this module states, never the locale's. */
+const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * Every surveyed page at `all`; exactly PUBLIC_PAGE's set at `public` — the predicate asked per page, never a second
+ * spelling of "is this page opened". Ordered by url, so a facet reads the same way every time.
+ */
+export async function pagesInScope(scope: CorpusScope): Promise<ScopedPage[]> {
+  const rows = await prisma.trackedUrl.findMany({ select: { id: true, url: true } });
+  const pages: ScopedPage[] = [];
+  for (const row of [...rows].sort((a, b) => byCodeUnit(a.url, b.url))) {
+    pages.push({ id: row.id, url: row.url, public: await publicPage(row.id) });
+  }
+  return scope === 'all' ? pages : pages.filter((p) => p.public);
+}
+
+/** The page an entry belongs to — the field the read view marks a row of a page not yet opened by (§27 :734). */
+export interface EntryPage {
+  trackedUrlId: string;
+  url: string;
+  public: boolean;
+}
+
+/** One entry of the corpus: a capture row or a diff row (A4 :1081–:1090), its kind, and its page. */
+export type CorpusEntry = (({ kind: 'CAPTURE' } & CaptureEntry) | ({ kind: 'DIFF' } & DiffEntry)) & { page: EntryPage };
+
+/** The `pages` facet (§28 :750): every page of the SCOPE, its held span and its entry count, never the call's filters. */
+export interface PageFacet extends EntryPage {
+  first: string | null;
+  last: string | null;
+  entries: number;
+}
+
+/** A diff's instant on the chronology is its `after` — the capture at which the page is seen to have moved. */
+export function entryInstant(entry: CorpusEntry): string {
+  return entry.kind === 'DIFF' ? entry.after : entry.capture;
+}
+
+/** The fields of a `list_corpus` cursor, in the order they sort — the entries' total order, as a key. */
+export const CORPUS_CURSOR_KEYS = ['t', 'k', 'p', 'b', 'h'] as const;
+/** The fields of a `list_trajectories` cursor: the instant the claim LEFT, the page, the pattern. */
+export const TRAJECTORY_CURSOR_KEYS = ['l', 'p', 'h'] as const;
+
+export type CorpusKey = Record<(typeof CORPUS_CURSOR_KEYS)[number], string>;
+export type TrajectoryKey = Record<(typeof TRAJECTORY_CURSOR_KEYS)[number], string>;
+
+/** An entry's key: its instant, its kind (CAPTURE before DIFF at one instant), its page, a diff's `before`, its name. */
+export function corpusKeyOf(entry: CorpusEntry): CorpusKey {
+  return { t: entryInstant(entry), k: entry.kind, p: entry.page.url, b: entry.kind === 'DIFF' ? entry.before : '', h: entry.fileHash };
+}
+
+/**
+ * TIMESTAMP ORDER ACROSS PAGES, OLDEST FIRST, and no other order (A4 :1091; §24 :682); the tie-breaks are declared,
+ * never argued: at one instant a CAPTURE before a DIFF (the capture is the record, the diff the change ending at it),
+ * then the page's url, then a diff's `before` ascending (the wider pair first, `loadDiffs`' own order), then the name.
+ */
+export function compareCorpusKeys(a: CorpusKey, b: CorpusKey): number {
+  for (const field of CORPUS_CURSOR_KEYS) {
+    const order = byCodeUnit(a[field], b[field]);
+    if (order !== 0) return order;
+  }
+  return 0;
+}
+
+export const compareEntries = (a: CorpusEntry, b: CorpusEntry): number => compareCorpusKeys(corpusKeyOf(a), corpusKeyOf(b));
+
+/** A finding of a page's stored pass, with its page. */
+export type TrajectoryEntry = TrajectoryFinding & { page: EntryPage };
+
+/**
+ * The instant a claim LEFT — the last span of `changes` in which it was absent, after the first (the first span is
+ * where the claim started). A finding lists only claims that flipped at least twice, so every one departed at least
+ * once; a finding with no departure is a malformed row, and this THROWS rather than placing it somewhere.
+ */
+export function leftAt(finding: TrajectoryFinding): string {
+  const gone = finding.changes.filter((span, index) => index > 0 && !span.present).at(-1);
+  if (gone === undefined) {
+    throw new Error(
+      `corpusReads: the finding ${finding.patternHash} (${String(finding.transitions)} transitions) never left the page — ` +
+        'a claim that flipped twice departed at least once; this row is malformed.',
+    );
+  }
+  return gone.waybackTimestamp;
+}
+
+export function trajectoryKeyOf(entry: TrajectoryEntry): TrajectoryKey {
+  return { l: leftAt(entry), p: entry.page.url, h: entry.patternHash };
+}
+
+/** By the date the claim LEFT, LATEST FIRST (§6.1 :245–:246), then the page's url, then the pattern. */
+export function compareTrajectoryKeys(a: TrajectoryKey, b: TrajectoryKey): number {
+  return byCodeUnit(b.l, a.l) || byCodeUnit(a.p, b.p) || byCodeUnit(a.h, b.h);
+}
+
+/** A day as fourteen digits at its start or its end — so a range is compared on the instant's own alphabet. */
+const dayStart = (day: string): string => `${day.replace(/-/g, '')}000000`;
+const dayEnd = (day: string): string => `${day.replace(/-/g, '')}235959`;
+
+/** Is a fourteen-digit instant within `since`..`until`, each a day, both inclusive — fixed-width digits, so `<` is chronological. */
+export function inRange(instant: string, since: string | undefined, until: string | undefined): boolean {
+  if (since !== undefined && instant < dayStart(since)) return false;
+  if (until !== undefined && instant > dayEnd(until)) return false;
+  return true;
+}
+
+/** A cursor is the read's own: the last entry's key, as base64url of its JSON (plan UI-2 :174). */
+export function encodeCursor(key: Record<string, string>): string {
+  return Buffer.from(JSON.stringify(key), 'utf8').toString('base64url');
+}
+
+/**
+ * The key a cursor carries, or null when the text is not a cursor THIS read issued: it must decode to an object whose
+ * keys are EXACTLY `keys`, every value a string. Each tool's schema `refine` passes its own tuple, so one read's cursor
+ * is a schema rejection on the other.
+ */
+export function decodeCursor<K extends readonly string[]>(text: string, keys: K): Record<K[number], string> | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(text, 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+  const object = parsed as Record<string, unknown>;
+  if (Object.keys(object).length !== keys.length) return null;
+  const key: Record<string, string> = {};
+  for (const field of keys) {
+    const value = object[field];
+    if (typeof value !== 'string') return null;
+    key[field] = value;
+  }
+  // Every field named by `keys` was found and is a string — the loop above is the check the type states.
+  return key;
+}
+
+/**
+ * One page of an ordered list: the entries strictly AFTER the cursor's key, `limit` of them, and the cursor for the
+ * next page when more remain — one paginator for both reads, each passing its own key and order.
+ */
+export function pageAfter<T, K extends Record<string, string>>(
+  entries: readonly T[],
+  cursor: K | null,
+  limit: number,
+  keyOf: (entry: T) => K,
+  compare: (a: K, b: K) => number,
+): { entries: T[]; nextCursor: string | null } {
+  const after = cursor === null ? [...entries] : entries.filter((entry) => compare(keyOf(entry), cursor) > 0);
+  const page = after.slice(0, limit);
+  const last = page.at(-1);
+  return { entries: page, nextCursor: after.length > limit && last !== undefined ? encodeCursor(keyOf(last)) : null };
+}
+
+/**
+ * THE ONE LOADER of the corpus across pages: per page the captures, the diffs and the stored anchor verdicts, ONE
+ * linkage query over every name, the rows composed by `captureRow` / `diffRow` — the per-page read's own — and the
+ * facet computed from the same rows (§28: "a facet on the one read, not a second read"). Entries in the total order.
+ */
+export async function loadCorpus(pages: readonly ScopedPage[]): Promise<{ entries: CorpusEntry[]; pages: PageFacet[] }> {
+  const loaded: { page: ScopedPage; captures: TimelineCapture[]; diffs: TimelineDiff[]; attribution: Map<string, StoredAttribution> }[] = [];
+  const names: string[] = [];
+  for (const page of pages) {
+    const captures = await loadCaptures(page.id);
+    const diffs = await loadDiffs(page.id);
+    const attribution = await storedAttributionFor(captures.map((c) => c.id));
+    names.push(...captures.map((c) => captureName(page, c)), ...diffs.map((d) => diffName(page, d)));
+    loaded.push({ page, captures, diffs, attribution });
+  }
+  const linkage = await loadEvidenceLinkage(names);
+
+  const entries: CorpusEntry[] = [];
+  const facet: PageFacet[] = [];
+  for (const { page, captures, diffs, attribution } of loaded) {
+    const entryPage: EntryPage = { trackedUrlId: page.id, url: page.url, public: page.public };
+    const acquired = captures.map((c) => c.capture);
+    for (const capture of captures) entries.push({ kind: 'CAPTURE', ...captureRow(page, capture, attribution, linkage), page: entryPage });
+    for (const diff of diffs) entries.push({ kind: 'DIFF', ...diffRow(page, diff, acquired, linkage), page: entryPage });
+    const held = [...acquired].sort(byCodeUnit);
+    facet.push({ ...entryPage, first: held.at(0) ?? null, last: held.at(-1) ?? null, entries: captures.length + diffs.length });
+  }
+  return { entries: entries.sort(compareEntries), pages: facet };
+}
+
+/** `verify_claim_text`'s stored-register verdict for one held capture, with its page (A4 :1101; §6.1 :249). */
+export interface SearchVerdict {
+  kind: 'CAPTURE';
+  page: EntryPage;
+  capture: string;
+  snapshotDate: string;
+  fileHash: string;
+  presentInStoredSnapshot: boolean;
+}
+
+/**
+ * The phrase against the STORED text of every held capture of a page in the range — `loadCaptures`, the one spelling
+ * of "this page's held captures", then the texts of those captures alone, then the ONE presence rule. No archive
+ * fetch: the raw register is `verify_claim_text`'s, one capture at a time. A held capture with no stored text is a
+ * malformed row and THROWS — never a verdict of "absent".
+ */
+export async function searchCaptures(page: ScopedPage, phrase: string, since: string | undefined, until: string | undefined): Promise<SearchVerdict[]> {
+  const captures = (await loadCaptures(page.id)).filter((c) => inRange(c.capture, since, until));
+  if (captures.length === 0) return [];
+  const rows = await prisma.urlSnapshot.findMany({ where: { id: { in: captures.map((c) => c.id) } }, select: { id: true, text: true } });
+  const textOf = new Map(rows.map((row) => [row.id, row.text]));
+  const entryPage: EntryPage = { trackedUrlId: page.id, url: page.url, public: page.public };
+  return captures.map((capture) => {
+    const text = textOf.get(capture.id);
+    if (text === undefined) {
+      throw new Error(`corpusReads: capture ${capture.capture} of ${page.url} is held with no stored text — a malformed row, not an absence.`);
+    }
+    return {
+      kind: 'CAPTURE',
+      page: entryPage,
+      capture: capture.capture,
+      snapshotDate: capture.snapshotDate,
+      fileHash: captureName(page, capture),
+      presentInStoredSnapshot: phrasePresent(text, phrase),
+    };
+  });
 }

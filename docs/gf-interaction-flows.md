@@ -1068,7 +1068,7 @@ gate, only on a fresh fetch.
 Every write tool: REFUSES with no researcher in context (`NO_RESEARCHER`); REFUSES a URL that has no
 TrackedUrl (`NOT_SURVEYED`, except `survey_wayback_captures`, which creates it). Every refusal is a
 JSON `{ error, code }`, never a throw. `REASON_REQUIRED` for a missing or blank reason wherever one
-is required. The two reads are GATED in WRITE_TOOLS by the standing precedent — a researcher's
+is required. The three reads — and list_pages({}), every surveyed page by URL with its work-list rows counted per outcome (2026-09-14, thesis step 20's record §2) — are GATED in WRITE_TOOLS by the standing precedent — a researcher's
 working state is not published evidence — while their handlers answer without an identity.
 
 ```
@@ -1226,7 +1226,7 @@ get_rule_history({ url, ruleId })                                          read,
 
 ### A6. Routes — the marking page's only surface
 
-All under `/api/article-rules`, all behind `requireResearcher`, all page-scoped.
+All under `/api/article-rules`, all behind `requireResearcher`, all page-scoped. Amended by docs/gf-ui-flows.md §5 (2026-09-15): the corpus's GATED reads and `list_pages` answer under `/api/research`; this prefix stays the marking page's only surface.
 
 ```
 GET    /pages/:trackedUrlId/captures/:capture

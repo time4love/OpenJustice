@@ -5,7 +5,6 @@ import { buildSurvivalLabels } from '@/lib/survivalLabels';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl, authHeaders, fetchJson } from '@/lib/api';
 import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
 import { SkeletonRows } from '@/components/SkeletonRows';
@@ -235,8 +234,6 @@ export default function TrackedUrlPage() {
 
   return (
     <main className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <SiteHeader current="forensics" maxWidth="max-w-4xl" tagline={t('drillDownTagline')} />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
         {/* Back link */}

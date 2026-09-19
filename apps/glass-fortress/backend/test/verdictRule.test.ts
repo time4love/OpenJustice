@@ -1,13 +1,13 @@
-import { verdict } from '../src/lib/verdict';
+import { verdict, verdictInAny } from '../src/lib/verdict';
 
 // ---------------------------------------------------------------------------
 // THE ONE VERDICT RULE — thesis step 19 builds it (docs/gf-document-refactor-plan.md
 // :56, :162, :411), and these four cases are its whole contract.
 //
-// IN THE UNIT PROJECT, which is the only run that gates (`npm run test:gf`;
+// IN THE UNIT PROJECT, written when it was the only run that gated (`npm run test:gf`;
 // docs/gf-thesis-step-18-2026-09-11.md §7 — "a case in a job that cannot block a
-// merge holds nothing"). The thesis acceptance project runs continue-on-error
-// until step 25 and cannot hold this.
+// merge holds nothing"). Since thesis step 25's remainder (2026-09-15) the thesis
+// acceptance project gates too.
 //
 // THE ONE-SPELLING SCAN IS DOCUMENT STEP 29's, not this step's. What holds the
 // rule here is that its callers CALL it: break `verdict` at its definition and
@@ -44,5 +44,19 @@ describe('the ONE verdict rule — PRESENT · ABSENT · UNCHECKED', () => {
   it('CALLS NORMALISE — whitespace differing on either side does not change the verdict', () => {
     expect(verdict('הבטחת   הבטיחות', 'משרד הבריאות\n\nהסיר את\tהבטחת הבטיחות  שלו')).toBe('PRESENT');
     expect(verdict('  הבטחת הבטיחות  ', 'משרד הבריאות הסיר את הבטחת הבטיחות שלו')).toBe('PRESENT');
+  });
+});
+
+describe('verdictInAny — the verdict over SEVERAL texts, each apart (thesis step 22, L1)', () => {
+  it('PRESENT when ONE text carries the phrase, whitespace collapsed', () => {
+    expect(verdictInAny('הטקסט   שהוסר', ['אחר', 'הטקסט שהוסר'])).toBe('PRESENT');
+  });
+
+  it('ABSENT for a phrase STRADDLING two texts — no join, so no text says it', () => {
+    expect(verdictInAny('שהוסר הטקסט', ['הטקסט שהוסר', 'הטקסט שנוסף'])).toBe('ABSENT');
+  });
+
+  it('ABSENT, never UNCHECKED, over an EMPTY collection — content read that says nothing', () => {
+    expect(verdictInAny('כל ביטוי', [])).toBe('ABSENT');
   });
 });

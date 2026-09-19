@@ -1,6 +1,15 @@
 import { getResearcherId } from '../../context/researcherContext';
 import { publicPage } from '../../services/evidencePredicates';
-import type { CaptureLookup, Page } from '../../services/corpusReads';
+import {
+  loadPage,
+  loadPageById,
+  pagesInScope,
+  type CaptureLookup,
+  type CorpusScope,
+  type Page,
+  type PageRef,
+  type ScopedPage,
+} from '../../services/corpusReads';
 
 // ---------------------------------------------------------------------------
 // THE EVIDENCE READS' REFUSALS — docs/gf-evidence-flows.md A4's conventions.
@@ -104,8 +113,17 @@ export type RecordCode = Extract<
  */
 export type BlockerCode = RecordCode | 'STALE_PIN' | 'NO_SUBSTANCE' | 'OBJECTION_UNANSWERED';
 
-/** Every code either layer may return — the two closed sets, together. */
-export type EvidenceCode = EvidenceReadCode | EvidenceWriteCode;
+/**
+ * THE CORPUS READS' CODES — docs/gf-ui-flows.md §6.1 :242–:252 and docs/gf-ui-refactor-plan.md UI-2 :167–:173, a
+ * THIRD closed set beside the per-page reads' and the writes', for `list_corpus`, `list_trajectories` and
+ * `search_corpus` (UI-2). `NOT_PUBLIC` here keys on the SCOPE, never on identity: a named page not PUBLIC_PAGE at
+ * `scope: 'public'` is refused whoever asks (plan :167–:168), where the per-page reads above refuse it to a caller
+ * without identity (A4 :1092). `PHRASE_REQUIRED` is REASON_REQUIRED's shape for a blank phrase.
+ */
+export type CorpusReadCode = 'NO_RESEARCHER' | 'INVALID_RANGE' | 'PHRASE_REQUIRED' | 'NOT_SURVEYED' | 'NOT_PUBLIC';
+
+/** Every code any layer may return — the three closed sets, together. */
+export type EvidenceCode = EvidenceReadCode | EvidenceWriteCode | CorpusReadCode;
 
 export interface Refusal<C extends EvidenceCode = EvidenceReadCode> {
   error: string;
@@ -137,7 +155,20 @@ export const shared = {
         'its timeline is not public. A page becomes public in full — every capture and every diff — ' +
         'the moment a published thesis cites any record of it.',
     ),
+  /** A page a ROUTE names by its id and no TrackedUrl holds (UI-3) — worded by the id, since that is what was named. */
+  notSurveyedId: (trackedUrlId: string): Refusal<'NOT_SURVEYED'> =>
+    refusal('NOT_SURVEYED', `${trackedUrlId} names no surveyed page. list_pages names every page the corpus holds.`),
 };
+
+/** A page a TOOL names — by its exact url (A1). */
+export function pageByUrl(url: string): PageRef {
+  return { load: () => loadPage(url), missing: () => shared.notSurveyed(url) };
+}
+
+/** A page a ROUTE names — by its `trackedUrlId` (docs/gf-ui-flows.md §6 :221). */
+export function pageById(trackedUrlId: string): PageRef {
+  return { load: () => loadPageById(trackedUrlId), missing: () => shared.notSurveyedId(trackedUrlId) };
+}
 
 /**
  * A named timestamp that is not a capture of this page — the three negatives,
@@ -188,12 +219,60 @@ export function notACapture(
  * researcher reading a private page is told `public: false` rather than shown
  * something an outsider would not see.
  */
-export type PageAccess = { refused: Refusal } | { refused: null; public: boolean };
+export type PageAccess = { refused: Refusal<'NOT_PUBLIC'> } | { refused: null; public: boolean };
 
 export async function openPage(page: Page): Promise<PageAccess> {
   const isPublic = await publicPage(page.id);
   if (!isPublic && getResearcherId() === null) return { refused: shared.notPublic(page.url) };
   return { refused: null, public: isPublic };
+}
+
+// ---------------------------------------------------------------------------
+// THE CORPUS READS' THREE CHECKS, in the order the tools make them (UI-2): the
+// scope's identity before any query, the range from the input alone, then the
+// scope's pages and the one named. One spelling, three callers.
+// ---------------------------------------------------------------------------
+
+/**
+ * `scope: 'all'` without a researcher is refused — BEFORE ANY QUERY (plan UI-2 :161; ui-flows §6.1 :232). `public`
+ * takes no identity at all: this is the ONE place a corpus read reads the caller, and only to refuse.
+ */
+export function openScope(scope: CorpusScope): Refusal<'NO_RESEARCHER'> | null {
+  if (scope === 'all' && getResearcherId() === null) {
+    return refusal(
+      'NO_RESEARCHER',
+      "scope 'all' answers over every surveyed page — a researcher's working corpus — and needs a signed-in researcher. " +
+        "scope 'public' answers over the pages a published thesis has opened, to anyone.",
+    );
+  }
+  return null;
+}
+
+/** `since` after `until` is no range at all — decided from the input, before any query (ui-flows §6.1 :242). */
+export function validRange(since: string | undefined, until: string | undefined): Refusal<'INVALID_RANGE'> | null {
+  if (since !== undefined && until !== undefined && since > until) {
+    return refusal('INVALID_RANGE', `since=${since} is after until=${until}: no day lies in that range.`);
+  }
+  return null;
+}
+
+/**
+ * The pages of the scope, and the one the call names if it names one: a `page` no TrackedUrl holds is NOT_SURVEYED;
+ * a surveyed page outside a `public` scope is NOT_PUBLIC — keyed on the SCOPE, so a researcher's bearer with
+ * `scope: 'public'` is refused it too (plan UI-2 :167–:168; evidence A4 :1074 as amended: the output never depends
+ * on who asks). At `all` every surveyed page is in scope, so a named page there is never refused NOT_PUBLIC.
+ */
+export async function scopedPages(
+  scope: CorpusScope,
+  ref: PageRef | undefined,
+): Promise<Refusal<'NOT_SURVEYED' | 'NOT_PUBLIC'> | { scoped: ScopedPage[]; page: ScopedPage | null }> {
+  const named = ref === undefined ? null : await ref.load();
+  if (ref !== undefined && named === null) return ref.missing();
+  const scoped = await pagesInScope(scope);
+  if (named === null) return { scoped, page: null };
+  const page = scoped.find((p) => p.id === named.id);
+  if (page === undefined) return shared.notPublic(named.url);
+  return { scoped, page };
 }
 
 /** A tool's answer as the MCP text: the value, or the refusal, as JSON. */

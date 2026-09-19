@@ -257,6 +257,11 @@ describe('review_evidence — STALE_SEQUENCE, both halves', () => {
     store.collideOnDecisionCreate = collision(['fileHash']);
     await expect(review()).rejects.toMatchObject({ code: 'P2002' });
   });
+
+  it('a P2002 naming only `sequence` is NOT this constraint either — the ask is for BOTH columns (thesis step 22, R18)', async () => {
+    store.collideOnDecisionCreate = collision(['sequence']);
+    await expect(review()).rejects.toMatchObject({ code: 'P2002' });
+  });
 });
 
 describe('review_evidence — REAFFIRM writes two rows, in ONE transaction, and nothing else', () => {

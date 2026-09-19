@@ -56,7 +56,7 @@ interface OpenFramingAnswer {
  * exist from the difference between two refusals. `getResearcherId` reads an
  * AsyncLocalStorage; nothing is loaded to answer it.
  */
-export function requireResearcher(act: string): Refusal | { researcherId: string } {
+export function requireResearcher(act: string): Refusal<'NO_RESEARCHER'> | { researcherId: string } {
   const researcherId = getResearcherId();
   if (researcherId === null) {
     return refusal('NO_RESEARCHER', `${act} is attributed to a researcher. No researcher in context.`);

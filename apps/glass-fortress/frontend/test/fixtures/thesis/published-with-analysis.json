@@ -1,0 +1,184 @@
+{
+  "thesisId": "cmfxthesisone000000000000",
+  "publicInterestStatement": "הציבור זכאי לדעת מה נאמר לו על תופעות הלוואי בזמן אמת, וזהו עניין של בריאות הציבור.",
+  "claim": "העמוד הציבורי הציג מידע על תופעות לוואי ולאחר מכן הסיר אותו, בלי שהשינוי נאמר לציבור.",
+  "provision": "PATIENT_RIGHTS_13",
+  "version": {
+    "versionId": "cmfxversioncurrent0000000",
+    "text": "## מה קרה בעמוד\n\nהעמוד פרסם הודעה על בטיחות ב־12.3.2021 בכתובת [העמוד](https://www.example.gov.il/covid/vaccine).\n\nהפסקה על תופעות הלוואי #ev_0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1 הוסרה, והשינוי מתועד בהפרש #ev_0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2 ובמסלול #tr_cmfxtrajectoryone00000000.\n\n- מה שנשמר: <b>הטקסט</b> כפי שהוגש\n- מה שאינו נשמר: המסמך #doc_COMMITMENT-FIXTURE\n\nנוסף: הבדיקה חזרה על עצמה.",
+    "contentHash": "0x2929292929292929292929292929292929292929292929292929292929292929",
+    "publishedAt": "2026-09-10T09:30:00.000Z",
+    "author": "handle-fixture",
+    "aiAnalysis": {
+      "summaryHe": "ANALYSIS-FIXTURE-SUMMARY"
+    }
+  },
+  "citations": [
+    {
+      "kind": "EVIDENCE",
+      "name": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "pin": "0xe5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+      "record": {
+        "url": "https://www.example.gov.il/covid/vaccine",
+        "capture": "20210312090000"
+      },
+      "content": {
+        "kind": "CAPTURE",
+        "text": "הפסקה כפי שנשמרה בארכיון, עם המשפט על תופעות הלוואי."
+      },
+      "verified": {
+        "verified": true,
+        "captures": [
+          {
+            "capture": "20210312090000",
+            "attributed": true,
+            "anchoredHashMatchesDocumentHash": true
+          }
+        ]
+      },
+      "flag": {
+        "flagged": false,
+        "reasons": []
+      },
+      "argued": true,
+      "overObjection": false
+    },
+    {
+      "kind": "EVIDENCE",
+      "name": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "pin": "0xf6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6",
+      "record": {
+        "url": "https://www.example.gov.il/covid/vaccine",
+        "before": "20210301080000",
+        "after": "20210412100000"
+      },
+      "content": {
+        "kind": "DIFF",
+        "chunks": [
+          {
+            "side": "before",
+            "text": "הפסקה על תופעות הלוואי הופיעה כאן."
+          },
+          {
+            "side": "after",
+            "text": "הפסקה אינה מופיעה עוד."
+          }
+        ]
+      },
+      "verified": {
+        "notEvaluable": "NO_CAPTURE_ANCHORED"
+      },
+      "flag": {
+        "flagged": true,
+        "reasons": [
+          "NOT_CITATION_CURRENT"
+        ]
+      },
+      "argued": true,
+      "overObjection": true
+    },
+    {
+      "kind": "TRAJECTORY",
+      "name": "cmfxtrajectoryone00000000",
+      "resolves": true,
+      "claimText": "החיסון בטוח לחלוטין ואין תופעות לוואי מוכרות",
+      "url": "https://news.example.co.il/health/2021",
+      "transitions": 3,
+      "current": false
+    }
+  ],
+  "appeals": {
+    "call": [
+      {
+        "whatIsNeeded": "ההנחיה הפנימית שלפיה נוסחה ההודעה על תופעות הלוואי",
+        "whoWouldHaveSeenIt": "מי שערך את העמוד הציבורי באותה תקופה",
+        "unit": "היחידה לפרסומי אינטרנט",
+        "window": "1.3.2021 – 30.4.2021"
+      }
+    ],
+    "requests": [
+      {
+        "text": "תאריך: 15 בספטמבר 2026\n\nאני, החתום/ה מטה, מבקש/ת בהתאם לחוק חופש המידע את ההנחיה שעל פיה נוסח העמוד בין התאריכים האמורים.\n\nבכבוד רב,",
+        "authority": "הממונה על חופש המידע",
+        "legalBasis": "חוק חופש המידע, התשנ\"ח-1998",
+        "addresses": [
+          "foia@example.gov.il"
+        ],
+        "restsOn": [
+          "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+        ]
+      }
+    ],
+    "intake": "שלחו את הבקשה בשמכם. ערוץ ההגשה עדיין אינו פתוח, והקריאה פתוחה."
+  },
+  "rationale": "הגרסה הזו נשענת על שתי רשומות שנשמרו בארכיון, ועל כן היא מתאימה לפרסום.",
+  "overObjection": true,
+  "analysisRun": true,
+  "history": [
+    {
+      "versionId": "cmfxversionprevious000000",
+      "contentHash": "0x3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a",
+      "publishedAt": "2026-09-02T08:00:00.000Z",
+      "citations": [
+        {
+          "kind": "EVIDENCE",
+          "name": "0xd4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+          "pin": "0x1818181818181818181818181818181818181818181818181818181818181818"
+        },
+        {
+          "kind": "EVIDENCE",
+          "name": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "pin": "0x0707070707070707070707070707070707070707070707070707070707070707"
+        },
+        {
+          "kind": "TRAJECTORY",
+          "name": "cmfxtrajectoryone00000000",
+          "pin": null
+        }
+      ]
+    },
+    {
+      "versionId": "cmfxversioncurrent0000000",
+      "contentHash": "0x2929292929292929292929292929292929292929292929292929292929292929",
+      "publishedAt": "2026-09-10T09:30:00.000Z",
+      "citations": [
+        {
+          "kind": "EVIDENCE",
+          "name": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "pin": "0xe5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5"
+        },
+        {
+          "kind": "EVIDENCE",
+          "name": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "pin": "0xf6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6"
+        },
+        {
+          "kind": "TRAJECTORY",
+          "name": "cmfxtrajectoryone00000000",
+          "pin": null
+        }
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "trackedUrlId": "cmfxpagealpha000000000000",
+      "url": "https://www.example.gov.il/covid/vaccine"
+    },
+    {
+      "trackedUrlId": "cmfxpagebeta0000000000000",
+      "url": "https://news.example.co.il/health/2021"
+    }
+  ],
+  "analysis": {
+    "opinion": "ANALYSIS-FIXTURE-OPINION",
+    "counterArguments": [
+      "ANALYSIS-FIXTURE-COUNTER"
+    ],
+    "suggestedGaps": [
+      "ANALYSIS-FIXTURE-GAP"
+    ],
+    "strength": "ANALYSIS-FIXTURE-STRENGTH"
+  }
+}

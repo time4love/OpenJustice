@@ -267,7 +267,7 @@ backend      REFUSES NO_RECORDS · NOT_ACQUIRED · AWAITING_DERIVATION · NOT_YO
              ← the assessment, each assertion labelled; the elements, filled or not; the round
 researcher   answers, revises, proposes again — as many rounds as it takes — or stops
 Claude       → choose_framing(framingId, provision?, claim, elements)         ⚠️ to build
-backend      REFUSES NOT_ASSESSED (no round in this framing) · NOT_YOURS
+backend      REFUSES NOT_ASSESSED (no ASSESSED round in this framing) · NOT_YOURS
              records FRAMING_CHOSEN, attributed — the researcher's words, whether their own,
              the assessor's, or a third; the provision; the element map, MISSING included
              ← { framingId, provision, claim, elements }
@@ -662,7 +662,7 @@ call's exact shape, and what happens after is the public's.
 
 ```
 Claude       → draft_foia_request(thesisId, gapId)                          ⚠️ re-shaped
-backend      REFUSES NO_HEAD · NOT_AUTHOR · NO_SUCH_GAP
+backend      REFUSES NO_HEAD · NOT_AUTHOR · NO_SUCH_GAP · AWAITING_DERIVATION (naming the diff — 2026-09-14)
              hands the DRAFTER: the gap · the claim · the records the gap rests on — the head
                version's citations whose passages the gap concerns, by name, with their
                computed content — so the request carries the proof that the change happened
@@ -743,7 +743,7 @@ that says so:
 
 | check | kind | what it asks |
 |---|---|---|
-| `HEAD_VERSION` | hard | a version exists and is not the published one — publishing the published version is NOTHING_NEW |
+| `HEAD_VERSION` | hard | a version exists, is not the published one — publishing the published version is NOTHING_NEW — and names no Withdrawal: a withdrawn version is never published again, the answer is a new version (2026-09-14) |
 | `CLAIM_FRAMED` | hard | CLAIM_FRAMED(head) (T1): the claim was chosen after an assessed round, under this provision |
 | `CITES_EVIDENCE` | hard | at least one EVIDENCE or DOCUMENT mention (document flows A6) — a thesis with none argues from nothing the corpus holds |
 | `TRAJECTORIES_RESOLVE` | hard | every cited trajectory id resolves to a stored detection pass |
@@ -754,7 +754,7 @@ that says so:
 | `DOCUMENT_QUOTES_PRESENT` | hard | every quoted span of a paragraph carrying a `#doc_` token is PRESENT or UNCHECKED in the content the platform holds; ABSENT refuses — document flows §7, A6 |
 | `RATIONALE_SUBSTANCE` | hard | the publication assessor: did the rationale ARGUE — the debate's question of the whole; MERIT is advisory and recorded |
 | `PUBLIC_INTEREST_STATEMENT` | hard | present on the thesis (COMPLIANCE.md rule 5) |
-| `NAMES_NO_PERSON` | hard | the assessor lists every personal name in the text; the list is empty. A published version names offices, units and roles (T2); the corpus records beneath it carry the names as the pages said them |
+| `NAMES_NO_PERSON` | hard | the assessor lists every personal name in the text and in the call items and requests that publish with it; the list is empty. A published version and its appeals name offices, units and roles (T2); the corpus records beneath it carry the names as the pages said them — no gap decision is refused for a name, it is caught here (2026-09-14) |
 | `ALLEGATIONS_FRAMED` | advisory | the assessor's opinion that claims are framed as allegations under investigation (COMPLIANCE.md rule 1); recorded with the publication |
 
 **Every check names what it examined, and an empty scope says so.** `NAMES_NO_PERSON` reports the
@@ -822,7 +822,7 @@ the appeals  each REQUESTED gap: the request ready to send, its authority, legal
 the case     the publication rationale — the researcher's words
 history      every version that was published, by date, with what changed between them (T6)
 the pages    a link to each cited page's public timeline (list_findings): everything the
-             researcher looked at, selected or not
+             researcher looked at, selected or not — amended by docs/gf-ui-flows.md §17 (2026-09-15): the link is `/corpus?page=`
 NOT shown    the critic's analysis · the assessors' verdicts and objections · framing rounds ·
              the debates — model opinions, GATED, read by researchers; the page shows that an
              analysis was run and that a citation or the publication was made over objection,
@@ -865,7 +865,7 @@ withdrawal, not the arrival.
 ```
 researcher   "what do I owe?"                       — or Claude reports it when a conversation opens
 Claude       → list_thesis_reviews()                                         ⚠️ to build
-backend      ← one entry per thing owed on the caller's theses, oldest first:
+backend      ← one entry per thing owed on the caller's theses, oldest first (amended by docs/gf-ui-flows.md §7.1, 2026-09-15: every thesis under scope 'all'):
                FLAGGED       a PUBLISHED version's mention with FLAGGED(m): the record, why —
                              withdrawn (reason) or content moved (old beside new, the E3
                              decision that moved it) — and the command: a new version
@@ -1129,10 +1129,10 @@ document performs nothing.
 | state | written by | never written by |
 |---|---|---|
 | the FRAMING record: question, provision, author, the thesis it attaches to | `open_framing` · attached by `create_thesis` or by `open_framing` on an existing thesis | any model · the version write |
-| the framing's rounds: PROPOSED (verbatim), ASSESSED (with every audit verdict), CHOSEN | `assess_framing` · `choose_framing` — the assessment is the assessor's words, recorded by the tool the researcher called | the assessor directly · anything after the thesis is published, on that framing |
+| the framing's rounds: PROPOSED (verbatim), ASSESSED (with every audit verdict), CHOSEN | `assess_framing` · `choose_framing` — the assessment is the assessor's words, recorded by the tool the researcher called | the assessor directly · anything after the thesis is published, on that framing — no tool refuses this yet; the hole is DECLARED (2026-09-12) and closes when a refusal word is ruled |
 | the Thesis: provision, author | `create_thesis` — once | anything; a different provision is a different thesis |
 | `Thesis.headVersionId` | the version write, compare-and-set | any read · any model |
-| `Thesis.publishedVersionId`, `publishedAt`, `publishedById` | `publish_thesis` (set) · `unpublish_thesis` (null) | the platform on its own — a flag is derived, a withdrawal is the author's |
+| `Thesis.publishedVersionId`, `publishedAt`, `publishedById` — and `publicInterestStatement` | `publish_thesis` (the three set together on success; the statement, when given and not blank, stored past the refusals and BEFORE the gate, so a refused attempt keeps the approved words — 2026-09-14) · `unpublish_thesis` (the three null, together) | the platform on its own — a flag is derived, a withdrawal is the author's |
 | the ThesisVersion: text, `contentHash`, claim, parent, author | the version write — ONE transaction, immutable after | any update, ever; an analysis is its own row |
 | the ThesisMention: kind, name, pin | the version write — the pin computed, never supplied | any evidence tool · any model |
 | `ThesisMention.debateSessionId` | `promote_from_debate`, on the head's mention · copied by the next version write when (name, pin) is unchanged | anything else — the one write a mention receives after creation |
@@ -1314,7 +1314,7 @@ ThesisAnalysis          append-only                                ⚠️ to bui
   id · versionId · inputFingerprint (A3)
   opinion                 Json — counter-arguments (each with quoteVerified, phraseVerified),
                           suggested gaps, alternative readings, strength
-  model · promptVersion · runAt
+  model · promptVersion · runAt · researcherId (who spent the call — a paid act always records it, 2026-09-14)
   @@unique([versionId, inputFingerprint]) — the same input is never paid for twice
 
 ThesisGapDecision       append-only                                ⚠️ replaces ThesisGapResolution
@@ -1399,10 +1399,10 @@ FLAGGED(m)              evidence A3, unchanged
 PUBLIC_PAGE(page)       ∃ a version v that was EVER published — v = PUBLISHED(t) now, or v
                         names a Withdrawal or is superseded by a later publication — with an
                         EVIDENCE mention whose record is a capture or diff of the page
-                        — evidence A3 AMENDED by T6: opened pages stay open
+                        — evidence A3 AMENDED by T6: opened pages stay open; EVER published = the version has a PublicationAttempt with outcome PUBLISHED, which covers all three arms (2026-09-14)
 
-THE_CALL(t)             PUBLISHED(t) exists → its thesis's GAP_LIST entries in force CALLED,
-                        each callItem; else none                                        (T4)
+THE_CALL(t)             PUBLISHED(t) exists → the GAP_LIST computed over the decisions whose versionId is PUBLISHED(t) or an ancestor of it — decided at or before the publication — entries in force CALLED,
+                        each callItem; else none — the flows' reading, ruled 2026-09-14: a gap CALLED after publication waits for a publication act (T4)
 THE_REQUESTS(t)         likewise, REQUESTED, each request
 HISTORY(t)              every row naming t, in createdAt order, attributed              (§9)
 REVIEWS(researcher)     for each thesis they author: FLAGGED mentions of PUBLISHED(t) ·
@@ -1423,13 +1423,13 @@ evidence A1 says; a token the parser cannot resolve is `NOT_A_RECORD`; where CUR
 the tool refuses `AWAITING_DERIVATION` and names the diff. Every paid call is named as one.
 
 ```
-list_theses({})                                                       PUBLIC · ⚠️ to build
+list_theses({})                                                       PUBLIC · ⚠️ to build — amended by docs/gf-ui-flows.md §7.1 (2026-09-15): optional `scope: 'mine' | 'all'`, default `mine`; `all` adds every researcher's theses, with handle and `mine`
   returns   anonymous: [{ thesisId, claim, provision, publishedAt, author: handle, contentHash }]
               for theses with PUBLISHED(t); nothing else exists to an anonymous caller
             researcher: their own theses — each with head, published, headIsPublished, the
               framing attached, counts of unargued mentions and open gaps — and every published
               thesis as above
-  closes    finding 30: every thesis tool needs an id nobody could list
+  closes    finding 30: every thesis tool needs an id nobody could list — and list_framings({}) GATED (2026-09-14, the step-20 record §2): every framing, oldest first, with its question, provision, author, the thesis it is attached to, its latest round and its CHOSEN claim verbatim; refuses nothing
 
 open_framing({ question, provision?, thesisId?, fromRunId?, clusterIndex? })   WRITE · ⚠️ renamed
   does      creates the Framing; with thesisId, attaches it to an existing unpublished thesis
@@ -1437,7 +1437,7 @@ open_framing({ question, provision?, thesisId?, fromRunId?, clusterIndex? })   W
   returns   { framingId, question, provision, elements: [{ element, records: [] | MISSING }] }
   refuses   NO_PROVISION_SHAPE (a provision the table does not know) · NOT_AUTHOR · PUBLISHED
             (the thesis's head is its published version — frame the next version, not this)
-            · NO_SUCH_RUN
+            · NO_SUCH_RUN · NO_FRAMING (a framingId naming none — coined 2026-09-10, so that NOT_YOURS never calls a missing framing someone else's; on every framing tool and on create_thesis and add_note)
 
 assess_framing({ framingId, proposedFraming, elements, records: [record…], trajectoryIds })
                                                                       WRITE · paid · ⚠️ re-shaped
@@ -1462,8 +1462,8 @@ create_thesis({ claim, provision?, text, framingId? })                WRITE · �
   does      ONE transaction: the Thesis (provision, author) · the first version by the rules of
             add_thesis_version · attaches the framing (its CHOSEN claim must equal claim)
   returns   add_thesis_version's return plus { thesisId, framingId | null }
-  refuses   add_thesis_version's · CLAIM_MISMATCH (framing chosen a different claim) ·
-            FRAMING_ATTACHED (to another thesis)
+  refuses   add_thesis_version's · CLAIM_MISMATCH (no CHOSEN round of the framing carries this claim character for character; the provision is NOT compared here — a disagreeing provision fails CLAIM_FRAMED at the gate, 2026-09-13) ·
+            FRAMING_ATTACHED (to another thesis) — NARROWED (2026-09-10): no NOT_AUTHOR, no STALE_HEAD, no NO_THESIS, which a call that creates the thesis cannot reach; NO_FRAMING for a framingId naming none
 
 add_thesis_version({ thesisId, text, claim, expectedHeadVersionId })  WRITE · ⚠️ re-shaped
   does      T2's transaction: parse tokens · compute each pin · carry arguments · write the
@@ -1471,12 +1471,12 @@ add_thesis_version({ thesisId, text, claim, expectedHeadVersionId })  WRITE · �
   returns   { versionId, contentHash, mentions: [{ kind, name, pin, argued }], unargued: [name…],
               gapsNowOpen: [gapId…] (CITED gaps whose citation left the text) }
   refuses   NOT_AUTHOR · STALE_HEAD (with the current head) · NOT_A_RECORD · NOT_ACQUIRED ·
-            AWAITING_DERIVATION · UNKNOWN_TRAJECTORY_ID · EMPTY (no text, or no claim)
+            AWAITING_DERIVATION · UNKNOWN_TRAJECTORY_ID · EMPTY (no text, or no claim) · NO_THESIS (a thesisId naming none — on every tool that takes one, ordered NO_RESEARCHER · NO_THESIS · NOT_AUTHOR, 2026-09-10) · STALE_PIN (affirmed moved between the write's two reads — the race, T2)
 
-get_thesis_context({ thesisId })                                      GATED read · re-shaped
+get_thesis_context({ thesisId, since? })                              GATED read · re-shaped
   returns   the thesis · HEAD and PUBLISHED with their texts and resolved mentions · UNARGUED ·
             GAP_LIST with decisions in force · CURRENT_ANALYSIS or STALE/NONE with the
-            fingerprint · the framings · HISTORY(t), optionally since a date
+            fingerprint · the framings · HISTORY(t), optionally since `since`, ISO-8601, strictly after — coined 2026-09-10
 
 run_analysis({ thesisId })                                            WRITE · paid · ⚠️ re-shaped
   does      T4: FINGERPRINT(head) · → the critic · AUDITS · appends ThesisAnalysis
@@ -1489,14 +1489,14 @@ decide_gap({ thesisId, gapId | description, decision, citedName?, request?, call
              expectedSequence })                                      WRITE · ⚠️ the new tool
   does      appends a ThesisGapDecision; a description with no known gapId enters the list
   returns   { gapId, decision, sequence }
-  refuses   NOT_AUTHOR · NOT_CITED (CITED names a record the head does not mention) ·
+  refuses   NOT_AUTHOR · NO_HEAD · NO_SUCH_GAP (a gapId the log does not hold, with no description; or a gapId and a description that disagree — 2026-09-14) · NOT_CITED (CITED names a record the head does not mention) ·
             REASON_REQUIRED · REQUEST_REQUIRED · CALL_ITEM_REQUIRED · STALE_SEQUENCE ·
-            NAMES_PERSON (a callItem naming a person, T2 — checked by the same rule as T5)
+            — NAMES_PERSON RETIRED here (2026-09-14): a callItem naming a person fails NAMES_NO_PERSON at publication, over the appeals that publish; decide_gap spends nothing
 
 draft_foia_request({ thesisId, gapId })                               GATED · paid · ⚠️ re-shaped
   does      → the drafter, with the gap, the claim and the records it rests on; writes nothing
-  returns   { text, authority, legalBasis, addresses, restsOn }  — passed to decide_gap REQUESTED
-  refuses   NO_SUCH_GAP · NOT_AUTHOR
+  returns   { text, authority, legalBasis, addresses, restsOn, unresolvedLabels — a label the drafter named that the call did not hand, said, never dropped (2026-09-14) }  — passed to decide_gap REQUESTED
+  refuses   NO_SUCH_GAP · NOT_AUTHOR · AWAITING_DERIVATION (the drafter is never handed content that does not exist — 2026-09-14)
 
 get_whistleblower_call({ thesisId })                                  PUBLIC · re-shaped
   returns   THE_CALL(t) and THE_REQUESTS(t) — both appeals of the published version, with the
@@ -1508,8 +1508,8 @@ check_publication_readiness({ thesisId, rationale? })                 GATED · p
             a rationale, the assessor's verdict in advance; writes nothing
 
 publish_thesis({ thesisId, rationale, publicInterestStatement? })     WRITE · paid
-  does      T5: readiness · → the assessor · a PublicationAttempt, refused or not · the pin
-  returns   { publishedVersionId, contentHash, publishedAt, overObjection, opened: [url…] }
+  does      T5: the statement stored · → the assessor · the gate · ONE transaction: the pin's compare-and-set, then ONE PublicationAttempt, refused (by the gate, or HEAD_VERSION on a lost race) or published
+  returns   { thesisId, publishedVersionId, contentHash, publishedAt, overObjection (verdict = DISPUTES), opened: [url…] }
   refuses   NOT_AUTHOR · REASON_REQUIRED · NOTHING_NEW · NOT_PUBLISHABLE (with refusedBy and
             each failure's subject)
 
@@ -1518,11 +1518,11 @@ unpublish_thesis({ thesisId, reason })                                WRITE
   refuses   NOT_AUTHOR · NOT_PUBLISHED · REASON_REQUIRED
 
 add_note({ thesisId | framingId, text })                              WRITE · ⚠️ replaces add_session_note
-  refuses   NEITHER · NOT_AUTHOR · EMPTY
+  refuses   NO_RESEARCHER · NEITHER · NO_THESIS · NO_FRAMING · NOT_AUTHOR · EMPTY (2026-09-10)
 
-list_thesis_reviews({})                                               GATED read · ⚠️ to build
-  returns   REVIEWS(caller), oldest first, each with its material and one command; an empty
-            list is an answer
+list_thesis_reviews({})                                               GATED read — amended by docs/gf-ui-flows.md §7.1 (2026-09-15): optional `scope: 'mine' | 'all'`, default `mine`
+  returns   { owed, reviews } — REVIEWS(caller), oldest first, each with its material and one
+            command; { owed: 0, reviews: [] } is an answer, never a refusal (2026-09-14)
 
 run_prosecutor({ provision, window, pages })                          WRITE · paid · later (§10)
 
@@ -1556,7 +1556,7 @@ flows §9, replaced by `add_document`.
 
 ### A5. Routes
 
-**This design adds no route and no browser dialog.** Every research act is an MCP tool; the
+**This design adds no route and no browser dialog.** Every research act is an MCP tool; the — amended by docs/gf-ui-flows.md §5 (2026-09-15): no WRITE route; the GATED reads answer under `/api/research`, one function serving tool and route.
 public page is a READ. What the page needs is served by the corpus reads of evidence A4 and by
 these, all PUBLIC and identity-free:
 
@@ -1566,8 +1566,8 @@ GET /api/thesis/:id                the PUBLISHED version resolved as T5's page s
                                    text, each mention resolved with its pin, VERIFIED and FLAGGED,
                                    the appeals, the rationale, the history of published versions,
                                    the withdrawal notice when PUBLISHED(t) is none and a
-                                   Withdrawal exists; 404 only for a thesis never published
-GET /api/thesis/:id/versions/:v    a version that was ever published — the history's reads
+                                   Withdrawal exists; 404 only for a thesis never published; the one source of the public-interest statement a call page shows (COMPLIANCE.md rule 5, 2026-09-14); `pages` carries `trackedUrlId` beside `url` — amended by docs/gf-ui-flows.md §6 (2026-09-15); `provisionTitle` beside `provision`, the table entry’s title (A1 :1251–:1254), null when none — amended by docs/gf-ui-refactor-plan.md UI-5 (2026-09-16)
+GET /api/thesis/:id/versions/:v    a version that was ever published — the history's reads; while the thesis is withdrawn every version, and after it a version named by a Withdrawal, answers the notice, never its text (2026-09-14)
 ```
 
 **Retired routes** — each was the browser performing a research act, which the prosecutor plan
@@ -1597,7 +1597,7 @@ evidence checks are evidence A6's, unchanged, and run first. Order and ids:
                                  10 EVIDENCE_DIFF_INPUT_SOUND hard  ⎭
 11 TRAJECTORIES_RESOLVE    hard  14 GAPS_DECIDED             hard
 12 TRAJECTORIES_CURRENT    hard  15 RATIONALE_SUBSTANCE      hard   the assessor; MERIT advisory
-13 ANALYSIS_CURRENT        hard  16 NAMES_NO_PERSON          hard   the assessor's list, empty
+13 ANALYSIS_CURRENT        hard  16 NAMES_NO_PERSON          hard   the assessor's list over the text and the appeals, empty
                                  17 ALLEGATIONS_FRAMED       advisory
 18 DOCUMENT_OPENING_DECIDED hard 19 DOCUMENT_QUOTES_PRESENT  hard   document flows A6
 ```
@@ -1643,7 +1643,7 @@ models-write-no-state      §2          a source scan, in the suite
 
 one-symbol                 A1, A3      a source scan, in the suite
   NORMALISE · PROVISION · CLAIM_FRAMED · FINGERPRINT · GAP_IN_FORCE · PUBLISHABLE(v) each have
-  one importable symbol and the gate calls it; a second `replace(/\s+/g, ' ')` in a verbatim
+  one importable symbol and the gate calls it — PUBLISHABLE(v) through the ONE evaluation it is folded from (2026-09-14); a second `replace(/\s+/g, ' ')` in a verbatim
   or identity path is the copy that drifts, and today there are three
 
 pin-equals-affirmed        T2          evidence A7's test, unchanged and owned here: move
