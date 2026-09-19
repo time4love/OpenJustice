@@ -1969,6 +1969,9 @@
     "interval": "{first} – {last}",
     "records": "{count} records"
   },
+  "opinion": {
+    "label": "AI Analysis — does not constitute a judicial finding"
+  },
   "provision": {
     "NUREMBERG_1": "Nuremberg Code, article 1",
     "NUREMBERG_2": "Nuremberg Code, article 2",
