@@ -3,7 +3,6 @@
   "publicInterestStatement": null,
   "claim": "העמוד הציבורי הציג מידע על תופעות לוואי ולאחר מכן הסיר אותו, בלי שהשינוי נאמר לציבור.",
   "provision": null,
-  "provisionTitle": null,
   "version": {
     "versionId": "cmfxversioncurrent0000000",
     "text": "## מה קרה בעמוד\n\nהעמוד פרסם הודעה על בטיחות ב־12.3.2021 בכתובת [העמוד](https://www.example.gov.il/covid/vaccine).\n\nהפסקה על תופעות הלוואי #ev_0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1 הוסרה, והשינוי מתועד בהפרש #ev_0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2 ובמסלול #tr_cmfxtrajectoryone00000000.\n\n- מה שנשמר: <b>הטקסט</b> כפי שהוגש\n- מה שאינו נשמר: המסמך #doc_COMMITMENT-FIXTURE\n\nנוסף: הבדיקה חזרה על עצמה.",

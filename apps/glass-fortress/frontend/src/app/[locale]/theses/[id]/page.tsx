@@ -129,7 +129,7 @@ function Published({ thesis, locale, copyLabel, headings }: { thesis: PublishedT
         {thesis.claim}
       </h1>
       <header className="space-y-2">
-        <ProvisionName title={thesis.provisionTitle} />
+        <ProvisionName provision={thesis.provision} />
         {/* The COPY of `thesis <id>` — the chat-ready form, labelled by what it is FOR (§4 :172–:174; run B,
             Live-31) — INSIDE the credit line, as board 3A draws it (`.by > .copy`). It was a sibling of the
             byline until R59's staging exercise; `built-as-drawn` holds the placement now. */}

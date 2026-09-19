@@ -133,7 +133,6 @@ export function parseThesisBody(value: unknown): ThesisBody {
     publicInterestStatement: maybeText(row.publicInterestStatement, 'publicInterestStatement'),
     claim: text(row.claim, 'claim'),
     provision: maybeText(row.provision, 'provision'),
-    provisionTitle: maybeText(row.provisionTitle, 'provisionTitle'),
     version: {
       versionId: text(version.versionId, 'version.versionId'),
       text: text(version.text, 'version.text'),
@@ -203,7 +202,6 @@ export function parseCallBody(value: unknown): WhistleblowerCall {
     publicInterestStatement: null,
     claim: '',
     provision: null,
-    provisionTitle: null,
     version: { versionId: '', text: '', contentHash: '', publishedAt: null, author: '' },
     citations: [],
     appeals: { call: row.call, requests: row.requests, intake: row.intake },

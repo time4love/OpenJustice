@@ -269,8 +269,6 @@ export interface PublishedThesis {
   publicInterestStatement: string | null;
   claim: string;
   provision: string | null;
-  /** The provision named by its table entry (§17 :529–:530; the backend's `provisionTitleOf`). */
-  provisionTitle: string | null;
   version: { versionId: string; text: string; contentHash: string; publishedAt: string | null; author: string };
   citations: Citation[];
   appeals: { call: CallItem[]; requests: RequestItem[]; intake: string };

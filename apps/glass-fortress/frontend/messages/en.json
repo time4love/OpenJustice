@@ -1963,5 +1963,19 @@
     "empty": "No page is open yet — a page opens when a published thesis cites it",
     "interval": "{first} – {last}",
     "records": "{count} records"
+  },
+  "provision": {
+    "NUREMBERG_1": "Nuremberg Code, article 1",
+    "NUREMBERG_2": "Nuremberg Code, article 2",
+    "NUREMBERG_3": "Nuremberg Code, article 3",
+    "NUREMBERG_4": "Nuremberg Code, article 4",
+    "NUREMBERG_5": "Nuremberg Code, article 5",
+    "NUREMBERG_6": "Nuremberg Code, article 6",
+    "NUREMBERG_7": "Nuremberg Code, article 7",
+    "NUREMBERG_8": "Nuremberg Code, article 8",
+    "NUREMBERG_9": "Nuremberg Code, article 9",
+    "NUREMBERG_10": "Nuremberg Code, article 10",
+    "PATIENT_RIGHTS_13": "Patients' Rights Law, section 13",
+    "ADMIN_DISCLOSURE_DUTY": "Administrative duty of disclosure"
   }
 }
