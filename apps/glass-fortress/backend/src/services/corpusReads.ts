@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import type { ChunkSide } from '../lib/diffChunking';
 import { prisma } from '../lib/prisma';
 import { recordId, isWaybackTimestamp, type RecordId } from '../lib/evidenceIdentity';
 import { phrasePresent } from '../lib/htmlText';
@@ -406,14 +407,20 @@ export function opinionOf(classification: Prisma.JsonValue, diffName: string): O
  * "chunks Json — [ { side, text, survival: SURVIVES|CONTRADICTED|UNCHECKABLE } … ]".
  */
 export interface StoredChunk {
-  side: string;
+  /**
+   * NARROWED 2026-09-19 from `string`, and the widening is what the repair was FOR. While this said
+   * `string`, any word at all type-checked from this column out to a reader — which is how the frontend came
+   * to compare a side against „before", a word `diffChunking.ts` has never emitted, and mislabel every chunk
+   * of a cited diff with `tsc` unable to see it (UI plan :555). `chunksOf` below makes the type a FACT.
+   */
+  side: ChunkSide;
   text: string;
   survival: string;
 }
 
 /**
  * The chunks of a stored version — WHOLE, or a walk defect that THROWS, naming
- * the pair.
+ * the pair, the index and, for a side outside the union, the value itself.
  *
  * The first draft of this function dropped anything that did not match the shape,
  * and that is the silent filter CLAUDE.md forbids: "a subject quietly dropped
@@ -452,6 +459,13 @@ export function chunksOf(stored: Prisma.JsonValue, pair: string): StoredChunk[] 
     const { side, text, survival } = c as Record<string, unknown>;
     if (typeof side !== 'string' || typeof text !== 'string' || typeof survival !== 'string') {
       return defect(`holds a HALF chunk at index ${String(i)}`);
+    }
+    // THE SIDE IS THE WALK'S OWN UNION, and a word outside it is refused BY NAME rather than passed on as a
+    // `string` for a reader to guess at. It is the same rule as the two arms above — absent is a fact, whole
+    // is a derivation, and between them is nothing the design names — applied to the ONE field whose
+    // widening reached a reader as a confident wrong word about the archive's bytes.
+    if (side !== 'REMOVED' && side !== 'ADDED') {
+      return defect(`holds a chunk at index ${String(i)} whose side is ${JSON.stringify(side)}`);
     }
     return { side, text, survival };
   });

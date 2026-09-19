@@ -87,7 +87,7 @@ export async function authedFetch(path: string, init?: RequestInit): Promise<Res
  */
 export async function fetchJson<T>(
   path: string,
-  { offline, ...init }: RequestInit & { offline: string },
+  { offline, answers, ...init }: RequestInit & { offline: string; answers?: readonly number[] },
 ): Promise<T> {
   let res: Response;
   try {
@@ -105,12 +105,36 @@ export async function fetchJson<T>(
     if (!res.ok) throw new Error(`Error ${String(res.status)}`);
     throw err;
   }
+  // A STATUS THE CALLER NAMED IS AN ANSWER, NOT A FAILURE (the researcher's
+  // ruling, 2026-09-19). The chain check is the read this exists for:
+  // CHAIN_UNAVAILABLE is "a verdict about the CHECK, never about the record"
+  // (evidence A4 :1115) and arrives as a 503 carrying `{ error, code }`. Thrown,
+  // that body is lost, and a renderer would have to INVENT the refusal from a
+  // status — which is what `parseChainAnswer`'s union exists to prevent.
+  //
+  // PER CALLER, AND NEVER CENTRAL. Every other caller names none and is
+  // unchanged, because which failures are answers is a question about the READ
+  // and not about the door; a door deciding it for everyone would swallow a real
+  // outage on every one of them.
+  if (!res.ok && answers?.includes(res.status) === true) return body;
   if (!res.ok) throw new Error(body.message ?? `Error ${String(res.status)}`);
   return body;
 }
 
-/** What a public read answers: the body, narrowed by the caller's parser, or THE ONE 404 (docs/gf-ui-flows.md §8 :334). */
-export type PublicRead<T> = { status: 200; body: T } | { status: 404 };
+/**
+ * What a public read answers: the body narrowed by the caller's parser, THE ONE 404, or the 400 (ui flows §8;
+ * A2, whose table gives 400 and 404 as STATES every public page renders).
+ *
+ * THE 400 IS A STATE AND NOT A FAILURE, which is why it is in this type rather than in a throw. A2 renders it
+ * as "the filters shown for removal", so only a page that HAS filters can reach one — and until this member
+ * existed such a page could not tell a malformed filter from a dead backend: `readPublic` threw on both and the
+ * reader got a 500. That was live on `/corpus`, where the CITED lens sent a value the route refuses.
+ *
+ * Every caller must now say what it does with a 400, and the compiler is what asks. On a page with no filters
+ * the honest answer is that it cannot happen and is a defect if it does — those callers throw, loudly and by
+ * name, which is what `readPublic` used to do for them silently.
+ */
+export type PublicRead<T> = { status: 200; body: T } | { status: 404 } | { status: 400 };
 
 /**
  * A PUBLIC READ, FROM THE SERVER — docs/gf-ui-flows.md A3 :1019–:1021, §8 :329–:342; thesis A5 :1561.
@@ -140,8 +164,34 @@ export async function readPublic<T>(path: string, parse: (body: unknown) => T): 
     next: { revalidate: 60 },
   });
   if (res.status === 404) return { status: 404 };
+  // The route's own refusal for a malformed parameter. Its message is the backend's English and names the field;
+  // it is deliberately NOT carried, because nothing public may show it and a value carried is a value rendered.
+  if (res.status === 400) return { status: 400 };
   if (!res.ok) throw new Error(`readPublic: ${path} answered ${String(res.status)}`);
   return { status: 200, body: parse(await res.json()) };
+}
+
+/**
+ * A PUBLIC READ FROM A PAGE THAT SENDS NO FILTERS, narrowed to the two states such a page can meet.
+ *
+ * It adds no request, no header and no cache decision — `readPublic` is still the one read. What it adds is the
+ * caller's own contract, stated in its name: this page has no chips, so the route has nothing to refuse, and a
+ * 400 arriving here means the platform built a malformed URL. That is a defect, so it throws by name instead of
+ * rendering a state the page does not have.
+ *
+ * It exists once rather than at seven call sites. Seven pages each deciding what a 400 means is the "one rule,
+ * many implementations" shape this repository names as its dominant defect, and the page that decided
+ * differently would be the one nobody read.
+ */
+export async function readUnfiltered<T>(
+  path: string,
+  parse: (body: unknown) => T,
+): Promise<{ status: 200; body: T } | { status: 404 }> {
+  const answer = await readPublic(path, parse);
+  if (answer.status === 400) {
+    throw new Error(`readUnfiltered: ${path} answered 400 — this read sends no filters, so a refused parameter is a defect, not a state`);
+  }
+  return answer;
 }
 
 /**

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { chainStatusAt } from '../mcp/tools/checkOnChainStatus';
+import { captureAt, getCaptureSchema } from '../mcp/tools/getCapture';
 import { diffInputOf } from '../mcp/tools/getDiffInput';
 import { corpusOf, listCorpusSchema } from '../mcp/tools/listCorpus';
 import { findingsOf } from '../mcp/tools/listFindings';
@@ -75,6 +76,20 @@ pagesRouter.get(
 pagesRouter.get(
   '/:trackedUrlId/trajectories',
   publicRoute(reader({}, (_q, req) => pageById(param(req, 'trackedUrlId'))), (page) => trajectoriesOf({ scope: 'public', page })),
+);
+// ONE CAPTURE, and the SIBLING of the chain route below — docs/gf-ui-flows.md §26 clause (3), evidence A4.
+// `textHash` is the ONE query parameter: it names an EXTRACTION, not a filter, so it is read the way the
+// other single-resource routes read their path parts and never through `readCorpusFilters`.
+pagesRouter.get(
+  '/:trackedUrlId/captures/:capture',
+  publicRoute(
+    reader({ textHash: getCaptureSchema.textHash }, ({ textHash }, req) => ({
+      ref: pageById(param(req, 'trackedUrlId')),
+      capture: param(req, 'capture'),
+      textHash,
+    })),
+    ({ ref, capture, textHash }) => captureAt(ref, capture, textHash),
+  ),
 );
 pagesRouter.get(
   '/:trackedUrlId/captures/:capture/chain',

@@ -140,7 +140,12 @@ describe('opinion-labelled-on-corpus', () => {
     expect({ modulesScanned: modules.length > 50, containerExists: modules.includes(CONTAINER), importers }).toEqual({
       modulesScanned: true,
       containerExists: true,
-      importers: ['src/components/corpus/Stream.tsx'],
+      // THE SHEET JOINS THE STREAM as a legal importer at chunk 5b(b), and the reason is §24 region 4's own:
+      // the stream CLAMPS the opinion to two lines and "the rest [is] in the sheet", so the sheet renders the
+      // same field in full. It is the SAME container either way — which is exactly what this case exists to
+      // hold — so the set grows by one surface rather than the rule loosening. Both entries still offend:
+      // each really does import the container, checked by this same scan.
+      importers: ['src/components/corpus/RecordSheet.tsx', 'src/components/corpus/Stream.tsx'],
     });
   });
 });

@@ -637,12 +637,7 @@
     },
     "sheet": {
       "close": "סגירה",
-      "capture": "צילום של העמוד מ־{date}",
-      "diff": "שינוי בעמוד בין {before} ל־{after}",
-      "before": "לפני",
-      "after": "אחרי",
       "attributed": "עוגן בידי הפלטפורמה",
-      "hashMatches": "הגיבוב המעוגן זהה לגיבוב המסמך",
       "attributionUnread": "העיגון טרם נבדק",
       "notEvaluable": "לא ניתן לבדוק: {reason}",
       "flag": {
@@ -655,7 +650,6 @@
       "yes": "כן",
       "no": "לא",
       "openPage": "כל מה שנשמר מהעמוד",
-      "openRecord": "עמוד הרשומה",
       "copyToken": "העתקת הציטוט לשיחה",
       "transitions": "{count, plural, one {מעבר אחד} other {# מעברים}}",
       "andMore": "…ועוד {count}"
@@ -1974,6 +1968,7 @@
     },
     "changeSize": "{removed} נגרעו · {added} נוספו",
     "awaitingDerivation": "ההפרש טרם חושב",
+    "textUnread": "הטקסט של הצילום לא נטען",
     "narrowed": "צומצם",
     "cited": "מצוטט בתזה שפורסמה",
     "copyToken": "העתקת מזהה הציטוט",
@@ -1993,6 +1988,7 @@
     "emptyFiltered": "אין רשומות בטווח הזה",
     "hiddenCount": "{count} שינויים שסווגו לא מהותיים מוסתרים — הצג",
     "readMore": "קרא עוד",
+    "loadNewer": "טען חדשים יותר",
     "lenses": "תצוגות",
     "lens": {
       "pages": "עמודים",
@@ -2015,5 +2011,13 @@
     "NUREMBERG_10": "קוד נירנברג, סעיף 10",
     "PATIENT_RIGHTS_13": "חוק זכויות החולה, סעיף 13",
     "ADMIN_DISCLOSURE_DUTY": "חובת הגילוי המנהלית"
+  },
+  "record": {
+    "capture": "צילום של העמוד מ־{date}",
+    "diff": "שינוי בעמוד בין {before} ל־{after}",
+    "before": "לפני",
+    "after": "אחרי",
+    "hashMatches": "הגיבוב המעוגן זהה לגיבוב המסמך",
+    "openRecord": "עמוד הרשומה"
   }
 }

@@ -1,7 +1,7 @@
 import type { Metadata, ResolvingMetadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { readPublic } from '@/lib/api';
+import { readUnfiltered } from '@/lib/api';
 import { parseThesisBody, parseVersionBody } from '@/lib/thesisBody';
 import type { ThesisBody, VersionBody } from '@/types/thesis';
 import { Banner } from '@/components/thesis/Banner';
@@ -34,9 +34,9 @@ interface PageParams {
 }
 
 async function read(id: string, v: string): Promise<{ thesis: ThesisBody; version: VersionBody }> {
-  const thesis = await readPublic(`/api/thesis/${id}`, parseThesisBody);
+  const thesis = await readUnfiltered(`/api/thesis/${id}`, parseThesisBody);
   if (thesis.status === 404) notFound();
-  const version = await readPublic(`/api/thesis/${id}/versions/${v}`, parseVersionBody);
+  const version = await readUnfiltered(`/api/thesis/${id}/versions/${v}`, parseVersionBody);
   if (version.status === 404) notFound();
   return { thesis: thesis.body, version: version.body };
 }

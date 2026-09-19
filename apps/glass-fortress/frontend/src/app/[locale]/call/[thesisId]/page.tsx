@@ -2,7 +2,7 @@ import type { Metadata, ResolvingMetadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { Link } from '@/i18n/navigation';
-import { readPublic } from '@/lib/api';
+import { readUnfiltered } from '@/lib/api';
 import { parseCallBody, parseThesisBody } from '@/lib/thesisBody';
 import type { PublishedThesis, ThesisBody, WhistleblowerCall } from '@/types/thesis';
 import { Appeals } from '@/components/thesis/Appeals';
@@ -31,13 +31,13 @@ interface PageParams {
 }
 
 async function thesisBody(thesisId: string): Promise<ThesisBody> {
-  const answer = await readPublic(`/api/thesis/${thesisId}`, parseThesisBody);
+  const answer = await readUnfiltered(`/api/thesis/${thesisId}`, parseThesisBody);
   if (answer.status === 404) notFound();
   return answer.body;
 }
 
 async function callBody(thesisId: string): Promise<WhistleblowerCall> {
-  const answer = await readPublic(`/api/thesis/${thesisId}/call`, parseCallBody);
+  const answer = await readUnfiltered(`/api/thesis/${thesisId}/call`, parseCallBody);
   return answer.status === 404 ? { live: false } : answer.body;
 }
 

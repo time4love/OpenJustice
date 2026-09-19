@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import type { ChunkSide } from '../lib/diffChunking';
 import { prisma } from '../lib/prisma';
 import { DIFF_VERSION } from '../lib/diffVersion';
 import { segments } from '../lib/claimSurvival';
@@ -711,7 +712,7 @@ async function entryForDiff(
  * is what E1 refuses a fresh promotion for (evidence §5), so a reviewer deciding
  * REAFFIRM or WITHDRAW must see it without a second read.
  */
-const asDiffUnits = (chunks: { side: string; text: string; survival: string }[]): ContentUnit[] =>
+const asDiffUnits = (chunks: { side: ChunkSide; text: string; survival: string }[]): ContentUnit[] =>
   chunks.map((c) => ({ side: c.side, text: c.text, survival: c.survival }));
 
 /**

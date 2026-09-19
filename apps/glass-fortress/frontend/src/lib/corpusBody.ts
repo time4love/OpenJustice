@@ -3,7 +3,11 @@ import {
   type ClassifierOpinion,
   type CorpusAnswer,
   type CorpusEntry,
+  type CaptureRead,
+  type ChainAnswer,
   type CorpusPage,
+  type DiffInput,
+  type ResolvedRecord,
   type DiffChunk,
   type EvidenceLink,
   type InvestigativeCategory,
@@ -175,6 +179,173 @@ function corpusEntry(value: unknown, at: string): CorpusEntry {
     narrowed: flag(row.narrowed, `${at}.narrowed`),
     evidence,
     page,
+  };
+}
+
+/**
+ * `GET /api/pages/:trackedUrlId/captures/:capture`'s answer — THE BYTES ONLY (evidence A4 :1082).
+ *
+ * IT DELIBERATELY DOES NOT RE-PARSE THE ROW. The answer carries the capture's row as well, and the sheet
+ * asking for the text ALREADY HOLDS that row: it came from the stream the sheet was opened over. Narrowing
+ * it a second time here would be a parser with no caller — "a parser nothing exercises is a parser nothing
+ * proves", this module's own rule — and, worse, a SECOND composition of a row the design says is one.
+ *
+ * `current` IS NARROWED AND NOT DEFAULTED, for the same reason `public` is above: it is the answer's
+ * statement about WHICH extraction the bytes are, and a missing one defaulted either way would decide,
+ * silently, whether a reader is looking at the current text or a pinned one.
+ */
+export function parseCaptureText(body: unknown): { text: string; textHash: string; current: boolean } {
+  const answer = object(body, 'the answer');
+  return {
+    text: text(answer.text, 'text'),
+    textHash: text(answer.textHash, 'textHash'),
+    current: flag(answer.current, 'current'),
+  };
+}
+
+/**
+ * THE CAPTURE PAGE'S WHOLE ANSWER (evidence A4 :1082) — the row AND the bytes, unlike `parseCaptureText`.
+ *
+ * TWO PARSERS OVER ONE BODY, AND THE REASON IS THE CALLER AND NOT THE SHAPE. The SHEET already holds the
+ * row — it came from the stream it was opened over — and needs only the text. The PAGE holds nothing: a
+ * reader arriving at `/pages/<id>/captures/<ts>` has no stream behind them, so the row is what this read is
+ * for. Each parser narrows exactly what its caller renders, and neither is a superset of the other by accident.
+ */
+export function parseCaptureRead(body: unknown): CaptureRead {
+  const answer = object(body, 'the answer');
+  const page = object(answer.page, 'page');
+  const row = object(answer.capture, 'capture');
+  const anchor = object(row.anchor, 'capture.anchor');
+  return {
+    page: { url: text(page.url, 'page.url'), public: flag(page.public, 'page.public') },
+    capture: {
+      capture: text(row.capture, 'capture.capture'),
+      snapshotDate: text(row.snapshotDate, 'capture.snapshotDate'),
+      fileHash: text(row.fileHash, 'capture.fileHash'),
+      textHash: text(row.textHash, 'capture.textHash'),
+      textExtractionVersion: text(row.textExtractionVersion, 'capture.textExtractionVersion'),
+      anchor: { documentHash: text(anchor.documentHash, 'capture.anchor.documentHash'), attributed: flag(anchor.attributed, 'capture.anchor.attributed') },
+      evidence: evidenceLink(row.evidence, 'capture.evidence'),
+    },
+    text: text(answer.text, 'text'),
+    textHash: text(answer.textHash, 'textHash'),
+    current: flag(answer.current, 'current'),
+  };
+}
+
+/** `get_diff_input`'s answer for one pair (A4 :1095–:1099) — both texts and the CURRENT version's chunks. */
+export function parseDiffInput(body: unknown): DiffInput {
+  const answer = object(body, 'the answer');
+  const current = answer.current;
+  return {
+    before: text(answer.before, 'before'),
+    after: text(answer.after, 'after'),
+    beforeText: text(answer.beforeText, 'beforeText'),
+    afterText: text(answer.afterText, 'afterText'),
+    current:
+      current === null || current === undefined
+        ? null
+        : (() => {
+            const held = object(current, 'current');
+            return {
+              contentVersionHash: text(held.contentVersionHash, 'current.contentVersionHash'),
+              chunks: list(held.chunks, 'current.chunks').map((one, index) => chunk(one, `current.chunks[${String(index)}]`)),
+            };
+          })(),
+    awaitingDerivation: flag(answer.awaitingDerivation, 'awaitingDerivation'),
+    page: corpusPage(answer.page, 'page'),
+  };
+}
+
+/** `resolve_record`'s answer (A4 :1105–:1109) — what a stranger holding a citation needs. */
+export function parseResolvedRecord(body: unknown): ResolvedRecord {
+  const answer = object(body, 'the answer');
+  const kind = text(answer.kind, 'kind');
+  if (kind !== 'CAPTURE' && kind !== 'DIFF') return fail('kind', "'CAPTURE' or 'DIFF'", kind);
+  return {
+    fileHash: text(answer.fileHash, 'fileHash'),
+    kind,
+    page: corpusPage(answer.page, 'page'),
+    first: text(answer.first, 'first'),
+    last: text(answer.last, 'last'),
+    // RECOMPUTABLE and VERIFIED are REQUIRED BOOLEANS and never defaulted: each is a claim the platform
+    // makes about a record's integrity, and a missing one defaulted to `false` would understate it while
+    // `true` would assert a check nobody ran. Absent is a defect in the body, not a value.
+    recomputable: flag(answer.recomputable, 'recomputable'),
+    verified: flag(answer.verified, 'verified'),
+    captures: list(answer.captures, 'captures').map((one, index) => {
+      const at = `captures[${String(index)}]`;
+      const row = object(one, at);
+      return {
+        capture: text(row.capture, `${at}.capture`),
+        snapshotDate: text(row.snapshotDate, `${at}.snapshotDate`),
+        attributed: flag(row.attributed, `${at}.attributed`),
+      };
+    }),
+    citedBy: list(answer.citedBy, 'citedBy').map((one, index) => {
+      const at = `citedBy[${String(index)}]`;
+      const row = object(one, at);
+      return {
+        thesisId: text(row.thesisId, `${at}.thesisId`),
+        versionId: text(row.versionId, `${at}.versionId`),
+        publishedAt: text(row.publishedAt, `${at}.publishedAt`),
+        flagged: flag(row.flagged, `${at}.flagged`),
+        text: text(row.text, `${at}.text`),
+      };
+    }),
+  };
+}
+
+/**
+ * `check_on_chain_status`' answer (A4 :1111–:1115), or its ONE refusal.
+ *
+ * `CHAIN_UNAVAILABLE` IS NARROWED INTO THE UNION, never raised: it is a verdict about THE CHECK and never
+ * about the record, and a renderer reaching it through a `catch` would report a failed record instead.
+ */
+export function parseChainAnswer(body: unknown): ChainAnswer {
+  const answer = object(body, 'the answer');
+  // THE WIRE'S OWN SPELLING, and nothing invented. A refusal is `{ error, code }` at 503 — `toolRoute.ts`'
+  // one refusal shape — so `code` is what is read. `available` is the FRONTEND's discriminant, produced
+  // here; a parser that read it back off the body would be reading a field no route sends.
+  if (answer.code === 'CHAIN_UNAVAILABLE') return { available: false, reason: 'CHAIN_UNAVAILABLE' };
+  const page = object(answer.page, 'page');
+  const registry = object(answer.registry, 'registry');
+  return {
+    available: true,
+    page: { url: text(page.url, 'page.url'), public: flag(page.public, 'page.public') },
+    captures: list(answer.captures, 'captures').map((one, index) => {
+      const at = `captures[${String(index)}]`;
+      const row = object(one, at);
+      const stored = row.storedVerdict;
+      return {
+        capture: text(row.capture, `${at}.capture`),
+        documentHash: text(row.documentHash, `${at}.documentHash`),
+        isRegistered: flag(row.isRegistered, `${at}.isRegistered`),
+        registryIndex: typeof row.registryIndex === 'number' ? row.registryIndex : null,
+        submitter: maybeText(row.submitter, `${at}.submitter`),
+        attributed: flag(row.attributed, `${at}.attributed`),
+        anchoredHash: maybeText(row.anchoredHash, `${at}.anchoredHash`),
+        anchoredHashMatchesDocumentHash: flag(row.anchoredHashMatchesDocumentHash, `${at}.anchoredHashMatchesDocumentHash`),
+        // NULL IS A FACT HERE, not a gap: "no verdict was ever stored under the current rule" is neither
+        // true nor false about the chain, and it must never be read as "no".
+        storedVerdict:
+          stored === null || stored === undefined
+            ? null
+            : (() => {
+                const held = object(stored, `${at}.storedVerdict`);
+                return {
+                  verdict: text(held.verdict, `${at}.storedVerdict.verdict`),
+                  verifierVersion: text(held.verifierVersion, `${at}.storedVerdict.verifierVersion`),
+                  checkedAt: text(held.checkedAt, `${at}.storedVerdict.checkedAt`),
+                  attributed: typeof held.attributed === 'boolean' ? held.attributed : null,
+                };
+              })(),
+      };
+    }),
+    registry: {
+      chainId: typeof registry.chainId === 'number' ? registry.chainId : null,
+      registryAddress: maybeText(registry.registryAddress, 'registry.registryAddress'),
+    },
   };
 }
 

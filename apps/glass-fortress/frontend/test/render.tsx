@@ -288,8 +288,8 @@ export function navigationDouble(): NavigationModule {
 // module real, the network stubbed. Two doubles, two kinds, each named (plan §4, one helper per kind).
 // ---------------------------------------------------------------------------
 
-/** What `readPublic` answers: the body, or the one 404. */
-export type PublicRead = { status: 200; body: unknown } | { status: 404 };
+/** What `readPublic` answers: the body, the one 404, or the 400 a malformed filter earns. */
+export type PublicRead = { status: 200; body: unknown } | { status: 404 } | { status: 400 };
 
 export interface ApiCall {
   via: 'readPublic' | 'fetchJson';
@@ -330,12 +330,23 @@ export function apiDouble(): Record<string, unknown> {
     // page's own guard, exactly as it would on staging, and a page that passed none is visible in `apiCallsMade`.
     readPublic: (path: string, parse?: (body: unknown) => unknown): PublicRead => {
       const answer = answerFor('readPublic', path, undefined, typeof parse === 'function');
-      if (answer.status === 404 || typeof parse !== 'function') return answer;
+      if (answer.status !== 200 || typeof parse !== 'function') return answer;
+      return { status: 200, body: parse(answer.body) };
+    },
+    // The real `readUnfiltered` delegates to `readPublic` and throws on the 400 a filterless page cannot
+    // provoke. The double says the same thing, so a case that stages a 400 for such a page sees the defect it
+    // is rather than a rendered state — and the pages that DO have filters are doubled by the line above.
+    readUnfiltered: (path: string, parse?: (body: unknown) => unknown): PublicRead => {
+      const answer = answerFor('readPublic', path, undefined, typeof parse === 'function');
+      if (answer.status === 400) throw new Error(`readUnfiltered double: ${path} answered 400 — this read sends no filters`);
+      if (answer.status !== 200 || typeof parse !== 'function') return answer;
       return { status: 200, body: parse(answer.body) };
     },
     fetchJson: (path: string, init?: RequestInit): unknown => {
       const answer = answerFor('fetchJson', path, init);
-      if (answer.status === 404) throw new Error(`fetchJson double: ${path} answered 404`);
+      // The real `fetchJson` throws on every status, and its message is what the reader sees; the double says
+      // the same for both refusals rather than only the one it happened to be written for.
+      if (answer.status !== 200) throw new Error(`fetchJson double: ${path} answered ${String(answer.status)}`);
       return answer.body;
     },
   };

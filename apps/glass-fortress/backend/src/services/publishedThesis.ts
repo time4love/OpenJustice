@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { provisionTitleOf } from '../lib/provisions';
+import type { ChunkSide } from '../lib/diffChunking';
 import { chunksOf, heldTextKey, heldTextsFor, pairName, recordsByName, type ResolvedRecord } from './corpusReads';
 import { argued, EVER_PUBLISHED, flaggedFor, verifiedFor, type FlagReport, type VerifiedReport } from './evidencePredicates';
 import type { PublicationMaterial } from './publicationAssessor';
@@ -159,7 +160,13 @@ interface EvidenceCitation {
   name: string;
   pin: string | null;
   record: { url: string; capture: string } | { url: string; before: string; after: string };
-  content: { kind: 'CAPTURE'; text: string } | { kind: 'DIFF'; chunks: { side: string; text: string }[] };
+  /**
+   * `side` NARROWED 2026-09-19 from `string`. This line is the LAST widening on the path from the walk to a
+   * reader: `chunksOf` hands `pinnedContent` a narrow value and this shape widened it again on the way out,
+   * so the frontend's `CitedContent` inherited `string` and its „before" comparison type-checked. The wire
+   * is now the union end to end (UI plan :555).
+   */
+  content: { kind: 'CAPTURE'; text: string } | { kind: 'DIFF'; chunks: { side: ChunkSide; text: string }[] };
   verified: { verified: boolean; captures: { capture: string; attributed: boolean | null; anchoredHashMatchesDocumentHash: boolean }[] } | { notEvaluable: string };
   flag: { flagged: boolean; reasons: readonly string[] };
   argued: boolean;
