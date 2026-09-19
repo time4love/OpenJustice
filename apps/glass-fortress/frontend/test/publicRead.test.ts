@@ -117,6 +117,44 @@ describe('the public read: no identity, one parser', () => {
     }
   });
 
+  it('THE SERVER DOOR ANSWERS A NAMED STATUS TOO — a 409 only where the caller named it, and never by default', async () => {
+    // THE SAME RULING, THE OTHER DOOR (2026-09-19): "a caller names the statuses that are answers", stated for
+    // `fetchJson` at `api.ts` and applied here to `readPublic`. It is NOT a second door: one read, one wrapper,
+    // one cache decision, and the opt-in is per caller for the reason the browser door already records —
+    // "which failures are answers is a question about the READ and not about the door; a door deciding it for
+    // everyone would swallow a real outage on every one of them."
+    //
+    // THE 409 CARRIES NO BODY, exactly as `{ status: 400 }` and `{ status: 404 }` carry none. Its wire shape is
+    // `{ error, code }` (ui §6 :267) and `code` is AWAITING_DERIVATION — the only 409 any public route answers.
+    // The `error` is the backend's own English, and this module already rules that a value carried is a value
+    // rendered, so nothing is carried and the page draws its own approved sentence.
+    //
+    // THREE ARMS, and the third is the one that matters: a status the caller did NOT name must still throw, or
+    // the opt-in has quietly become the default and a real 503 outage renders as a state.
+    const { readPublic } = api();
+    const answering = globalFetchDouble({ [`${BASE}${PATH}`]: { status: 409, body: { error: 'not derived', code: 'AWAITING_DERIVATION' } } });
+    try {
+      await withEnv({ BACKEND_URL: BASE, NEXT_PUBLIC_STAGING_API_TOKEN: undefined }, async () => {
+        // WITHOUT the opt-in: a 409 is a failure, named by path and status.
+        await expect(readPublic(PATH, (body: unknown) => body)).rejects.toThrow(`readPublic: ${PATH} answered 409`);
+        // WITH it: the state, and no body.
+        expect(await readPublic(PATH, (body: unknown) => body, { answers: [409] })).toEqual({ status: 409 });
+      });
+    } finally {
+      answering.restore();
+    }
+
+    const failing = globalFetchDouble({ [`${BASE}${PATH}`]: { status: 503, body: { error: 'down', code: 'CHAIN_UNAVAILABLE' } } });
+    try {
+      await withEnv({ BACKEND_URL: BASE, NEXT_PUBLIC_STAGING_API_TOKEN: undefined }, async () => {
+        // A STATUS NOBODY NAMED, with the opt-in present for a DIFFERENT one: still a throw.
+        await expect(readPublic(PATH, (body: unknown) => body, { answers: [409] })).rejects.toThrow(`readPublic: ${PATH} answered 503`);
+      });
+    } finally {
+      failing.restore();
+    }
+  });
+
   it('THE BROWSER DOOR ANSWERS A NAMED STATUS WITH ITS BODY, and still THROWS on one nobody named', async () => {
     // THE OPT-IN, ruled 2026-09-19. `fetchJson` throws on every non-2xx, which is right for every caller it
     // has: a read that failed is a failure. The CHAIN CHECK is the exception the design already names —

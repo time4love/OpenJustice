@@ -6,6 +6,9 @@ import { join } from 'node:path';
 import { renderPage, setAuthState, setPathname, setPublicBodies, textNodes, type Locale, type PageRender } from './render';
 import { requireSubjects } from './scan';
 import { corpusStream } from './fixtures/corpus/stream';
+import { captureRead } from './fixtures/corpus/capture';
+import { diffInput } from './fixtures/corpus/diffInput';
+import { resolvedCaptureRecord } from './fixtures/corpus/record';
 
 // ---------------------------------------------------------------------------
 // no-disclaimer-off-the-thesis — `COMPLIANCE.md`'s "Required UI Elements", and docs/gf-ui-flows.md §26 as
@@ -109,6 +112,68 @@ describe('no-disclaimer-off-the-thesis · the rendered pages', () => {
       rows: container.querySelectorAll('[data-entry]').length > 0,
       controlFindsBoth: DISCLAIMERS.filter((sentence) => (control.textContent ?? '').includes(sentence)).length,
     }).toEqual({ found: [], rows: true, controlFindsBoth: 2 });
+  });
+
+  // THE CAPTURE PAGE, RENDERED (UI-7 chunk (c) · 2a). The source scan below covers all three record pages
+  // as a SET and is kept; this case covers the one that now exists as a RENDER, which is the only way to
+  // catch a sentence that reaches a reader through a component the page imports rather than through its own
+  // source — the half a source scan cannot see. „דף רשומה הוא לא דף תזה".
+  it('THE CAPTURE PAGE CARRIES NO DISCLAIMER — a record page is not a thesis page, held on the render', async () => {
+    setPublicBodies({ '/api/pages/page-one/captures/20211223211940': { status: 200, body: captureRead } });
+    const container = containerOf(
+      await renderPage(
+        (await import('@/app/[locale]/pages/[trackedUrlId]/captures/[capture]/page')).default,
+        { locale: LOCALE, trackedUrlId: 'page-one', capture: '20211223211940' },
+        { locale: LOCALE },
+      ),
+    );
+    const shown = shownText(container);
+    const control = controlFragment();
+    expect({
+      found: DISCLAIMERS.filter((sentence) => shown.includes(sentence)),
+      // THE FLOOR: the record's BYTES rendered, so "no disclaimer" is a fact about this page's chrome and
+      // not about a render that produced nothing to read.
+      bytes: (container.querySelector('[data-record-body="CAPTURE"]')?.textContent ?? '') === captureRead.text,
+      controlFindsBoth: DISCLAIMERS.filter((sentence) => (control.textContent ?? '').includes(sentence)).length,
+    }).toEqual({ found: [], bytes: true, controlFindsBoth: 2 });
+  });
+
+  it('THE DIFF PAGE CARRIES NO DISCLAIMER EITHER — and neither does its 409 state, which is a page of its own', async () => {
+    const page = (await import('@/app/[locale]/pages/[trackedUrlId]/diffs/[before]/[after]/page')).default;
+    const PAIR = '/api/pages/page-one/diffs/20211223211940/20220105090000';
+    const args = { locale: LOCALE, trackedUrlId: 'page-one', before: '20211223211940', after: '20220105090000' };
+
+    setPublicBodies({ [PAIR]: { status: 200, body: diffInput } });
+    const shown = containerOf(await renderPage(page, args, { locale: LOCALE }));
+    // THE 409 IS A SEPARATE RETURN with its own chrome, so a disclaimer could live in one branch and not the
+    // other — which is exactly how `/corpus` carried one in each of its two branches.
+    setPublicBodies({ [PAIR]: { status: 409 } });
+    const awaiting = containerOf(await renderPage(page, args, { locale: LOCALE }));
+    const control = controlFragment();
+    expect({
+      foundShown: DISCLAIMERS.filter((sentence) => shownText(shown).includes(sentence)),
+      foundAwaiting: DISCLAIMERS.filter((sentence) => shownText(awaiting).includes(sentence)),
+      chunks: shown.querySelectorAll('[data-chunk-side]').length > 0,
+      awaitingRendered: awaiting.querySelector('[data-awaiting]') !== null,
+      controlFindsBoth: DISCLAIMERS.filter((sentence) => (control.textContent ?? '').includes(sentence)).length,
+    }).toEqual({ foundShown: [], foundAwaiting: [], chunks: true, awaitingRendered: true, controlFindsBoth: 2 });
+  });
+
+  it('THE RECORDS PAGE CARRIES NO DISCLAIMER — the page a stranger holding a citation lands on first', async () => {
+    // THE ONE MOST TEMPTING TO GIVE IT. This page is where an outsider arrives from a published thesis, so
+    // it is exactly where a disclaimer "feels" due — and §26 :820 rules it out in the researcher's own
+    // words, „דף רשומה הוא לא דף תזה". COMPLIANCE.md :92 names a thesis page and a call page and no other.
+    setPublicBodies({ [`/api/records/${resolvedCaptureRecord.fileHash}`]: { status: 200, body: resolvedCaptureRecord } });
+    const page = (await import('@/app/[locale]/records/[fileHash]/page')).default;
+    const container = containerOf(await renderPage(page, { locale: LOCALE, fileHash: resolvedCaptureRecord.fileHash }, { locale: LOCALE }));
+    const control = controlFragment();
+    expect({
+      found: DISCLAIMERS.filter((sentence) => shownText(container).includes(sentence)),
+      // THE FLOOR: the record really resolved and its link onward drew, so "no disclaimer" is a fact about
+      // this page's chrome and not about a render that produced nothing.
+      linkOnward: container.querySelectorAll('a').length === 1,
+      controlFindsBoth: DISCLAIMERS.filter((sentence) => (control.textContent ?? '').includes(sentence)).length,
+    }).toEqual({ found: [], linkOnward: true, controlFindsBoth: 2 });
   });
 });
 

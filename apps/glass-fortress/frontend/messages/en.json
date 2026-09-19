@@ -2018,6 +2018,45 @@
     "before": "Before",
     "after": "After",
     "hashMatches": "The anchored hash equals the document hash",
-    "openRecord": "The record's page"
+    "openRecord": "The record's page",
+    "verify": {
+      "documentHash": "The document's hash",
+      "textHash": "The text's hash",
+      "registryIndex": "The registry index",
+      "rawArchive": "The archive's raw-bytes address",
+      "how": "The document's hash is computed over the bytes as the archive served them at the raw address above — not over the page as it opens for reading.",
+      "extraction": "The extraction version"
+    },
+    "archive": {
+      "line": "The archive holds this page at this date, and the link opens it.",
+      "link": "Open the page in the archive"
+    },
+    "chain": {
+      "press": "Check the registration on the chain",
+      "registered": "The hash is registered",
+      "notRegistered": "The hash is not registered",
+      "differs": "The anchored hash differs from the document's hash",
+      "stored": "The stored verdict: {verdict} ({version})",
+      "neverChecked": "No verdict has been stored yet",
+      "unavailable": "The registry could not be reached"
+    },
+    "record": {
+      "heading": "The record this name resolves to",
+      "kindCapture": "A capture",
+      "kindDiff": "A change",
+      "recomputable": "Recomputable",
+      "notRecomputable": "Not recomputable",
+      "notVerified": "Not verified against the anchor",
+      "citedBy": "Published theses citing this record",
+      "flagged": "The citation is flagged",
+      "documentReserved": "A document commitment — reserved for a later stage."
+    },
+    "pair": {
+      "inline": "The text before and after",
+      "chunks": "The changed passages",
+      "openBefore": "The earlier capture",
+      "openAfter": "The later capture",
+      "narrowedWith": "Captures added between the two"
+    }
   }
 }

@@ -65,8 +65,17 @@ function sideKeyOf(side: ChunkSide): 'before' | 'after' {
 }
 
 export interface RecordContentProps {
-  /** The domain line, composed by the surface (`domainOf` / `displayUrl`) — an ID is never text (§4). */
-  domain: string;
+  /**
+   * The domain line, composed by the surface (`domainOf` / `displayUrl`) — an ID is never text (§4).
+   *
+   * OPTIONAL, AND ONLY BECAUSE ONE STATE GENUINELY HAS NO BODY TO COMPOSE IT FROM. A diff page answering
+   * AWAITING_DERIVATION received a 409 carrying `{ error, code }` and no `page.url` (ui §6 :267), so it
+   * cannot know the domain without a SECOND read — which §8 :344 forbids. A surface that does not know it
+   * draws no line rather than fabricating one: an empty `<bdi>` would be a mark about a page, made up.
+   * That is the same rule this component's own docblock states for the pane — a surface must not
+   * synthesise what it does not have.
+   */
+  domain?: string;
   /** The dated heading: a capture's date, or a diff's interval, in the surface's own approved words. */
   heading: string;
   content: RecordContentValue;
@@ -79,10 +88,16 @@ export function RecordContent({ domain, heading, content, children }: RecordCont
 
   return (
     <div data-record-content className="record space-y-3">
-      <p className="record-head">
-        <bdi dir="ltr">{domain}</bdi>
-      </p>
-      <h2 className="record-title">{heading}</h2>
+      {domain === undefined ? null : (
+        <p className="record-head">
+          <bdi dir="ltr">{domain}</bdi>
+        </p>
+      )}
+      {/* `dir="auto"` BECAUSE THE HEADING CARRIES A DATE INSIDE HEBREW — „צילום של העמוד מ־23.12.2021" — and a
+          date left to the paragraph's own direction renders its parts in the wrong order at the boundary.
+          `bidi-isolated` found it on the capture page, where the heading is the page's first line. It belongs
+          here rather than at either caller: both surfaces compose the same dated string from the same key. */}
+      <h2 dir="auto" className="record-title">{heading}</h2>
 
       {children}
 

@@ -155,7 +155,17 @@ export type PublicRead<T> = { status: 200; body: T } | { status: 404 } | { statu
  * The parser is the caller's, and it is not optional: a body that drifted from the appendix fails here, naming
  * the field (`lib/thesisBody.ts`).
  */
-export async function readPublic<T>(path: string, parse: (body: unknown) => T): Promise<PublicRead<T>> {
+export async function readPublic<T>(path: string, parse: (body: unknown) => T): Promise<PublicRead<T>>;
+export async function readPublic<T>(
+  path: string,
+  parse: (body: unknown) => T,
+  options: { answers: readonly [409] },
+): Promise<PublicRead<T> | { status: 409 }>;
+export async function readPublic<T>(
+  path: string,
+  parse: (body: unknown) => T,
+  options?: { answers: readonly [409] },
+): Promise<PublicRead<T> | { status: 409 }> {
   const base = process.env.BACKEND_URL;
   if (base === undefined) throw new Error('readPublic: BACKEND_URL is not set — the server cannot reach the backend');
   const token = process.env.NEXT_PUBLIC_STAGING_API_TOKEN;
@@ -167,6 +177,15 @@ export async function readPublic<T>(path: string, parse: (body: unknown) => T): 
   // The route's own refusal for a malformed parameter. Its message is the backend's English and names the field;
   // it is deliberately NOT carried, because nothing public may show it and a value carried is a value rendered.
   if (res.status === 400) return { status: 400 };
+  // A STATUS THIS READ NAMED IS A STATE, and only this read's. Same ruling as `fetchJson`'s `answers`
+  // (2026-09-19), applied to the server door rather than duplicated into a second one: one read, one wrapper,
+  // one cache decision. TWO OVERLOADS rather than a widened return type, so the eight callers that name
+  // nothing keep the exact `PublicRead<T>` they have and no page invents a second meaning for a 409.
+  //
+  // IT CARRIES NO BODY, for the same reason the 400 does not: `{ error, code }` is the backend's English and
+  // the one code any public 409 can hold (AWAITING_DERIVATION, ui §6 :267), so the page draws its own
+  // approved sentence and nothing travels that a render could put in front of a reader.
+  if (options?.answers.some((named) => named === res.status) === true) return { status: 409 };
   if (!res.ok) throw new Error(`readPublic: ${path} answered ${String(res.status)}`);
   return { status: 200, body: parse(await res.json()) };
 }

@@ -3,6 +3,9 @@ jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>
 
 import { ancestorsOf, renderPage, setAuthState, setPathname, setPublicBodies, textNodes, type Locale, type PageRender } from './render';
 import { ID_SHAPES, requireSubjects } from './scan';
+import { captureRead } from './fixtures/corpus/capture';
+import { diffInput } from './fixtures/corpus/diffInput';
+import { resolvedCaptureRecord } from './fixtures/corpus/record';
 import published from './fixtures/thesis/published.json';
 import callLive from './fixtures/thesis/call-live.json';
 import versionPrevious from './fixtures/thesis/version-previous.json';
@@ -39,6 +42,9 @@ afterEach(() => {
 
 function stage(): void {
   setPublicBodies({
+    [CAPTURE_PATH]: { status: 200, body: captureRead },
+    [PAIR_PATH]: { status: 200, body: diffInput },
+    [`/api/records/${resolvedCaptureRecord.fileHash}`]: { status: 200, body: resolvedCaptureRecord },
     [`/api/thesis/${published.thesisId}`]: { status: 200, body: published },
     [`/api/thesis/${published.thesisId}/call`]: { status: 200, body: callLive },
     [`/api/thesis/${published.thesisId}/versions/${versionPrevious.versionId}`]: { status: 200, body: versionPrevious },
@@ -65,6 +71,29 @@ async function allPages(locale: Locale): Promise<{ name: string; container: HTML
         await renderPage(version, { locale, id: published.thesisId, v: versionPrevious.versionId }, { locale }),
       ),
     },
+    // UI-7 chunk (c): the capture page puts a URL, a date and THREE hashes inside Hebrew on one screen —
+    // the archive line, the VERIFY rows and the raw address — so it is the densest subject this scan has.
+    {
+      name: '/pages/[trackedUrlId]/captures/[capture]',
+      container: containerOf(
+        '/pages/[trackedUrlId]/captures/[capture]',
+        await renderPage((await capturePage()).default, { locale, trackedUrlId: TRACKED, capture: CAPTURE }, { locale }),
+      ),
+    },
+    {
+      name: '/pages/[trackedUrlId]/diffs/[before]/[after]',
+      container: containerOf(
+        '/pages/[trackedUrlId]/diffs/[before]/[after]',
+        await renderPage((await diffPage()).default, { locale, trackedUrlId: TRACKED, before: CAPTURE, after: AFTER }, { locale }),
+      ),
+    },
+    {
+      name: '/records/[fileHash]',
+      container: containerOf(
+        '/records/[fileHash]',
+        await renderPage((await recordsPage()).default, { locale, fileHash: resolvedCaptureRecord.fileHash }, { locale }),
+      ),
+    },
   ];
 }
 
@@ -72,6 +101,25 @@ async function allPages(locale: Locale): Promise<{ name: string; container: HTML
 function isolated(node: Text): boolean {
   return ancestorsOf(node).some((element) => element.tagName === 'BDI' || element.hasAttribute('dir'));
 }
+
+const TRACKED = 'page-one';
+const CAPTURE = '20211223211940';
+const CAPTURE_PATH = `/api/pages/${TRACKED}/captures/${CAPTURE}`;
+const capturePage = async () => import('@/app/[locale]/pages/[trackedUrlId]/captures/[capture]/page');
+const diffPage = async () => import('@/app/[locale]/pages/[trackedUrlId]/diffs/[before]/[after]/page');
+const recordsPage = async () => import('@/app/[locale]/records/[fileHash]/page');
+const AFTER = '20220105090000';
+const PAIR_PATH = `/api/pages/${TRACKED}/diffs/${CAPTURE}/${AFTER}`;
+
+/**
+ * THE PAGES THAT CARRY THE RESEARCHER'S OWN WORDS — a POSITIVE set, with the floor below.
+ *
+ * A RECORD PAGE CARRIES NONE, and that is the point of it: what it shows is the ARCHIVE's bytes, which
+ * `.record-captured` already renders under `dir="auto"` and which the first two cases of this file check.
+ * Requiring a `[data-researcher-words]` block of it would fail the PAGE for having no researcher text,
+ * which is not the property either case states.
+ */
+const RESEARCHER_PAGES = ['/theses/[id]', '/call/[thesisId]', '/theses/[id]/versions/[v]'] as const;
 
 describe('bidi-isolated', () => {
   it('every URL, date and hash rendered inside Hebrew text is inside an isolating element', async () => {
@@ -91,12 +139,17 @@ describe('bidi-isolated', () => {
 
   it("the researcher's words render through one component that sets dir=\"auto\"", async () => {
     const problems: string[] = [];
+    const examined: string[] = [];
     for (const { name, container } of await allPages('he')) {
+      if (!RESEARCHER_PAGES.some((page) => page === name)) continue;
+      examined.push(name);
       const blocks = [...container.querySelectorAll('[data-researcher-words]')];
       requireSubjects(`the researcher's blocks on ${name}`, blocks);
       problems.push(...blocks.filter((block) => block.getAttribute('dir') !== 'auto').map((block) => `${name}: ${block.outerHTML.slice(0, 60)}`));
     }
     expect(problems).toEqual([]);
+    // THE FLOOR: the positive set above really matched, in this order, or the case passed over nothing.
+    expect(examined).toEqual([...RESEARCHER_PAGES]);
   });
 
   it("a chip's DATE or INTERVAL is isolated left-to-right — and a trajectory's words correctly are not", async () => {
@@ -131,7 +184,10 @@ describe('bidi-isolated', () => {
 
   it('under en, the Hebrew body text is isolated from the English page', async () => {
     const problems: string[] = [];
+    const examined: string[] = [];
     for (const { name, container } of await allPages('en')) {
+      if (!RESEARCHER_PAGES.some((page) => page === name)) continue;
+      examined.push(name);
       const blocks = [...container.querySelectorAll('[data-researcher-words]')];
       requireSubjects(`the researcher's blocks on ${name} (en)`, blocks);
       problems.push(
@@ -141,5 +197,6 @@ describe('bidi-isolated', () => {
       );
     }
     expect(problems).toEqual([]);
+    expect(examined).toEqual([...RESEARCHER_PAGES]);
   });
 });

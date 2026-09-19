@@ -319,6 +319,52 @@ describe('get_diff_input — the pair, its two texts, and the current chunks', (
     expect(out.after.text).toBe('the page after');
     expect(out.current.contentVersionHash).toBe(CURRENT_VERSION.contentVersionHash);
     expect(out.current.chunks).toHaveLength(2);
+    // THE DIFF ROW PLUS THE TWO TEXTS — ruled 2026-09-20 (A4 :1096), as `get_capture` is the capture row
+    // plus its text (:1082). The three fields are `list_findings`' OWN, built by the SAME builder, so the
+    // diff page can draw what ui §26 :852–:856 asks of it without a second read of the page's timeline.
+    expect(out).toHaveProperty('opinion');
+    expect(out).toHaveProperty('narrowed');
+    expect(out).toHaveProperty('evidence');
+    expect(out.narrowed).toBe(false);
+  });
+
+  it('the three row fields are the SAME BUILDER`s, field for field with list_findings` diff row', async () => {
+    // NEVER RE-SPELLED: if this tool composed its own opinion or its own citedBy, the two answers could
+    // disagree about one diff — and a reader comparing the corpus stream with the diff page would be shown
+    // two accounts of one record. Asserting EQUALITY with the other tool's row is the only form of this
+    // property that a re-spelling cannot satisfy by accident.
+    //
+    // OVER A NON-DEFAULT ROW, DELIBERATELY. Compared on a row whose `narrowed` is `false` and whose
+    // `evidence` is `null`, this case is satisfied by a tool that hard-codes both — which is exactly the
+    // re-spelling it exists to refuse, and exactly what a plausible implementation would write. So the
+    // corpus is seeded with a capture BETWEEN the endpoints (making NARROWED true) and with the pair's
+    // name promoted (making `evidence` an object), and the FLOOR below refuses to compare until both are
+    // off their defaults.
+    snapshots.mockResolvedValue([
+      { ...BEFORE, text: 'the page before' },
+      { ...BETWEEN, text: 'the page between' },
+      { ...AFTER, text: 'the page after' },
+    ]);
+    promotedRows([{ fileHash: DIFF_NAME, status: 'PROMOTED' }]);
+
+    const pair = { url: URL, before: BEFORE.waybackTimestamp, after: AFTER.waybackTimestamp };
+    const input = JSON.parse(await getDiffInputHandler(pair));
+    const findings = JSON.parse(await listFindingsHandler({ url: URL }));
+    const row = findings.diffs.find(
+      (diff: { before: string; after: string }) => diff.before === pair.before && diff.after === pair.after,
+    );
+    expect(row).toBeDefined();
+    // THE FLOOR, BEFORE THE COMPARISON. Two equal defaults are equal for the wrong reason.
+    expect({ narrowed: row.narrowed, evidence: row.evidence === null, opinion: row.opinion === null }).toEqual({
+      narrowed: true,
+      evidence: false,
+      opinion: false,
+    });
+    expect({ opinion: input.opinion, narrowed: input.narrowed, evidence: input.evidence }).toEqual({
+      opinion: row.opinion,
+      narrowed: row.narrowed,
+      evidence: row.evidence,
+    });
   });
 
   it('REFUSES NOT_A_CAPTURE for a DATE rather than a timestamp', async () => {
@@ -402,6 +448,11 @@ describe('resolve_record — what a citation points at', () => {
     expect(out.verified.captures).toHaveLength(2);
     expect(out.verified.captures[0].anchoredHash).toBe(BEFORE.anchoredHash);
     expect(out.verified.captures[0].anchoredHashMatchesDocumentHash).toBe(true);
+    // THE PAGE CARRIES ITS ID — ruled 2026-09-20 (A4 :1106). A stranger arrives by the record's NAME and
+    // holds no page id, so `/records/[fileHash]`'s one link onward to the record's page (ui §26 :860) has
+    // no other source. `get_capture` and `get_diff_input` keep `{ url, public }` because their reader named
+    // the page in the URL; this reader did not.
+    expect(out.page).toEqual({ trackedUrlId: PAGE.id, url: URL, public: true });
   });
 
   it('resolves an UNPROMOTED record — a name exists before any evidence row', async () => {

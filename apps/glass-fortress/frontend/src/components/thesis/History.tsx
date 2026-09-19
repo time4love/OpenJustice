@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { fetchJson } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { movedPins, textDiff, type DiffRun, type MovedPin } from '@/lib/textDiff';
+import { DiffRuns } from '@/components/record/DiffRuns';
 import { parseVersionBody } from '@/lib/thesisBody';
 import type { CitationRef, HistoryEntry } from '@/types/thesis';
 import { Fold } from './Fold';
@@ -110,15 +111,7 @@ export function History({ thesisId, history, current, author, locale }: HistoryP
         <div data-testid="version-diff" className="space-y-2 rounded-lg border border-line p-3">
           <p className="text-sm text-ink-muted">{t('diffHeading', { from: diff.from, to: diff.to })}</p>
           <p className="whitespace-pre-wrap text-sm leading-relaxed" dir="auto">
-            {diff.runs.map((run, index) => (
-              <span
-                key={`${run.kind}-${String(index)}`}
-                data-run={run.kind}
-                className={run.kind === 'removed' ? 'bg-seal-tint line-through' : run.kind === 'added' ? 'bg-olive-tint' : undefined}
-              >
-                {run.text}
-              </span>
-            ))}
+            <DiffRuns runs={diff.runs} />
           </p>
           {diff.moved.length === 0 ? null : (
             <div className="text-sm text-ink-muted">

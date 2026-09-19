@@ -44,7 +44,7 @@ interface Citation {
 interface Resolved {
   fileHash: string;
   kind: 'CAPTURE' | 'DIFF';
-  page: { url: string; public: boolean };
+  page: { trackedUrlId: string; url: string; public: boolean };
   record: { capture: string } | { before: string; after: string };
   recomputable: boolean;
   verified: { verified: boolean; captures: CaptureAttribution[] } | { notEvaluable: string };
@@ -111,7 +111,11 @@ export async function resolvedRecordOf(input: { fileHash: string }): Promise<Res
   return {
     fileHash: resolved.fileHash,
     kind: resolved.kind,
-    page: { url: resolved.page.url, public: access.public },
+    // THE PAGE'S ID TRAVELS HERE AND NOT ON THE OTHER TWO READS — ruled 2026-09-20 (A4 :1106). A stranger
+    // arrives at `/records/<fileHash>` holding a NAME and no page id, so the one link onward to the
+    // record's page (ui §26 :860) has no other source; `get_capture` and `get_diff_input` keep
+    // `{ url, public }` because their reader named the page in the URL they arrived by.
+    page: { trackedUrlId: resolved.page.id, url: resolved.page.url, public: access.public },
     record: recordNames(resolved),
     // RECOMPUTABLE IS A PROPERTY OF THE ROW WHERE THERE IS ONE, and of the
     // resolution only where there is not.

@@ -26,6 +26,9 @@ import published from './fixtures/thesis/published.json';
 import callLive from './fixtures/thesis/call-live.json';
 import callRequestsOnly from './fixtures/thesis/call-requests-only.json';
 import versionPrevious from './fixtures/thesis/version-previous.json';
+import { captureRead } from './fixtures/corpus/capture';
+import { diffInput } from './fixtures/corpus/diffInput';
+import { resolvedCaptureRecord } from './fixtures/corpus/record';
 
 // ---------------------------------------------------------------------------
 // no-door-before-it-exists — docs/gf-ui-flows.md §17 :546–:548, §21 :622, §23 :644–:645;
@@ -63,6 +66,13 @@ afterEach(() => {
   mockDoorOverride = null;
 });
 
+const TRACKED = 'page-one';
+const CAPTURE = '20211223211940';
+const AFTER = '20220105090000';
+const capturePage = async () => import('@/app/[locale]/pages/[trackedUrlId]/captures/[capture]/page');
+const diffPage = async () => import('@/app/[locale]/pages/[trackedUrlId]/diffs/[before]/[after]/page');
+const recordsPage = async () => import('@/app/[locale]/records/[fileHash]/page');
+
 const unprefixed = (href: string): string => {
   const path = (href.split(/[?#]/)[0] ?? href).replace(/^\/(he|en)(?=\/|$)/, '');
   return path === '' ? '/' : path;
@@ -82,6 +92,9 @@ async function everyPublicPage(): Promise<{ name: string; hrefs: string[] }[]> {
     [`/api/thesis/${published.thesisId}`]: { status: 200, body: published },
     [`/api/thesis/${published.thesisId}/call`]: { status: 200, body: callLive },
     [`/api/thesis/${published.thesisId}/versions/${versionPrevious.versionId}`]: { status: 200, body: versionPrevious },
+    [`/api/pages/${TRACKED}/captures/${CAPTURE}`]: { status: 200, body: captureRead },
+    [`/api/pages/${TRACKED}/diffs/${CAPTURE}/${AFTER}`]: { status: 200, body: diffInput },
+    [`/api/records/${resolvedCaptureRecord.fileHash}`]: { status: 200, body: resolvedCaptureRecord },
   });
   const thesis = (await thesisPage()).default;
   const call = (await callPage()).default;
@@ -94,6 +107,32 @@ async function everyPublicPage(): Promise<{ name: string; hrefs: string[] }[]> {
       hrefs: anchorsOf(
         '/theses/[id]/versions/[v]',
         await renderPage(version, { locale: LOCALE, id: published.thesisId, v: versionPrevious.versionId }, { locale: LOCALE }),
+      ),
+    },
+    // THE TWO RECORD PAGES (UI-7 chunk (c)). Both carry anchors — the capture page its archive link, the
+    // diff page its two endpoint links — so both are real subjects of the door rule and neither was examined
+    // by this scan until now. A record page that ever grew a „הגישו עדות" anchor would have been invisible.
+    {
+      name: '/pages/[trackedUrlId]/captures/[capture]',
+      hrefs: anchorsOf(
+        '/pages/[trackedUrlId]/captures/[capture]',
+        await renderPage((await capturePage()).default, { locale: LOCALE, trackedUrlId: TRACKED, capture: CAPTURE }, { locale: LOCALE }),
+      ),
+    },
+    {
+      name: '/pages/[trackedUrlId]/diffs/[before]/[after]',
+      hrefs: anchorsOf(
+        '/pages/[trackedUrlId]/diffs/[before]/[after]',
+        await renderPage((await diffPage()).default, { locale: LOCALE, trackedUrlId: TRACKED, before: CAPTURE, after: AFTER }, { locale: LOCALE }),
+      ),
+    },
+    // THE RECORDS PAGE carries exactly ONE anchor — the link onward — so it is the page where a door would
+    // be most visible and, being the outsider's landing page, the one where it would do most harm.
+    {
+      name: '/records/[fileHash]',
+      hrefs: anchorsOf(
+        '/records/[fileHash]',
+        await renderPage((await recordsPage()).default, { locale: LOCALE, fileHash: resolvedCaptureRecord.fileHash }, { locale: LOCALE }),
       ),
     },
   ];

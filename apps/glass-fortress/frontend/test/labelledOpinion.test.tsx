@@ -143,9 +143,19 @@ describe('opinion-labelled-on-corpus', () => {
       // THE SHEET JOINS THE STREAM as a legal importer at chunk 5b(b), and the reason is §24 region 4's own:
       // the stream CLAMPS the opinion to two lines and "the rest [is] in the sheet", so the sheet renders the
       // same field in full. It is the SAME container either way — which is exactly what this case exists to
-      // hold — so the set grows by one surface rather than the rule loosening. Both entries still offend:
+      // hold — so the set grows by one surface rather than the rule loosening. Every entry still offends:
       // each really does import the container, checked by this same scan.
-      importers: ['src/components/corpus/RecordSheet.tsx', 'src/components/corpus/Stream.tsx'],
+      //
+      // THE DIFF PAGE JOINS THEM at chunk 2c (2026-09-20), and it is the tripwire working rather than the
+      // rule bending. `get_diff_input` gained the diff row's `opinion` by the researcher's ruling (A4
+      // :1096) precisely so ui §26 :852–:856's "the opinion labelled" could be drawn there — the SAME
+      // field, from the SAME builder, inside the SAME container. A surface showing the model's voice
+      // outside `LabelledOpinion`, or a fourth importer nobody argued for, still reddens this case.
+      importers: [
+        'src/app/[locale]/pages/[trackedUrlId]/diffs/[before]/[after]/page.tsx',
+        'src/components/corpus/RecordSheet.tsx',
+        'src/components/corpus/Stream.tsx',
+      ],
     });
   });
 });
