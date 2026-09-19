@@ -5,6 +5,7 @@ import type {
   PublishedThesis,
   PublishedVersion,
   ThesisBody,
+  ThesisListRow,
   VersionBody,
   WhistleblowerCall,
   WithdrawnNotice,
@@ -176,6 +177,32 @@ export function parseThesisBody(value: unknown): ThesisBody {
     }),
   };
   return published;
+}
+
+/**
+ * `GET /api/thesis` — THE PUBLIC LIST, `list_theses`' anonymous answer (thesis A4 :1427): every thesis with
+ * PUBLISHED(t), and "nothing else exists to an anonymous caller".
+ *
+ * NARROWED AT THE READ like every other public body (§8 :331–:333), field by field, each naming itself — so a
+ * body that drifts from the appendix fails loudly here instead of rendering a row with a blank claim, which a
+ * reader cannot tell from a thesis that has none.
+ *
+ * `publishedAt` is `maybeText` and not `text`: the route selects it separately from the `publishedVersionId`
+ * it filters on, so a published thesis CAN answer with no date. The list orders and draws around that
+ * (`app/[locale]/theses/page.tsx`); the parser's job is to report the body, not to repair it.
+ */
+export function parseThesisList(value: unknown): ThesisListRow[] {
+  return list(value, 'the thesis list').map((row, index) => {
+    const at = `theses[${String(index)}]`;
+    const thesis = object(row, at);
+    return {
+      thesisId: text(thesis.thesisId, `${at}.thesisId`),
+      claim: text(thesis.claim, `${at}.claim`),
+      provision: maybeText(thesis.provision, `${at}.provision`),
+      publishedAt: maybeText(thesis.publishedAt, `${at}.publishedAt`),
+      author: text(thesis.author, `${at}.author`),
+    };
+  });
 }
 
 /** `GET /api/thesis/:id/versions/:v` — a published version, or the notice (A5 :1570). */

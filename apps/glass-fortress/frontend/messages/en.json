@@ -612,6 +612,11 @@
       "notice": "Withdrawn by its author on {date}.",
       "notFound": "No published thesis is at this address."
     },
+    "list": {
+      "title": "Theses",
+      "empty": "No thesis has been published yet",
+      "date": "Published {date}"
+    },
     "marks": {
       "verified": "Verified against its anchor",
       "flagged": "Flagged",
