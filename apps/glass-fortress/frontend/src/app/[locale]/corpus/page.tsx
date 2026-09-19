@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 import { readPublic } from '@/lib/api';
-import { parseCorpusPages } from '@/lib/corpusBody';
+import { parseCorpusPages, parseCorpusStream } from '@/lib/corpusBody';
+import { readCorpusQuery, toReadParameters, type CorpusFilters } from '@/lib/corpusQuery';
+import { CorpusContextLine } from '@/components/corpus/CorpusContextLine';
 import { PagesList } from '@/components/corpus/PagesList';
+import { Stream } from '@/components/corpus/Stream';
 import { LegalDisclaimer } from '@/components/LegalDisclaimer';
 
 // ---------------------------------------------------------------------------
@@ -11,11 +14,10 @@ import { LegalDisclaimer } from '@/components/LegalDisclaimer';
 // THIS ROUTE KILLED A LIVE 404. `Sidebar.tsx` has rendered `<Link href="/corpus">` under הארכיון since UI-4b
 // and the route did not exist — the deployed site answered 404 from its own navigation.
 //
-// REGION 0 IS THE DEFAULT AND THIS CHUNK RENDERS ONLY IT. `/corpus` with none of the five read parameters is
-// the PAGES LIST; `page` · `since` · `until` · `kind` · `cited` carry it to the STREAM, which lands next. Until
-// then a stream URL renders the list and says so — it does NOT 404, because every one of those URLs is already
-// specified (the thesis page's `/corpus?page=` is named in four places) and a 404 would break a link that the
-// contract says must work.
+// REGION 0 IS THE DEFAULT AND THE STREAM IS WHAT A FILTER RETURNS. `/corpus` with none of the five read
+// parameters is the PAGES LIST; `page` · `since` · `until` · `kind` · `cited` carry it to the STREAM. The
+// choice is `readCorpusQuery`'s and not this page's — one rule, one implementation — and the thesis page's
+// `/corpus?page=<trackedUrlId>`, specified in four places, is one of those five doors.
 //
 // THE READ IS THE DISCLOSURE RULE. `GET /api/corpus` at `scope: 'public'`, and the `pages` FACET of that one
 // read — never `list_pages`, never `/api/research/pages`, never the facet at `all`. §28: "no public read lists
@@ -23,21 +25,16 @@ import { LegalDisclaimer } from '@/components/LegalDisclaimer';
 // facet is exactly the OPENED pages and "reveals nothing the thesis pages' links do not already reveal".
 // `pages-list-reads-public-only` holds all three halves of that.
 //
-// THE PAGE READS NO QUERY, and that is the amendment of 2026-09-18 rather than an omission. The stream is not
-// a lens and not a destination: it is WHAT A FILTER RETURNS, so `?page=` · `?since=`/`?until=` · `?cited=1` are
-// the stream's only doors and each lands when its region does. `/corpus` bare is region 0, and until the stream
-// lands those URLs render the list rather than a 404 — they are contract-specified in four places and a 404
-// would break a link the contract guarantees. `lib/corpusQuery.ts` already holds the rule; this page will call
-// it when there is a stream for it to choose.
+// THE PAGE NOW READS ITS QUERY, and that is what makes the stream reachable. Chunk 2 declared `params` alone —
+// deliberately, because a control whose parameter the page ignored was the round's own defect — so `?cited=1`
+// rendered the identical page and its lens was deleted. `searchParams` is a REQUEST-TIME API and a Promise
+// (next 16's `page.js` reference), so reading it opts this route into dynamic rendering, which is what a
+// filtered view is: the answer depends on the question.
 //
-// NO CONTEXT LINE AND NO LENS CONTROL AT THIS CHUNK, and both are DELETED — never drawn empty, never left in the
-// tree unused (the researcher, 2026-09-18). A LENS CONTROL OF ONE IS NOT A CONTROL: `?cited=1` reached a page
-// declaring no `searchParams`, so pressing „מצוטטות" re-rendered the identical page and did not even mark itself
-// current — a control drawn before it works, which is this round's own defect, four times over. AND A SCOPE MEANS
-// SOMETHING ONLY WHERE THERE ARE TWO: „דפים פתוחים" names the opened pages against the surveyed ones, and a reader
-// who is not a researcher does not know the closed ones exist — „הקורא שאינו חוקר לא ידע שיש דפים סגורים". §24's
-// region 1 is written FRESH at chunk 5, when the filters, the count and the control arrive together; the set that
-// returns is PAGES · CITED — two, per §25 :770 and :783, the CLAIMS lens having moved per-page.
+// THE CONTEXT LINE IS REBORN HERE rather than restored. What chunk 2 deleted was a scope label and a lens
+// control of one; what returns carries the COUNT, the CHIPS and a lens control of TWO (PAGES · CITED, §25
+// :770 and :783). The scope label does NOT return: „דפים פתוחים" names a scope against a second scope this
+// public door does not have, and a reader who is not a researcher does not know the closed pages exist.
 //
 // A SERVER COMPONENT, and no `loading.tsx` in this segment — the thesis page's ruling (q1 A, 2026-09-16): a
 // Suspense boundary streams the response, and a `notFound()` after the first byte answers 200 with a `noindex`
@@ -46,6 +43,23 @@ import { LegalDisclaimer } from '@/components/LegalDisclaimer';
 
 interface PageParams {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+/**
+ * The URL's query as `URLSearchParams`, which is what the pure module reads.
+ *
+ * A REPEATED PARAMETER TAKES ITS FIRST VALUE. Next hands `?page=a&page=b` to a page as an ARRAY, and the read
+ * takes one page; `readCorpusFilters` would see neither. Taking the first is the same answer a browser's own
+ * `URLSearchParams.get` gives, so the page agrees with every other reader of the same URL.
+ */
+function queryOf(searchParams: Record<string, string | string[] | undefined>): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(searchParams)) {
+    const one = Array.isArray(value) ? value.at(0) : value;
+    if (one !== undefined) params.set(key, one);
+  }
+  return params;
 }
 
 /**
@@ -70,15 +84,47 @@ async function pagesInScope(): Promise<ReturnType<typeof parseCorpusPages>> {
   return answer.status === 404 ? [] : answer.body;
 }
 
+/**
+ * THE ONE READ, FILTERED (§8: a filter is a parameter of the one read, never a second read). The filters
+ * become the read's parameters through `toReadParameters`, which is where the URL's `cited=1` and the read's
+ * boolean meet — the only place the two spellings are allowed to know about each other.
+ */
+async function streamInScope(filters: CorpusFilters): Promise<ReturnType<typeof parseCorpusStream>> {
+  const read = toReadParameters(filters, 'public');
+  const query = new URLSearchParams();
+  if (read.page !== undefined) query.set('page', read.page);
+  if (read.since !== undefined) query.set('since', read.since);
+  if (read.until !== undefined) query.set('until', read.until);
+  if (read.kind !== undefined) query.set('kind', read.kind);
+  if (read.cited === true) query.set('cited', '1');
+  const suffix = query.toString();
+  const answer = await readPublic(`/api/corpus${suffix === '' ? '' : `?${suffix}`}`, parseCorpusStream);
+  // §6's table: NOT_SURVEYED and NOT_PUBLIC are ONE 404, and a filter naming a page this scope cannot see is
+  // the commonest way to reach it. An empty stream is region 5's sentence, which is a state and not an error.
+  return answer.status === 404 ? { entries: [], pages: [], nextCursor: null } : answer.body;
+}
+
 export async function generateMetadata({ params }: PageParams): Promise<Metadata> {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: 'corpus' });
   return { title: t('title') };
 }
 
-export default async function CorpusPage({ params }: PageParams) {
+export default async function CorpusPage({ params, searchParams }: PageParams) {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: 'corpus' });
+  const query = readCorpusQuery(queryOf(await searchParams));
+  if (query.view === 'stream') {
+    const answer = await streamInScope(query.filters);
+    return (
+      <main className="page-column flex flex-col gap-3 py-4">
+        <h1 className="text-lg text-ink">{t('title')}</h1>
+        <CorpusContextLine filters={query.filters} count={answer.entries.length} pages={answer.pages} />
+        <Stream entries={answer.entries} />
+        <LegalDisclaimer form="short" />
+      </main>
+    );
+  }
   const pages = await pagesInScope();
   // `page-column` IS THE SHELL'S OWN READING MEASURE (`globals.css`: `max-width: var(--reading-column)`,
   // `margin-inline: auto`, `padding-inline: 1rem`) and is what every public page already uses. An earlier draft

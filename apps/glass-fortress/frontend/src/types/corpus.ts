@@ -118,9 +118,22 @@ export interface ClassifierOpinion {
   significance: string;
   categories: InvestigativeCategory[];
   legallySignificant: boolean;
-  editorial: string | null;
+  /**
+   * A BOOLEAN, corrected 2026-09-19 from `string | null`. A4 :1086 names the field and does not type it, so
+   * chunk 1 hand-wrote it as prose — and the fixture written from the same reading kept the whole suite green
+   * over it. TWO independent sources say otherwise: the running backend answers `editorial: true`, and §24's
+   * own measurement is written in the same shape — "20 carry `editorial: true`". Found when the stream's
+   * first reading of a REAL body 500'd at the boundary, which is the parser doing its job.
+   */
+  editorial: boolean;
   classifierVersion: string;
-  draws: string | null;
+  /**
+   * A NUMBER, corrected 2026-09-19 alongside `editorial` and for the same reason: A4 :1086 names the field
+   * without typing it, chunk 1 hand-wrote it as prose, and the running backend answers `draws: 1`. Both were
+   * found by the stream's first reading of a REAL body, one after the other, each by the parser failing loudly
+   * and naming its field — which is what a boundary narrowing is for.
+   */
+  draws: number;
 }
 
 /** A CAPTURE row (A4 :1082–:1084, plus the three fields the header names). */

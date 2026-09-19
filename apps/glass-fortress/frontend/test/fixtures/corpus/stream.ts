@@ -4,7 +4,13 @@ import type { CorpusAnswer } from '@/types/corpus';
 // asserts what the CONTRACT says rather than what one environment answered on one day. Each is TYPED, so
 // `tsc` checks it against `types/corpus.ts` — a fixture that drifts from the appendix fails the build.
 
-/** A stream over TWO pages with both row kinds: a cited diff, an awaiting-derivation diff and a narrowed diff, with the `pages` facet and a cursor. */
+/**
+ * A stream over TWO pages with both row kinds: a cited diff, an awaiting-derivation diff, a narrowed diff, and
+ * — added with the significance gate — a diff that is EDITORIAL *and* LEGALLY SIGNIFICANT beside one that is
+ * editorial only. That pair is what makes the gate assertable by VALUE rather than by property name: 20 of 21
+ * diffs on the real corpus are editorial and EIGHT of those are also legally significant, so a gate written on
+ * `editorial` would hide the first of these two, which is exactly the row the page exists to show.
+ */
 export const corpusStream: CorpusAnswer = {
   "entries": [
     {
@@ -69,9 +75,9 @@ export const corpusStream: CorpusAnswer = {
           "SAFETY_CLAIM_ALTERATION"
         ],
         "legallySignificant": true,
-        "editorial": null,
+        "editorial": false,
         "classifierVersion": "classifier-fixture-1",
-        "draws": null
+        "draws": 1
       },
       "narrowed": false,
       "evidence": {
@@ -125,11 +131,68 @@ export const corpusStream: CorpusAnswer = {
         "significance": "עדכון הנחיות שגרתי, ללא גריעת אזהרות בטיחות.",
         "categories": [],
         "legallySignificant": false,
-        "editorial": null,
+        "editorial": false,
         "classifierVersion": "classifier-fixture-1",
-        "draws": null
+        "draws": 1
       },
       "narrowed": true,
+      "evidence": null,
+      "page": {
+        "trackedUrlId": "page-two",
+        "url": "https://example.gov/two/",
+        "public": true
+      }
+    },
+    {
+      "kind": "DIFF",
+      "before": "20220415080000",
+      "after": "20220520080000",
+      "fileHash": "0xaaaa0000000000000000000000000000000000000000000000000000000000aa",
+      "current": {
+        "contentVersionHash": "bbbb000000000000000000000000000000000000000000000000000000000000",
+        "chunks": [
+          { "side": "REMOVED", "text": "רשימת התופעות השכיחות" },
+          { "side": "ADDED", "text": "רשימת התופעות" }
+        ]
+      },
+      "awaitingDerivation": false,
+      "opinion": {
+        "significance": "הפסקה נוסחה מחדש, ובתוך אותו ניסוח נגרעה ממנה רשימת התופעות השכיחות.",
+        "categories": ["SAFETY_CLAIM_ALTERATION"],
+        "legallySignificant": true,
+        "editorial": true,
+        "classifierVersion": "v5-editorial-verdict",
+        "draws": 1
+      },
+      "narrowed": false,
+      "evidence": null,
+      "page": {
+        "trackedUrlId": "page-two",
+        "url": "https://example.gov/two/",
+        "public": true
+      }
+    },
+    {
+      "kind": "DIFF",
+      "before": "20220520080000",
+      "after": "20220601080000",
+      "fileHash": "0xcccc0000000000000000000000000000000000000000000000000000000000cc",
+      "current": {
+        "contentVersionHash": "dddd000000000000000000000000000000000000000000000000000000000000",
+        "chunks": [
+          { "side": "ADDED", "text": "עודכן בתאריך" }
+        ]
+      },
+      "awaitingDerivation": false,
+      "opinion": {
+        "significance": "עדכון תאריך בתחתית הדף, ללא שינוי בתוכן ההנחיות עצמן.",
+        "categories": [],
+        "legallySignificant": false,
+        "editorial": true,
+        "classifierVersion": "v5-editorial-verdict",
+        "draws": 1
+      },
+      "narrowed": false,
       "evidence": null,
       "page": {
         "trackedUrlId": "page-two",

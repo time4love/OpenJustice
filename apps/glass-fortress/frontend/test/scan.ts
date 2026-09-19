@@ -328,7 +328,6 @@ export const NOT_YET_REWRITTEN: readonly string[] = [
   'src/app/[locale]/safety/page.tsx',
   'src/app/[locale]/submit/page.tsx',
   'src/app/[locale]/theses/[id]/edit/page.tsx',
-  'src/app/[locale]/theses/page.tsx',
   'src/app/[locale]/unlock/UnlockForm.tsx',
   'src/app/[locale]/unlock/page.tsx',
   'src/components/AuthGuard.tsx',

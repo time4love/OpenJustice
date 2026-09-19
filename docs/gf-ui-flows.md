@@ -381,7 +381,7 @@ THE RESEARCHER'S     an act and its words — a question, a proposed framing, a 
 THE MODEL'S          an opinion recorded through a tool — an assessment round, a debate verdict, the
                      critic's analysis, the publication assessment. ALWAYS inside a container that carries
                      COMPLIANCE.md rule 3's label, "ניתוח AI — אינו מהווה קביעה שיפוטית", with the model and
-                     prompt version beside it (A2 :1309, :1317). Never outside one.
+                     prompt version beside it (A2 :1309, :1317). Never outside one. **THE MODEL NAME IS OWED, NOT WAIVED (the researcher, 2026-09-19): it MATTERS to a public reader, but `opinion` carries no such field — `classifierVersion` alone (A4 :1086–:1087) — so supplying one is a BACKEND change. UI-7 renders the version it has; the model name arrives at the next step that opens the server, and an issue carries the debt. This clause is not weakened by that.**
 THE PLATFORM'S       a mechanical verdict on either of the above — quoteVerified, phraseVerified
                      PRESENT | ABSENT | UNCHECKED, elements filled, ARGUED, CURRENT | STALE, a check's
                      pass/fail with what it examined. Rendered as a mark beside the sentence it judges,

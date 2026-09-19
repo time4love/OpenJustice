@@ -1,171 +1,124 @@
-'use client';
-
-import { useState, useEffect, FormEvent } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { useTranslations, useLocale } from 'next-intl';
+import type { Metadata } from 'next';
+import { getTranslations } from 'next-intl/server';
 import { Link } from '@/i18n/navigation';
-import { apiUrl } from '@/lib/api';
-import { useAuth } from '@/context/AuthContext';
-import type { ThesisSummary as FullThesisSummary } from '@/types/thesis';
-import { strengthBadgeClass } from '@/components/StrengthBadge';
-import { fetchTheses } from '@/lib/thesisApi';
-import { PublicationBadge } from '@/components/PublicationBadge';
+import { readPublic } from '@/lib/api';
+import { formatDate } from '@/lib/format';
+import { parseThesisList } from '@/lib/thesisBody';
+import { ProvisionName } from '@/components/thesis/ProvisionName';
+import type { ThesisListRow } from '@/types/thesis';
 
 // ---------------------------------------------------------------------------
-// Types
+// `/theses` — THE PUBLIC THESIS LIST. docs/gf-ui-flows.md §3 :145 (UN-RETIRED 2026-09-18, the researcher),
+// §32 :934 (`תזות` leads here), §33 :959–:969 (why the list left the door), A1 :1119; UI plan UI-7 :600–:610.
+//
+// IT WAS RETIRED ON A GROUND THAT STOPPED HOLDING. The ground was "`/` carries the published list" — and the
+// researcher has since ruled that `/` is the HOME, shows the LATEST and not all, and is redesigned LAST. A home
+// that shows a selection is not a list: the built door has always drawn `theses.slice(1, 5)`, so the design and
+// the build disagreed while the sidebar's `תזות` led nowhere at all. §33 :969: "One page cannot be both the
+// welcome and the catalogue."
+//
+// NO SEARCH, NO FILTER, NO COUNT — §33 :964–:966's own reasoning, which MOVED HERE WITH THE LIST: the published
+// theses are few by design and each is a commitment. What was retired was the door doubling as the index, not
+// the fewness.
+//
+// AND NO DISCLAIMER (the researcher, 2026-09-19). COMPLIANCE.md :92 names every THESIS page and every
+// `/call/[thesisId]` page; a list of theses is neither, and its rows carry no claim's argument — only the claim,
+// which is the heading of the page that does carry it.
+//
+// THE ROWS ARE 558-CHARACTER CLAIMS, and that is issue #510, not this page's to solve. No truncation, no clamp
+// and no invented short title: "there is no short title for the thesis. It shows in the left sidebar and it
+// shows on the thesis page. We are not solving that now" (the researcher, 2026-09-18). This is its fourth place.
+//
+// A SERVER COMPONENT reading ONE public route (§8), like `/corpus`; `page-column` is the shell's own reading
+// measure and is CALLED rather than re-spelled — a hand-rolled `max-w-prose` is 65ch, which resolves to 422.5px
+// and is wider than a 375px phone. That was measured on the corpus page and is not repeated here.
 // ---------------------------------------------------------------------------
 
-type ThesisSummary = Pick<FullThesisSummary, 'id' | 'createdAt' | 'version' | 'publication'>;
-
-interface ThesisCitation {
-  id: number;
-  fileHashes: string[];
+interface PageParams {
+  params: Promise<{ locale: string }>;
 }
 
-interface ThesisSuggestion {
-  proposedTitle: string;
-  thesisStatement: string;
-  narrativeBody: string;
-  confidenceLevel: 'WEAK' | 'MODERATE' | 'STRONG';
-  summaryHe: string;
-  keyFigures: string[];
-  supportingHashes: string[];
-  citations: ThesisCitation[];
-  missingEvidence: string[];
-  readyForDraft: {
-    title: string;
-    body: string;
-    evidenceHashes: string[];
-    keyFigures: string[];
-    citations: ThesisCitation[];
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Status badge
-// ---------------------------------------------------------------------------
-
-function StatusBadge({ status }: { status: string }) {
-  const t = useTranslations('theses');
-  const styles =
-    status === 'COMPLETE'
-      ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
-      : 'bg-amber-100 text-amber-700 border border-amber-300';
-  return (
-    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${styles}`}>
-      {status === 'COMPLETE' ? t('aiReviewedStatus') : t('pendingAiStatus')}
-    </span>
-  );
-}
-
-
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
-
-export default function ThesesPage() {
-  const t = useTranslations('theses');
-  const locale = useLocale();
-  const { researcher } = useAuth();
-  const canEdit = researcher?.approved ?? false;
-
-  const searchParams = useSearchParams();
-  const evidenceFilter = searchParams.get('evidence');
-
-  const [theses, setTheses] = useState<ThesisSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    async function load() {
-      try {
-        const query = evidenceFilter ? `evidence=${encodeURIComponent(evidenceFilter)}` : undefined;
-        setTheses(await fetchTheses(query));
-      } catch {
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
+/**
+ * NEWEST FIRST, over a field that can be NULL — and the order must still be TOTAL.
+ *
+ * `publishedEntries()` filters on `publishedVersionId: { not: null }` and selects `publishedAt` separately, so
+ * the route CAN answer a published thesis with no date. "Newest first" has no defined answer over a null, and
+ * the researcher ruled it on 2026-09-19: such a row is **never dropped** — that would hide a published thesis —
+ * and **never sorted to the head**, which would put an anomaly at the top of a public catalogue. It sorts LAST.
+ *
+ * `thesisId` is the tie-break so two theses published in the same instant cannot swap places between renders;
+ * an order that is merely mostly-stable reads as a page that shuffles itself.
+ *
+ * The dates are ISO instants, so they compare as strings exactly as they compare as instants — and `<` is used
+ * rather than `localeCompare`, whose collation is locale-sensitive and has no business ordering a timestamp.
+ */
+function newestFirst(rows: readonly ThesisListRow[]): ThesisListRow[] {
+  const byId = (a: ThesisListRow, b: ThesisListRow): number => (a.thesisId < b.thesisId ? -1 : a.thesisId > b.thesisId ? 1 : 0);
+  return [...rows].sort((a, b) => {
+    if (a.publishedAt === null || b.publishedAt === null) {
+      if (a.publishedAt === b.publishedAt) return byId(a, b);
+      return a.publishedAt === null ? 1 : -1;
     }
-    load();
-  }, [evidenceFilter]);
+    if (a.publishedAt === b.publishedAt) return byId(a, b);
+    return a.publishedAt < b.publishedAt ? 1 : -1;
+  });
+}
 
+/** THE ONE READ (§8): `GET /api/thesis`, `list_theses`' anonymous answer (A4 :1427), narrowed at the boundary. */
+async function publishedTheses(): Promise<ThesisListRow[]> {
+  const answer = await readPublic('/api/thesis', parseThesisList);
+  // A list route has no 404 to answer — the one 404 belongs to a NAMED thesis (§6's table). If it ever answers
+  // one, an empty catalogue is the honest reading: the page then says so in a sentence, which is a state, and
+  // never an error a reader cannot act on.
+  return answer.status === 404 ? [] : newestFirst(answer.body);
+}
+
+export async function generateMetadata({ params }: PageParams): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: 'theses.list' });
+  return { title: t('title') };
+}
+
+export default async function ThesesPage({ params }: PageParams) {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: 'theses.list' });
+  const theses = await publishedTheses();
   return (
-    <div className="min-h-screen bg-slate-50">
-
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
-        {/* Title row */}
-        <div className="flex items-center justify-between mb-8 gap-4 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">{t('pageTitle')}</h1>
-            <p className="text-slate-500 text-sm mt-1">{t('tagline')}</p>
-          </div>
-        </div>
-
-        {/* Evidence filter banner */}
-        {evidenceFilter && (
-          <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-sm">
-            <span className="text-amber-700">{t('filteredByEvidence')}</span>
-            <span className="font-mono text-xs text-amber-600">{evidenceFilter.slice(0, 12)}…</span>
-            <Link href="/theses" className="ms-auto text-xs text-amber-600 hover:text-amber-800 underline">
-              {t('clearFilter')}
-            </Link>
-          </div>
-        )}
-
-        {loading && <div className="text-slate-500 text-sm">{t('savingBtn')}</div>}
-
-        {error && <div className="text-red-600 text-sm">{t('errorSave')}</div>}
-
-        {/* The empty state describes what THIS VIEWER can see, never a fact about
-            the world. One string for everyone told a public visitor there are no
-            theses while unpublished drafts existed — not a leak, the inverse: a
-            false statement made to avoid one. It still reveals no count or title. */}
-        {!loading && !error && theses.length === 0 && (
-          <div className="text-center py-24 space-y-3">
-            <p className="text-slate-500 text-lg">{canEdit ? t('emptyState') : t('emptyStatePublic')}</p>
-          </div>
-        )}
-
-        {theses.length > 0 && (
-          <div className="space-y-4">
-            {theses.map(thesis => (
-              <Link
-                key={thesis.id}
-                href={`/theses/${thesis.id}`}
-                className="block bg-white border border-slate-200 hover:border-slate-400 rounded-2xl p-5 transition-colors group shadow-sm"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <p className="text-slate-700 text-sm leading-relaxed line-clamp-2 flex-1">
-                    {thesis.version?.preview ?? '—'}
-                  </p>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <PublicationBadge publication={thesis.publication} />
-                    {thesis.version && (
-                      <StatusBadge status={thesis.version.status} />
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3 mt-3 text-xs text-slate-500">
-                  <span>
-                    {new Date(thesis.createdAt).toLocaleDateString(
-                      locale === 'he' ? 'he-IL' : 'en-US'
-                    )}
-                  </span>
-                  {thesis.version && (
+    <main className="page-column flex flex-col gap-3 py-4">
+      <h1 className="text-lg text-ink">{t('title')}</h1>
+      {theses.length === 0 ? (
+        <p data-theses-empty className="text-sm text-ink-muted">
+          {t('empty')}
+        </p>
+      ) : (
+        <ul data-theses-list className="flex flex-col gap-2">
+          {theses.map((thesis) => (
+            <li key={thesis.thesisId} data-thesis-row className="rounded border border-line bg-surface p-3">
+              <Link href={`/theses/${thesis.thesisId}`} className="flex flex-col gap-1">
+                {/* THE CLAIM IS THE ROW (§3 :145; A2 :1268 "the claim is the heading"), whole and `dir="auto"`. */}
+                <span data-claim dir="auto" className="text-sm text-ink underline">
+                  {thesis.claim}
+                </span>
+                {/* The provision through the ONE mechanism — `provision-is-a-lookup`, landed 2026-09-19: the
+                    CODE goes in and the catalogue's word for it comes out, in the reader's own language. */}
+                <ProvisionName provision={thesis.provision} />
+                <span className="text-xs text-ink-muted">
+                  {/* The handle is DATA and is isolated; the date is LTR inside a Hebrew line. A row with no
+                      date draws its handle and NO date line — `Byline.tsx` :22's pattern, which the thesis
+                      page has used since UI-5, rather than a second answer to the same question. */}
+                  <bdi>{thesis.author}</bdi>
+                  {thesis.publishedAt === null ? null : (
                     <>
-                      <span className="text-slate-300">·</span>
-                      <span>{thesis.version.mentionCount} {t('mentions')}</span>
+                      {' · '}
+                      <bdi dir="ltr">{t('date', { date: formatDate(thesis.publishedAt, locale) })}</bdi>
                     </>
                   )}
-                </div>
+                </span>
               </Link>
-            ))}
-          </div>
-        )}
-      </main>
-
-    </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </main>
   );
 }

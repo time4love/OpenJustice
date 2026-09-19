@@ -36,10 +36,13 @@ const SYSTEM_COLOURS = ['#FCFCFB', '#F2F1EE', '#FFFFFF', '#1F1B16', '#4E463F', '
 /**
  * Files THIS STEP writes or rewrites: none of them may ever be excused by the list. Re-pointed at
  * UI-5's surface — the three public pages, everything under `components/thesis/`, and the four
- * modules the re-brief rewrites with them. A step that excused its OWN work would turn a shrinking
+ * modules the re-brief rewrites with them. **`app/[locale]/theses/page.tsx` JOINED 2026-09-19**, moving
+ * off `NOT_YET_REWRITTEN` in the same change that rewrote it as the public list (UI-7): a file cannot be
+ * both excused and owned, and :93 is what holds the two lists apart. A step that excused its OWN work would turn a shrinking
  * list into a place to put the files it did not want to finish.
  */
 const THIS_STEPS_OWN = [
+  'src/app/[locale]/theses/page.tsx',
   'src/app/[locale]/theses/[id]/page.tsx',
   'src/app/[locale]/theses/[id]/versions/[v]/page.tsx',
   'src/app/[locale]/call/[thesisId]/page.tsx',

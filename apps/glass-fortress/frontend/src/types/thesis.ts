@@ -264,6 +264,25 @@ export type HistoryEntry =
   | { versionId: string; contentHash: string; publishedAt: string; citations: CitationRef[] }
   | { versionId: string; contentHash: string; publishedAt: string; withdrawn: true; withdrawnAt: string };
 
+/**
+ * ONE ROW OF THE PUBLIC THESIS LIST — thesis A4 :1427, the anonymous answer of `list_theses`:
+ * `{ thesisId, claim, provision, publishedAt, author: handle, contentHash }`, for theses with PUBLISHED(t).
+ *
+ * FIVE OF THE SIX, AND `contentHash` IS DELIBERATELY ABSENT. The row never renders it — §4 :168 forbids a hash
+ * as text, and the VERIFY disclosure that carries one belongs to the thesis page — so narrowing it here would
+ * be `corpusBody.ts`'s own objection: a parser nothing exercises is a parser nothing proves.
+ *
+ * `publishedAt` IS NULLABLE because the route's own read is: `publishedEntries()` filters on
+ * `publishedVersionId: { not: null }` and selects `publishedAt` separately, so the two can disagree.
+ */
+export interface ThesisListRow {
+  thesisId: string;
+  claim: string;
+  provision: string | null;
+  publishedAt: string | null;
+  author: string;
+}
+
 export interface PublishedThesis {
   thesisId: string;
   publicInterestStatement: string | null;

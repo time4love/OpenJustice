@@ -358,6 +358,38 @@ describe('pane-swipe · the wiring', () => {
     expect(paneIsOpen()).toBe(false);
   });
 
+  it('A PAGE WITH NO TABS IS NEVER SLID, EVEN WITH THE STORED FLAG SET — the offset must not outlive the page that earned it', async () => {
+    // FOUND ON A PHONE, 2026-09-19, against the deployed page. `usePaneLayer` is `useLocalState`, so the
+    // flag PERSISTS: a reader who opened the pane on a thesis and then left — by a link, or by the phone's
+    // own back gesture, which `decideSwipe` deliberately leaves to the platform — carried `true` to every
+    // page after it. On a page with no tabs the pane rendered nothing and the swipe listener was NOT
+    // attached, so `.shell` kept `data-pane-open`, `globals.css` kept sliding `.shell-centre`, and NO
+    // GESTURE COULD UNDO IT. Every such page read as cut off until the reader found their way back to a
+    // thesis and swiped right.
+    //
+    // THE SUITE COULD NOT HAVE SEEN THE SLIDE — jsdom computes no layout — but it could always have seen
+    // the ATTRIBUTE, which is the whole input to the rule. That is what this holds.
+    //
+    // THREE ARMS, AND THE THIRD IS THE ONE A COLD READ ASKED FOR. Two are not enough: with the flag only
+    // ever SET, an implementation written from `tabs.length > 0` ALONE — dropping `paneOpen` entirely —
+    // passes both. That half is held by the neighbouring case ('THE SHELL RENDERS `data-pane-open`…'), and
+    // a case that leans on a neighbour it does not name breaks silently the day the neighbour is
+    // re-pointed. So the third arm renders WITH tabs and the flag SHUT: the attribute must be absent, which
+    // is red under exactly that wrong implementation.
+    setViewport(true);
+    window.localStorage.setItem(SHELL_KEYS.paneOpenOnPhone, 'true');
+    const withoutTabs = (await shellWith('no-tabs')).closest('.shell');
+    const withTabs = (await shellWith('two-tabs')).closest('.shell');
+    window.localStorage.setItem(SHELL_KEYS.paneOpenOnPhone, 'false');
+    const withTabsShut = (await shellWith('two-tabs')).closest('.shell');
+    if (withoutTabs === null || withTabs === null || withTabsShut === null) throw new Error('the centre is not inside a .shell');
+    expect({
+      noTabsFlagSet: withoutTabs.getAttribute('data-pane-open'),
+      twoTabsFlagSet: withTabs.getAttribute('data-pane-open'),
+      twoTabsFlagShut: withTabsShut.getAttribute('data-pane-open'),
+    }).toEqual({ noTabsFlagSet: null, twoTabsFlagSet: 'true', twoTabsFlagShut: null });
+  });
+
   it('AT `md` THERE IS NOTHING TO OPEN: the query is asked at the moment of the gesture, not at mount', async () => {
     setViewport(false);
     const centre = await shellWith('two-tabs');

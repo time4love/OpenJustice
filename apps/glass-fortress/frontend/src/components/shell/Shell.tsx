@@ -57,6 +57,34 @@ function ShellFrame({ children }: { children: ReactNode }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const { tabs } = usePaneTabs();
   const [paneOpen, setPaneOpen] = usePaneLayer();
+  // THE PANE IS OPEN ONLY WHEN THERE IS SOMETHING IN IT, and `paneOpen` alone is not that question.
+  // `usePaneLayer` is `useLocalState`, so the flag is PERSISTED: a reader who opens the pane on a thesis
+  // and then leaves — by a link, or by the phone's own back gesture, which `decideSwipe` deliberately
+  // leaves to the platform (`paneSwipe.ts`'s edge guard) — carries `true` to every page after it. On a page
+  // with no tabs the pane rendered NOTHING (`RightPane.tsx` :106) and the swipe listener was NOT ATTACHED
+  // (the touch effect below guards on the same `tabs.length`), yet `.shell` still carried `data-pane-open`
+  // and `globals.css`
+  // still slid `.shell-centre` left. Every such page read as cut off, with no gesture able to undo it —
+  // found on a phone against the deployed page, 2026-09-19, and invisible to the suite because jsdom
+  // computes no layout and the ATTRIBUTE was the only thing it could have held.
+  //
+  // FOUR PLACES ASK THIS ONE QUESTION AND ONLY THREE ANSWERED IT THE SAME WAY — the count was three in
+  // the first draft of this note, and a cold read found the fourth: `PaneWithSplitter` (:39) and
+  // `RightPane.tsx` (:106) return null, the touch effect below does not attach, and `RightPane.tsx` :109
+  // writes this same attribute on the pane itself, which `globals.css` :476 and :494 read — that one is
+  // gated by the early return above it rather than by a condition of its own. Only the shell's copy was
+  // ungated. It is derived once here so a fifth caller cannot spell it a fourth time.
+  //
+  // IT NEEDS NO ROUTE, AND THAT IS A PROPERTY OF THIS DERIVATION, NOT A CONTRACT — the first draft of
+  // this note claimed the shell "READS NO ROUTE by contract (plan §9; shell.test.tsx)" and that was
+  // FALSE, in three ways a cold read caught: `Sidebar.tsx` :69 and :102 call `usePathname` and sit under
+  // `components/shell`; plan §9 :1155–:1156 says the shell CHOOSES nothing and scans for `AuthContext`
+  // imports, not for routes; and `shell.test.tsx` :55, whose TITLE says "nothing under components/shell
+  // reads a route", asserts only that no file there imports `src/lib/api.ts` or `next/headers` — a route
+  // hook passes it untouched. The title outliving its assertion is R60's finding, still open. What is
+  // true is narrower and is the reason this line is written this way: `tabs` already answers whether
+  // THIS page has a pane, which is the real question and not a proxy for it, so no route is needed here.
+  const paneLive = paneOpen && tabs.length > 0;
   // THE FLAG THE TOUCH HANDLER READS, kept current by its own effect rather than captured in the listener's
   // closure. Two reasons, and the first is a defect the suite caught: listeners attached while the pane was
   // shut would go on believing that, so the swipe back — the researcher's "swipe left returns to the thesis"
@@ -158,7 +186,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
   return (
     // `data-pane-open` is READ — by `globals.css`'s `.shell[data-pane-open='true'] .shell-centre`, which
     // slides the centre left while the pane arrives. It is not a marker for a test.
-    <div ref={shellRef} data-pane-open={paneOpen ? 'true' : undefined} className="shell" style={{ ['--sidebar-width' as string]: collapsed ? 'var(--touch-target)' : `${String(sidebarWidth)}px`, ['--pane-width' as string]: `${String(paneWidth)}px` }}>
+    <div ref={shellRef} data-pane-open={paneLive ? 'true' : undefined} className="shell" style={{ ['--sidebar-width' as string]: collapsed ? 'var(--touch-target)' : `${String(sidebarWidth)}px`, ['--pane-width' as string]: `${String(paneWidth)}px` }}>
       {/* THE PHONE'S TOP BAR: the menu control, the name as TEXT, the locale control. The name is a LINK once
           only, in the sidebar's head — a second anchor to `/` would be a second entry in the map. */}
       <div className="shell-topbar">
@@ -188,8 +216,9 @@ function ShellFrame({ children }: { children: ReactNode }) {
           on a phone against the deployed page.
 
           WHY A CLICK HANDLER AND NOT A ROUTE EFFECT, which was written first and removed: this shell
-          READS NO ROUTE by contract (`docs/gf-ui-refactor-plan.md` §9; `test/shell.test.tsx`'s
-          "nothing under components/shell reads a route or issues a request"), and a `usePathname` here
+          AVOIDS A ROUTE READ — by choice, NOT by contract, which this note claimed until 2026-09-19:
+          `test/shell.test.tsx`'s "nothing under components/shell reads a route or issues a request"
+          is a TITLE, and `Sidebar.tsx` :69 calls `usePathname` under this very directory. A `usePathname` here
           passed that case only because its assertion names two specifiers while its title names the
           property. It would also have missed the commonest tap of all: the drawer lists what was opened
           IN THIS BROWSER, so the entry a reader chooses is very often the page they are already on —
