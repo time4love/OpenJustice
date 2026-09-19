@@ -12,12 +12,12 @@ import en from '../messages/en.json';
 // outside one"), §24 :663–:669 (clamped to two lines, NOT a chip) and :690–:692 (the corpus's ONE public
 // model voice); evidence A4 :1086–:1087; docs/gf-ui-refactor-plan.md UI-7 :592–:596.
 //
-// THE INSTRUMENT LANDS IN TWO PARTS BECAUSE ITS SUBJECTS DO. What the plan describes — "every rendered
-// `opinion` field descends from it, and no other model field is rendered on a public corpus page" — is a scan
-// over pages that RENDER an opinion, and the stream that renders one is the NEXT chunk. Written today, that
-// arm would be green over an empty set, which is this repository's own dominant defect. So the arms below
-// render the container DIRECTLY, where the subject is real and cannot be empty, and the corpus-wide arm
-// states its floor as the number it is — ZERO, today — so that chunk 5 cannot land a page without moving it.
+// THE INSTRUMENT LANDED IN TWO PARTS BECAUSE ITS SUBJECTS DID. The arms below render the container DIRECTLY,
+// where the subject is real and cannot be empty. What the plan describes — "every rendered `opinion` field
+// descends from it, and no other model field is rendered on a public corpus page" — needs a page that renders
+// one, and until chunk 5a there was none; that arm now lives in `corpusStream.test.tsx`, beside the stream
+// that gave it subjects. The last case here held the floor at ZERO while that was true, as a tripwire rather
+// than a silence, and moved off zero in the same edit that made it false.
 //
 // WHAT NO CASE HERE HOLDS, said rather than implied: jsdom computes no layout, so nothing below can witness
 // that the opinion shows TWO LINES. The clamp is asserted STRUCTURALLY — the class is on the element that
@@ -116,12 +116,14 @@ describe('opinion-labelled-on-corpus', () => {
     }).toEqual({ escaped: [], examined: 3 });
   });
 
-  it('NO PAGE RENDERS AN OPINION YET, AND THE FLOOR SAYS SO — the corpus-wide arm lands with the stream, at chunk 5', () => {
-    // THE VACUITY IS STATED INSTEAD OF HIDDEN. The plan's own wording for this instrument — every rendered
-    // `opinion` field descends from the container — needs pages that render one, and the stream is the next
-    // chunk. Asserting it now would be a scan over an empty set. So the count is asserted AS ZERO: the day a
-    // page imports the container, this case reddens and the corpus-wide arm is written with it, which is the
-    // opposite of a scan that passes silently forever.
+  it('THE CONTAINER IS REACHED BY THE CORPUS SURFACE AND BY NOTHING ELSE — the floor moved off zero when the stream landed', () => {
+    // THIS CASE ASSERTED ZERO UNTIL THE STREAM LANDED, deliberately: the instrument's corpus-wide arm needs a
+    // page that renders an opinion, and until chunk 5a there was none, so a scan would have passed over an
+    // empty set. The zero was written as a TRIPWIRE rather than a silence — "the day a page imports the
+    // container, this case reddens" — and it did exactly that. What it holds now is the set BY NAME: the
+    // stream reaches the container, and nothing else does. A second importer is either UI-8's read view
+    // arriving (which renders the same component and belongs here) or the model's voice escaping to a surface
+    // that has not been argued for, and either way it should be read before it lands.
     // ASKED OF IMPORTS, NOT OF CLOSURES, and that is not a shortcut: if NO module imports the container at
     // all, no closure can contain it, so the direct question answers the transitive one exactly. It also
     // avoids a trap this case hit while being written — `importClosureOf` carries its own vacuity guard and
@@ -138,7 +140,7 @@ describe('opinion-labelled-on-corpus', () => {
     expect({ modulesScanned: modules.length > 50, containerExists: modules.includes(CONTAINER), importers }).toEqual({
       modulesScanned: true,
       containerExists: true,
-      importers: [],
+      importers: ['src/components/corpus/Stream.tsx'],
     });
   });
 });

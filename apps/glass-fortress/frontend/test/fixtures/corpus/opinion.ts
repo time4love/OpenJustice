@@ -16,7 +16,7 @@ export const classifierOpinion: ClassifierOpinion = {
     'השינוי גורע מגוף הדף את הפסקה שבה נמסר מידע על תופעות לוואי אפשריות, ואת הקישור שבאמצעותו ניתן היה לדווח עליהן, ומשאיר את ההמלצה להתחסן במקומה ללא המידע הנלווה שהיה בה קודם לכן, כך שהדף המעודכן ממליץ בלא למסור.',
   categories: ['SAFETY_CLAIM_ALTERATION', 'WITHHOLDING_INFORMATION'],
   legallySignificant: true,
-  editorial: 'ניסוח מחדש של הפסקה הפותחת',
+  editorial: true,
   classifierVersion: 'v5-editorial-verdict',
-  draws: 'גריעה של פסקה שלמה מול תוספת של משפט אחד',
+  draws: 2,
 };

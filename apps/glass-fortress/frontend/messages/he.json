@@ -1967,7 +1967,37 @@
     "title": "הארכיון",
     "empty": "עדיין לא נפתח אף דף — דף נפתח כשתזה שפורסמה מצטטת אותו",
     "interval": "{first} – {last}",
-    "records": "{count} רשומות"
+    "records": "{count} רשומות",
+    "anchor": {
+      "attributed": "מעוגן",
+      "notYet": "טרם עוגן"
+    },
+    "changeSize": "{removed} נגרעו · {added} נוספו",
+    "awaitingDerivation": "ההפרש טרם חושב",
+    "narrowed": "צומצם",
+    "cited": "מצוטט בתזה שפורסמה",
+    "copyToken": "העתקת מזהה הציטוט",
+    "count": "{count} רשומות עד כה",
+    "filters": {
+      "page": "דף",
+      "since": "מתאריך",
+      "until": "עד תאריך",
+      "kind": "סוג",
+      "cited": "מצוטטות"
+    },
+    "kind": {
+      "capture": "צילומים",
+      "diff": "שינויים",
+      "both": "הכול"
+    },
+    "emptyFiltered": "אין רשומות בטווח הזה",
+    "hiddenCount": "{count} שינויים שסווגו לא מהותיים מוסתרים — הצג",
+    "readMore": "קרא עוד",
+    "lenses": "תצוגות",
+    "lens": {
+      "pages": "עמודים",
+      "cited": "רשומות מצוטטות"
+    }
   },
   "opinion": {
     "label": "ניתוח AI — אינו מהווה קביעה שיפוטית"

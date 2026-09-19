@@ -572,7 +572,7 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
   has cited yet (§27). Writing it twice is the defect this repository names as its dominant shape.
 - **`/corpus`'s STREAM** — ONE component, the CHRONOLOGY, rendered here at `scope: 'public'` from `GET /api/corpus`; UI-8 renders the
   same component at `all` with its three additions and completes `one-stream-two-doors`. §24 top to bottom: (1) the sticky
-  context line — the scope, the count returned so far, the LENS control **PAGES · CITED RECORDS („עמודים · רשומות מצוטטות”)** (amended 2026-09-18: the STREAM lens is REMOVED, RECORDS is renamed CITED, and CLAIMS becomes PER-PAGE — flows §24 region 1, §25); (2) the
+  context line — **the SCOPE LABEL IS RETIRED (the researcher, 2026-09-19): „דפים פתוחים" names a scope against a second scope this public door does not have, and a reader who is not a researcher does not know the closed pages exist. The whole line was DELETED at chunk 2 and is written FRESH here, when its filters, count and control arrive together** — the count returned so far, the LENS control **PAGES · CITED RECORDS („עמודים · רשומות מצוטטות”)** (amended 2026-09-18: the STREAM lens is REMOVED, RECORDS is renamed CITED, and CLAIMS becomes PER-PAGE — flows §24 region 1, §25); (2) the
   FILTERS; (3) the PAGE CARD with the TIME STRIP — captures as dots with cited ones ringed, diffs as bars by chunk count —
   which is ALSO the scrubber and REPLACES the date axis; then (4) the
   filter chips — one horizontally scrolling row: PAGE (a picker from the read's own `pages` facet, §28), SINCE / UNTIL,
@@ -583,14 +583,14 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
   "nothing in this range" with the filters shown for removal, which is also the 400 state.
 - **Two weights of row** (§24 :660–:666): a CAPTURE is a thin row — the page's label, the date and time, the anchor mark
   (ATTRIBUTED or not yet), a COPY giving the citation token; a DIFF is a card — the page's label, the interval, the size of the
-  change by side from `current`, **the classifier's opinion CLAMPED TO TWO LINES with „עוד" — not a chip; it runs 197
+  change by side from `current`, **the classifier's opinion CLAMPED TO TWO LINES with **„קרא עוד" — approved 2026-09-19; this clause said „עוד" and the researcher chose the longer form** — not a chip; it runs 197
   characters and a chip shows forty (amended 2026-09-18, flows §24)** — and **the stream HIDES rows the classifier did
   not flag, by `legallySignificant` and NEVER by `editorial`: 20 of 21 diffs are editorial and EIGHT of those are also
   legally significant, so that gate would bury what it was meant to surface. A count line states how many are hidden and
   one tap reveals them.** The CITED mark with the published
   theses that cite it, the NARROWED mark, AWAITING DERIVATION as a state.
 - **The third voice is born here** (§10 :378–:381; §24 :668–:670): `components/opinion/LabelledOpinion.tsx`, the ONE container
-  carrying "ניתוח AI — אינו מהווה קביעה שיפוטית" with the model and version beside it — here the classifier's `classifierVersion`.
+  carrying "ניתוח AI — אינו מהווה קביעה שיפוטית" with the model and version beside it — here the classifier's `classifierVersion`. **AMENDED 2026-09-19 (the researcher): the MODEL NAME is OWED and DEFERRED, never waived** — it matters to show, but is not worth delaying development for a server change at this stage, so UI-7 renders the version alone and invents no name; it arrives when a step opens the server. **The reveal control's word is „קרא עוד” (approved 2026-09-19)**; until chunk 5 draws it the tail is unreachable.
   The classifier's opinion on a diff is the only model voice on any public page; `opinion-labelled-on-corpus` holds that every
   rendered `opinion` field descends from it and that no other model field is rendered on a public corpus page. UI-5's public
   thesis components never import it (`no-model-voice-public`), and UI-8's `opinion-under-label` holds it over the read view.

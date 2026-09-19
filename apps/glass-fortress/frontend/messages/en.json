@@ -1967,7 +1967,37 @@
     "title": "The archive",
     "empty": "No page is open yet — a page opens when a published thesis cites it",
     "interval": "{first} – {last}",
-    "records": "{count} records"
+    "records": "{count} records",
+    "anchor": {
+      "attributed": "Anchored",
+      "notYet": "Not yet anchored"
+    },
+    "changeSize": "{removed} removed · {added} added",
+    "awaitingDerivation": "The difference is not computed yet",
+    "narrowed": "Narrowed",
+    "cited": "Cited by a published thesis",
+    "copyToken": "Copy the citation token",
+    "count": "{count} records so far",
+    "filters": {
+      "page": "Page",
+      "since": "From",
+      "until": "Until",
+      "kind": "Kind",
+      "cited": "Cited"
+    },
+    "kind": {
+      "capture": "Captures",
+      "diff": "Changes",
+      "both": "All"
+    },
+    "emptyFiltered": "Nothing in this range",
+    "hiddenCount": "{count} changes classified as non-material are hidden — show",
+    "readMore": "Read more",
+    "lenses": "Views",
+    "lens": {
+      "pages": "Pages",
+      "cited": "Cited records"
+    }
   },
   "opinion": {
     "label": "AI Analysis — does not constitute a judicial finding"

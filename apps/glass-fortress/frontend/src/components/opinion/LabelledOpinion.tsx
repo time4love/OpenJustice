@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { ClassifierOpinion } from '@/types/corpus';
 
@@ -22,10 +25,11 @@ import type { ClassifierOpinion } from '@/types/corpus';
  * adds must have something to reveal, and a clamp that truncated the markup would make that control a promise
  * the element could not keep.
  *
- * NO REVEAL CONTROL HERE, AND ITS ABSENCE IS A RULING RATHER THAN AN OMISSION. §24 gives the control the word
- * „עוד", which is not approved copy — and copy lands approved or not at all. It arrives with the stream, in
- * the chunk that first renders an opinion to a reader; until then this element has no consumer at all, which
- * is why drawing a control now would be a control that leads nowhere on a page nobody can reach.
+ * THE REVEAL LANDS WITH THE STREAM, and its word is „קרא עוד" — approved 2026-09-19, the researcher having
+ * chosen the longer form over §24's „עוד". It was deliberately absent at chunk 4 because an unapproved word
+ * is not a control, and because nothing rendered this element then. The CLAMP IS WHY IT EXISTS: the whole
+ * string is in the DOM, so the control reveals rather than fetches, and once revealed it does not re-clamp —
+ * a reader who asked for the rest is not asked again.
  *
  * THE VERSION IS BIDI-ISOLATED because it is Latin inside a Hebrew line, and it is NOT an id: §4 :168 bars a
  * hash, a cuid and a 14-digit timestamp from being read aloud, while §10 :383 positively requires the version
@@ -34,17 +38,31 @@ import type { ClassifierOpinion } from '@/types/corpus';
  */
 export function LabelledOpinion({ opinion }: { opinion: ClassifierOpinion }) {
   const t = useTranslations('opinion');
+  const corpus = useTranslations('corpus');
+  const [open, setOpen] = useState(false);
   return (
-    <section data-labelled-opinion className="rounded border border-line bg-surface p-3">
+    <section data-labelled-opinion className="flex flex-col rounded border border-line bg-surface p-3">
       <p data-opinion-label className="flex flex-wrap items-baseline gap-2 text-xs text-ink-muted">
         {t('label')}
         <bdi data-opinion-version dir="ltr">
           {opinion.classifierVersion}
         </bdi>
       </p>
-      <p data-opinion-body dir="auto" className="line-clamp-2 text-sm text-ink">
+      <p data-opinion-body data-opinion-open={open ? 'true' : undefined} dir="auto" className={`text-sm text-ink ${open ? '' : 'line-clamp-2'}`.trim()}>
         {opinion.significance}
       </p>
+      {open ? null : (
+        <button
+          type="button"
+          data-opinion-more
+          onClick={() => {
+            setOpen(true);
+          }}
+          className="self-start text-xs text-ink-muted underline"
+        >
+          {corpus('readMore')}
+        </button>
+      )}
     </section>
   );
 }
