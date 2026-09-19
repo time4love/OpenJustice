@@ -98,7 +98,6 @@ function RecentItems({ entries, pathname }: { entries: readonly Recent[]; pathna
 
 export function Sidebar() {
   const t = useTranslations('common');
-  const chrome = useTranslations('common.chrome');
   const auth = useAuth();
   const pathname = usePathname();
   const level = levelOf(auth);
@@ -117,15 +116,16 @@ export function Sidebar() {
           <span className="min-w-0">{t('appName')}</span>
         </Link>
 
-        <span className="shell-category">{t('nav.theses')}</span>
+        <span className="shell-category">
+          <Link href="/theses" className="text-ink-muted">
+            {t('nav.theses')}
+          </Link>
+        </span>
         <RecentItems entries={recentsOfKind('thesis', recents)} pathname={pathname} />
 
         <span className="shell-category">
           <Link href="/corpus" className="text-ink-muted">
             {t('nav.corpus')}
-          </Link>
-          <Link href="/corpus/search" aria-label={chrome('search')} className="shell-icon-button">
-            <ICONS.search className="h-3.5 w-3.5" />
           </Link>
         </span>
         <RecentItems entries={recentsOfKind('page', recents)} pathname={pathname} />

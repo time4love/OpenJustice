@@ -18,9 +18,14 @@ import { FRONTEND, SRC, importClosureOf, importsOf, sourceFiles } from './scan';
 // THREE THINGS CHANGED FROM UI-4, each on the researcher's ruling of 2026-09-16:
 //   - „הבית” IS RETIRED AS A CONCEPT, verbatim: „אין כבר סרגל בראש הדף ובכלל אין משמעות ל״בית״ בקונספט החדש”.
 //     The SITE NAME at the sidebar's head is the link to `/`; `common.nav.home` is gone from both catalogs.
-//   - The archive's SEARCH control is a new entry, to `/corpus/search` (§9 :1062–:1063). Its page lands at
-//     UI-7, so it is the third nav entry that answers 404 in the meantime — by design, as `/corpus` and
-//     `/research` already are (plan §8 :1020–:1023), and recorded in the step's dated doc.
+//   - `תזות` LEADS TO `/theses` (§32, amended 2026-09-18), as `הארכיון` leads to `/corpus`. The two categories
+//     were asymmetric from UI-4b until 2026-09-19 — one a real link, the other a bare `<span>` — and the
+//     asymmetry had no reason behind it once `/theses` was un-retired (§3 :145). The nav's set GAINS it for
+//     EVERY identity, which is why it sits in `HEAD` below.
+//   - The archive's SEARCH control is REMOVED (the researcher, 2026-09-18, ruling 10). It pointed at
+//     `/corpus/search`, which 404s, and the search page is DEFERRED while the corpus is small —
+//     `GET /api/corpus/search` stays mounted and unused. It returns WITH its page, and this list is where a
+//     reader would first see it come back. An entry that leads to a 404 is what this instrument exists for.
 //   - מחקר · the handle · ניהול sit ABOVE אודות · לחוקרים, which is the board's foot order. ניהול's own place
 //     is INFERRED from where מחקר and the handle sit: no board on any of the seven pages draws an admin.
 //
@@ -47,11 +52,11 @@ jest.mock('../src/lib/doors', () => ({
 
 const STATES: readonly AuthState[] = ['anonymous', 'loading', 'signed-in-unapproved', 'approved-researcher', 'admin'];
 
-/** The sidebar's head and its two categories — the name is the way to `/`, and the archive carries the search. */
+/** The sidebar's head and its two categories — the name is the way to `/`, and BOTH categories are links (§32). */
 const HEAD = [
   ['צדק לעם - תיק הקורונה', '/he'],
+  ['תזות', '/he/theses'],
   ['הארכיון', '/he/corpus'],
-  ['חיפוש בארכיון', '/he/corpus/search'],
 ] as const;
 /** The foot's public entries, in the board's order. */
 const FOOT = [
@@ -67,7 +72,9 @@ const SAFETY = ['הגנה', '/he/safety'] as const;
 
 /** Retired, dialog and sign-in URLs, unprefixed — plan :836–:837 (retired), ui-flows §2.2 :109 (the dialog), the researcher's Q7 (no sign-in). */
 const NOT_IN_THE_CHROME: readonly RegExp[] = [
-  /^\/theses$/,
+  // `/theses` LEFT THIS LIST on 2026-09-19: it was here because §3 retired it, and §3 :145 UN-RETIRED it — it is
+  // now IN the chrome, in `HEAD`, for every identity. `/call` stays retired: that was a ground about the
+  // CONTRACT (`list_theses` has no "has appeals" field), not about the door (§3 :146).
   /^\/call$/,
   /^\/theses\/[^/]+\/(edit|history)$/,
   /^\/(evidence|figures|forensics|guide|submit)(\/|$)/,
@@ -151,7 +158,7 @@ function chromeScanSubjects(): string[] {
 }
 
 describe('nav-is-the-map', () => {
-  it('anonymous — the name → /, הארכיון /corpus, its search → /corpus/search, אודות, לחוקרים, in the canvas\'s order', () => {
+  it('anonymous — the name → /, תזות /theses, הארכיון /corpus, אודות, לחוקרים, in §32\'s order', () => {
     renderSidebar('anonymous');
     expect(navAnchors()).toEqual([...HEAD, ...FOOT]);
   });
