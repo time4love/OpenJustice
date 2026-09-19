@@ -1969,6 +1969,9 @@
     "interval": "{first} – {last}",
     "records": "{count} רשומות"
   },
+  "opinion": {
+    "label": "ניתוח AI — אינו מהווה קביעה שיפוטית"
+  },
   "provision": {
     "NUREMBERG_1": "קוד נירנברג, סעיף 1",
     "NUREMBERG_2": "קוד נירנברג, סעיף 2",
