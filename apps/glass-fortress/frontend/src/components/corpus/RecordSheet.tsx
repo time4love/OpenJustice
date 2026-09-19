@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { CitingTheses } from '@/components/record/CitingTheses';
 import { useTranslations, useLocale } from 'next-intl';
 import { fetchJson } from '@/lib/api';
 import { parseCaptureText } from '@/lib/corpusBody';
@@ -41,9 +42,9 @@ import type { CaptureEntry, CorpusEntry, DiffEntry } from '@/types/corpus';
 //     Until then the capture sheet's content is LOADING — the state it genuinely is — and never a `CAPTURE`
 //     holding an empty string, which would tell a reader the archive held nothing. A DIFF's chunks ARE in
 //     this body and are drawn in full.
-//   · THE ONE LINK ONWARD to the record's own page. Those pages are chunk (c) and do not exist; an anchor
-//     to an unbuilt route is what `no-door-before-it-exists` catches and what this round has paid for
-//     elsewhere. It lands with them, in the same commit.
+//   · THE ONE LINK ONWARD to the record's own page — LANDED 2026-09-20 with the record pages themselves,
+//     as this note said it would. `OpenRecord` below composes it from `page.trackedUrlId` and the row's own
+//     endpoints, for both kinds.
 // ---------------------------------------------------------------------------
 
 /** A row's stable identity — the same string the tap sets and the tab declares. Never rendered. */
@@ -123,6 +124,28 @@ function CaptureMarks({ entry }: { entry: CaptureEntry }) {
  * position, so the property under test is THIS component's — "a new record starts clean" — and not a side
  * effect of how the pane happens to re-register its tabs. Nothing in `src/` imports it.
  */
+/**
+ * THE ONE LINK ONWARD (§26 :824, "ONE link onward to the record's own page"), for both kinds.
+ *
+ * IT LANDS WITH THE RECORD PAGES AND NOT BEFORE — an anchor to an unbuilt route is what
+ * `no-door-before-it-exists` catches, and this sheet carried the absence, declared, since chunk 5b.
+ * `record.openRecord` is the word; `page.trackedUrlId` and the row's own endpoints are the href.
+ */
+function OpenRecord({ entry }: { entry: CorpusEntry }) {
+  const r = useTranslations('record');
+  const href =
+    entry.kind === 'CAPTURE'
+      ? `/pages/${entry.page.trackedUrlId}/captures/${entry.capture}`
+      : `/pages/${entry.page.trackedUrlId}/diffs/${entry.before}/${entry.after}`;
+  return (
+    <p data-open-record className="text-xs">
+      <a href={href} className="text-ink underline">
+        {r('openRecord')}
+      </a>
+    </p>
+  );
+}
+
 export function CaptureSheet({ entry }: { entry: CaptureEntry }) {
   const t = useTranslations('corpus');
   const locale = useLocale();
@@ -158,6 +181,7 @@ export function CaptureSheet({ entry }: { entry: CaptureEntry }) {
       )}
       <CopyableCode value={`#ev_${entry.fileHash}`} label={t('copyToken')} />
       <CitingTheses evidence={entry.evidence} />
+      <OpenRecord entry={entry} />
     </div>
   );
 }
@@ -192,32 +216,9 @@ function DiffSheet({ entry }: { entry: DiffEntry }) {
           (§24 region 4: "the rest in the sheet"). It stays inside the one labelled container either way. */}
       {entry.opinion === null ? null : <LabelledOpinion opinion={entry.opinion} />}
       <CitingTheses evidence={entry.evidence} />
+      <OpenRecord entry={entry} />
     </div>
   );
-}
-
-/** The citing theses as LINKS (§26) — `citedBy` lists published versions only, which is what makes them public. */
-function CitingTheses({ evidence }: { evidence: CorpusEntry['evidence'] }) {
-  if (evidence === null || evidence.citedBy.length === 0) return null;
-  return (
-    <ul data-citing-theses className="flex flex-col gap-1 text-xs">
-      {evidence.citedBy.map((cite) => (
-        <li key={cite.thesisId}>
-          {/* A THESIS IS NAMED BY ITS CLAIM AND NEVER BY ITS ID (§4), and the corpus body carries no claim —
-              only the id. So the link's words are the CITED mark's own approved phrase, and the id stays in
-              the href where a URL may carry one. */}
-          <a href={`/theses/${cite.thesisId}`} className="text-ink underline">
-            <CitedLabel />
-          </a>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function CitedLabel() {
-  const t = useTranslations('corpus');
-  return <>{t('cited')}</>;
 }
 
 /**

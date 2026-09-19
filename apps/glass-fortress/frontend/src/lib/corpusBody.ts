@@ -7,6 +7,14 @@ import {
   type ChainAnswer,
   type CorpusPage,
   type DiffInput,
+  type DiffSide,
+  type FlagReport,
+  NOT_EVALUABLE_REASONS,
+  type NotEvaluableReason,
+  type PageRef,
+  type RecordCaptureAttribution,
+  type RecordNames,
+  type RecordVerified,
   type ResolvedRecord,
   type DiffChunk,
   type EvidenceLink,
@@ -38,6 +46,8 @@ const object = (value: unknown, at: string): Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : fail(at, 'an object', value);
 
 const maybeText = (value: unknown, at: string): string | null => (value === null || value === undefined ? null : text(value, at));
+
+const maybeFlag = (value: unknown, at: string): boolean | null => (value === null || value === undefined ? null : flag(value, at));
 
 const text = (value: unknown, at: string): string => (typeof value === 'string' ? value : fail(at, 'a string', value));
 const flag = (value: unknown, at: string): boolean => (typeof value === 'boolean' ? value : fail(at, 'a boolean', value));
@@ -92,6 +102,93 @@ const corpusPage = (value: unknown, at: string): CorpusPage => {
     url: text(row.url, `${at}.url`),
     public: flag(row.public, `${at}.public`),
   };
+};
+
+/**
+ * THE PAGE A RECORD'S READ NAMES (A4 :1082, :1096, :1106) — `{ url, public }`, and NOT `corpusPage`.
+ *
+ * `corpusPage` requires `trackedUrlId`, which these three routes have never sent. Narrowing them through it
+ * threw `page.trackedUrlId expected a string` on every real body while every fixture-fed case passed, because
+ * the fixtures were written from the same reading as the parser. `get_capture`'s parser already spelled this
+ * shape inline and was the only one of the three that was right.
+ */
+const pageRef = (value: unknown, at: string): PageRef => {
+  const row = object(value, at);
+  return { url: text(row.url, `${at}.url`), public: flag(row.public, `${at}.public`) };
+};
+
+/** One endpoint of a pair (A4 :1096) — an OBJECT carrying its own bytes, never a bare timestamp. */
+const diffSide = (value: unknown, at: string): DiffSide => {
+  const row = object(value, at);
+  return {
+    capture: text(row.capture, `${at}.capture`),
+    textHash: text(row.textHash, `${at}.textHash`),
+    textExtractionVersion: text(row.textExtractionVersion, `${at}.textExtractionVersion`),
+    text: text(row.text, `${at}.text`),
+  };
+};
+
+/**
+ * One capture beneath a record with its stored anchor state (A4 :1106).
+ *
+ * FOUR FIELDS ARE NULLABLE AND NONE OF THEM IS READ AS "no": a capture nothing has checked is not a capture
+ * that failed its check, and `attributed: null` is "not asked" rather than "not attributed".
+ */
+const captureAttribution = (value: unknown, at: string): RecordCaptureAttribution => {
+  const row = object(value, at);
+  return {
+    capture: text(row.capture, `${at}.capture`),
+    documentHash: text(row.documentHash, `${at}.documentHash`),
+    anchoredHash: maybeText(row.anchoredHash, `${at}.anchoredHash`),
+    anchoredHashMatchesDocumentHash: flag(row.anchoredHashMatchesDocumentHash, `${at}.anchoredHashMatchesDocumentHash`),
+    attributed: maybeFlag(row.attributed, `${at}.attributed`),
+    verdict: maybeText(row.verdict, `${at}.verdict`),
+    verifierVersion: maybeText(row.verifierVersion, `${at}.verifierVersion`),
+    // AN ISO STRING, NOT A `Date`: what crossed the wire is JSON (`evidencePredicates.ts` :546 types the
+    // backend's own field as `Date`, and the route serialised it before this parser ever saw it).
+    checkedAt: maybeText(row.checkedAt, `${at}.checkedAt`),
+  };
+};
+
+const isNotEvaluable = (reason: string): reason is NotEvaluableReason =>
+  NOT_EVALUABLE_REASONS.some((known) => known === reason);
+
+/**
+ * VERIFIED, or the reason it cannot be asked (A4 :1106).
+ *
+ * THE REASON IS NARROWED and the flag report's arms are not, deliberately. The reasons are a closed union the
+ * backend owns (`evidencePredicates.ts` :566) and each has a sentence on the page (§18 :574), so a fourth one
+ * must fail loudly rather than render as nothing; the ARMS are open by construction and a union here would
+ * refuse a body the backend legitimately widened.
+ */
+const recordVerified = (value: unknown, at: string): RecordVerified => {
+  const row = object(value, at);
+  if ('notEvaluable' in row) {
+    const reason = text(row.notEvaluable, `${at}.notEvaluable`);
+    if (!isNotEvaluable(reason)) return fail(`${at}.notEvaluable`, NOT_EVALUABLE_REASONS.join(' or '), reason);
+    return { notEvaluable: reason };
+  }
+  return {
+    verified: flag(row.verified, `${at}.verified`),
+    captures: list(row.captures, `${at}.captures`).map((one, index) => captureAttribution(one, `${at}.captures[${String(index)}]`)),
+  };
+};
+
+/** FLAGGED's REPORT (A3 :1054) — never a bit; a check that examined nothing names the arms it did ask. */
+const flagReport = (value: unknown, at: string): FlagReport => {
+  const row = object(value, at);
+  return {
+    flagged: flag(row.flagged, `${at}.flagged`),
+    armsEvaluated: list(row.armsEvaluated, `${at}.armsEvaluated`).map((one, index) => text(one, `${at}.armsEvaluated[${String(index)}]`)),
+    reasons: list(row.reasons, `${at}.reasons`).map((one, index) => text(one, `${at}.reasons[${String(index)}]`)),
+  };
+};
+
+/** The record's endpoints by their archive names (A4 :1106) — a capture, or the pair, never a date. */
+const recordNames = (value: unknown, at: string): RecordNames => {
+  const row = object(value, at);
+  if ('capture' in row) return { capture: text(row.capture, `${at}.capture`) };
+  return { before: text(row.before, `${at}.before`), after: text(row.after, `${at}.after`) };
 };
 
 const evidenceLink = (value: unknown, at: string): EvidenceLink | null => {
@@ -213,11 +310,10 @@ export function parseCaptureText(body: unknown): { text: string; textHash: strin
  */
 export function parseCaptureRead(body: unknown): CaptureRead {
   const answer = object(body, 'the answer');
-  const page = object(answer.page, 'page');
   const row = object(answer.capture, 'capture');
   const anchor = object(row.anchor, 'capture.anchor');
   return {
-    page: { url: text(page.url, 'page.url'), public: flag(page.public, 'page.public') },
+    page: pageRef(answer.page, 'page'),
     capture: {
       capture: text(row.capture, 'capture.capture'),
       snapshotDate: text(row.snapshotDate, 'capture.snapshotDate'),
@@ -233,31 +329,41 @@ export function parseCaptureRead(body: unknown): CaptureRead {
   };
 }
 
-/** `get_diff_input`'s answer for one pair (A4 :1095–:1099) — both texts and the CURRENT version's chunks. */
+/**
+ * `get_diff_input`'s answer for one pair (A4 :1096).
+ *
+ * `current` IS REQUIRED. An undefined CURRENT is the AWAITING_DERIVATION refusal — `{ error, code }` at 409
+ * (ui §6 :267), returned by `getDiffInput.ts` :114-:121 before a body is built — so it is a PAGE STATE and
+ * never a value here. Reading a null as that state would draw "not derived yet" over a body that is broken.
+ */
 export function parseDiffInput(body: unknown): DiffInput {
   const answer = object(body, 'the answer');
-  const current = answer.current;
+  const current = object(answer.current, 'current');
   return {
-    before: text(answer.before, 'before'),
-    after: text(answer.after, 'after'),
-    beforeText: text(answer.beforeText, 'beforeText'),
-    afterText: text(answer.afterText, 'afterText'),
-    current:
-      current === null || current === undefined
-        ? null
-        : (() => {
-            const held = object(current, 'current');
-            return {
-              contentVersionHash: text(held.contentVersionHash, 'current.contentVersionHash'),
-              chunks: list(held.chunks, 'current.chunks').map((one, index) => chunk(one, `current.chunks[${String(index)}]`)),
-            };
-          })(),
-    awaitingDerivation: flag(answer.awaitingDerivation, 'awaitingDerivation'),
-    page: corpusPage(answer.page, 'page'),
+    page: pageRef(answer.page, 'page'),
+    before: diffSide(answer.before, 'before'),
+    after: diffSide(answer.after, 'after'),
+    current: {
+      contentVersionHash: text(current.contentVersionHash, 'current.contentVersionHash'),
+      // PROVENANCE, narrowed because the body carries it (evidence :237, :969). Nothing renders it.
+      diffVersion: text(current.diffVersion, 'current.diffVersion'),
+      chunks: list(current.chunks, 'current.chunks').map((one, index) => chunk(one, `current.chunks[${String(index)}]`)),
+    },
+    // THE STREAM'S OWN NARROWINGS, CALLED — never a second spelling. One body, one set of rules about what
+    // an opinion and a linkage may be, whichever read carried them.
+    opinion: classifierOpinion(answer.opinion, 'opinion'),
+    narrowed: flag(answer.narrowed, 'narrowed'),
+    evidence: evidenceLink(answer.evidence, 'evidence'),
   };
 }
 
-/** `resolve_record`'s answer (A4 :1105–:1109) — what a stranger holding a citation needs. */
+/**
+ * `resolve_record`'s answer (A4 :1106) — what a stranger holding a citation needs.
+ *
+ * `recomputable` IS A REQUIRED BOOLEAN AND NEVER DEFAULTED: it is a claim the platform makes about a record's
+ * integrity, and a missing one read as `false` would understate a check that ran while `true` would assert one
+ * that did not. `verified` is not a boolean at all — it is the report, or the reason it cannot be asked.
+ */
 export function parseResolvedRecord(body: unknown): ResolvedRecord {
   const answer = object(body, 'the answer');
   const kind = text(answer.kind, 'kind');
@@ -265,31 +371,22 @@ export function parseResolvedRecord(body: unknown): ResolvedRecord {
   return {
     fileHash: text(answer.fileHash, 'fileHash'),
     kind,
+    // `corpusPage` AND NOT `pageRef`: this read alone carries the page's id (A4 :1106, 2026-09-20).
     page: corpusPage(answer.page, 'page'),
-    first: text(answer.first, 'first'),
-    last: text(answer.last, 'last'),
-    // RECOMPUTABLE and VERIFIED are REQUIRED BOOLEANS and never defaulted: each is a claim the platform
-    // makes about a record's integrity, and a missing one defaulted to `false` would understate it while
-    // `true` would assert a check nobody ran. Absent is a defect in the body, not a value.
+    record: recordNames(answer.record, 'record'),
     recomputable: flag(answer.recomputable, 'recomputable'),
-    verified: flag(answer.verified, 'verified'),
-    captures: list(answer.captures, 'captures').map((one, index) => {
-      const at = `captures[${String(index)}]`;
-      const row = object(one, at);
-      return {
-        capture: text(row.capture, `${at}.capture`),
-        snapshotDate: text(row.snapshotDate, `${at}.snapshotDate`),
-        attributed: flag(row.attributed, `${at}.attributed`),
-      };
-    }),
+    verified: recordVerified(answer.verified, 'verified'),
     citedBy: list(answer.citedBy, 'citedBy').map((one, index) => {
       const at = `citedBy[${String(index)}]`;
       const row = object(one, at);
       return {
         thesisId: text(row.thesisId, `${at}.thesisId`),
         versionId: text(row.versionId, `${at}.versionId`),
-        publishedAt: text(row.publishedAt, `${at}.publishedAt`),
-        flagged: flag(row.flagged, `${at}.flagged`),
+        contentHash: text(row.contentHash, `${at}.contentHash`),
+        // THE PIN may be null — a citation with no pinned content version.
+        pin: maybeText(row.pin, `${at}.pin`),
+        flagged: flagReport(row.flagged, `${at}.flagged`),
+        // THE CITING VERSION'S WHOLE TEXT (thesis A2 :1273), `#ev_…` tokens included.
         text: text(row.text, `${at}.text`),
       };
     }),
@@ -308,11 +405,10 @@ export function parseChainAnswer(body: unknown): ChainAnswer {
   // one refusal shape — so `code` is what is read. `available` is the FRONTEND's discriminant, produced
   // here; a parser that read it back off the body would be reading a field no route sends.
   if (answer.code === 'CHAIN_UNAVAILABLE') return { available: false, reason: 'CHAIN_UNAVAILABLE' };
-  const page = object(answer.page, 'page');
   const registry = object(answer.registry, 'registry');
   return {
     available: true,
-    page: { url: text(page.url, 'page.url'), public: flag(page.public, 'page.public') },
+    page: pageRef(answer.page, 'page'),
     captures: list(answer.captures, 'captures').map((one, index) => {
       const at = `captures[${String(index)}]`;
       const row = object(one, at);

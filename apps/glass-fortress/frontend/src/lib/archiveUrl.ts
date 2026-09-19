@@ -51,3 +51,22 @@ export function archiveUrl(url: string, timestamp: string): string {
   }
   return `https://web.archive.org/web/${timestamp}/${url}`;
 }
+
+/**
+ * The archive's RAW URL for one capture — `https://web.archive.org/web/<timestamp>id_/<url>`.
+ *
+ * THIS IS THE FORM THE `documentHash` WAS COMPUTED OVER, and it exists so the VERIFY disclosure can name it
+ * BESIDE the hash it matches (§26 :847; §4 :175–:179). Measured on the 2021-12-23 capture: the viewer form
+ * returns 54,180 bytes hashing to `1b108bb2…` and this form 47,731 bytes hashing to `5887afdf…`, which is the
+ * anchored hash exactly — the 6,449-byte difference being the archive's own toolbar.
+ *
+ * IT IS DISCLOSED, NEVER LINKED, AND CARRIES NO INSTRUCTION. A reader is sent to the VIEWER form above; this
+ * address is shown to the reader who came to check, inside the fold, and the page never tells anyone to hash
+ * anything („הקוראים לא יבינו את ההוראה לגבב את הקובץ", 2026-09-18).
+ *
+ * It shares `archiveUrl`'s refusals by CALLING it rather than re-spelling the two guards: one composition, one
+ * set of rules about what a capture's address may be built from.
+ */
+export function rawArchiveUrl(url: string, timestamp: string): string {
+  return archiveUrl(url, timestamp).replace(`/web/${timestamp}/`, `/web/${timestamp}id_/`);
+}

@@ -288,8 +288,16 @@ export function navigationDouble(): NavigationModule {
 // module real, the network stubbed. Two doubles, two kinds, each named (plan §4, one helper per kind).
 // ---------------------------------------------------------------------------
 
-/** What `readPublic` answers: the body, the one 404, or the 400 a malformed filter earns. */
-export type PublicRead = { status: 200; body: unknown } | { status: 404 } | { status: 400 };
+/**
+ * What `readPublic` answers: the body, the one 404, the 400 a malformed filter earns — or the 409 a read
+ * that NAMED it earns (UI-7 chunk 2b).
+ *
+ * A CASE MAY STAGE A 409 FOR ANY PATH; the double decides whether it is a STATE or a THROW exactly as the
+ * real module does, from the caller's own `answers`. A harness that handed every caller the state would be
+ * more permissive than the door it doubles, and the opt-in — whose whole point is that it is per caller —
+ * would be held by nothing.
+ */
+export type PublicRead = { status: 200; body: unknown } | { status: 404 } | { status: 400 } | { status: 409 };
 
 export interface ApiCall {
   via: 'readPublic' | 'fetchJson';
@@ -328,8 +336,13 @@ export function apiDouble(): Record<string, unknown> {
     ...real,
     // The double APPLIES the parser the page passed — so a body that drifted from the appendix fails inside the
     // page's own guard, exactly as it would on staging, and a page that passed none is visible in `apiCallsMade`.
-    readPublic: (path: string, parse?: (body: unknown) => unknown): PublicRead => {
+    readPublic: (path: string, parse?: (body: unknown) => unknown, options?: { answers: readonly number[] }): PublicRead => {
       const answer = answerFor('readPublic', path, undefined, typeof parse === 'function');
+      // THE OPT-IN IS THE CALLER'S, here as in the real module: a status the caller did not name is a
+      // failure, and a double that softened that would green a page reading a state it cannot receive.
+      if (answer.status === 409 && options?.answers.some((named) => named === 409) !== true) {
+        throw new Error(`readPublic: ${path} answered 409`);
+      }
       if (answer.status !== 200 || typeof parse !== 'function') return answer;
       return { status: 200, body: parse(answer.body) };
     },
@@ -338,6 +351,8 @@ export function apiDouble(): Record<string, unknown> {
     // is rather than a rendered state — and the pages that DO have filters are doubled by the line above.
     readUnfiltered: (path: string, parse?: (body: unknown) => unknown): PublicRead => {
       const answer = answerFor('readPublic', path, undefined, typeof parse === 'function');
+      // `readUnfiltered` names no status, so a 409 is a failure through it exactly as any other is.
+      if (answer.status === 409) throw new Error(`readPublic: ${path} answered 409`);
       if (answer.status === 400) throw new Error(`readUnfiltered double: ${path} answered 400 — this read sends no filters`);
       if (answer.status !== 200 || typeof parse !== 'function') return answer;
       return { status: 200, body: parse(answer.body) };

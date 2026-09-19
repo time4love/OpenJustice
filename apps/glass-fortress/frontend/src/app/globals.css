@@ -694,6 +694,62 @@ html, body {
      **4,404px, 91% of the capture, unreachable to a reader**, over the very evidence the citation
      exists to show. `overflow-y: auto` keeps the board's height and satisfies §18 at the same time.
      ------------------------------------------------------------------------- */
+  /* -------------------------------------------------------------------------
+     THE RECORD'S OWN ELEMENTS — docs/gf-ui-flows.md §26. Approved by the researcher on 2026-09-20 from a
+     rendered mockup, after a measurement showed what their absence cost: the title, a meta line and the
+     cited version's own <h2> ALL computed 16px/28px/heeboHebrew on `/records/[fileHash]` at 375px, so the
+     record pages had no typographic hierarchy at all. `.reading` was doing its job (max-width 672px, the
+     reading column); every `record-*` class beside `.record-captured` was NAMED and never DECLARED, and a
+     class that resolves to nothing styles nothing.
+     `test/recordPageWitnesses.test.tsx` W-22 holds that every `record-*` class named under `src/` is
+     defined here, and W-23 that the owed set is empty.
+     TOKENS ONLY — no raw colour, no literal size for anything the token block already names.
+     ------------------------------------------------------------------------- */
+  .record-head,
+  .record-meta {
+    font-size: var(--text-label);
+    color: var(--ink-muted);
+  }
+
+  .record-meta {
+    line-height: 1.5;
+  }
+
+  /* The record's own heading — the one element on these pages that outranks a metadata line. */
+  .record-title {
+    font-size: var(--text-words-heading);
+    line-height: var(--leading-words-heading);
+    font-weight: 700;
+  }
+
+  /* The marks: a wrapping row of pills, each one a FACT OF THE BODY and never a verdict this page
+     computed (§21 :626–:627). They wrap because a record can carry several and a phone is 375px. */
+  .record-marks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+
+  .record-marks > span {
+    border: 1px solid var(--line);
+    border-radius: 9999px;
+    padding: 0.125rem 0.5rem;
+    font-size: var(--text-mark);
+    color: var(--ink-muted);
+  }
+
+  .record-links a {
+    font-size: var(--text-label);
+    text-decoration: underline;
+  }
+
+  /* „לפני" / „אחרי" over a diff's chunks — the register that says which side of the change follows. */
+  .record-register {
+    font-size: var(--text-mark);
+    color: var(--ink-muted);
+    font-weight: 600;
+  }
+
   .record-captured {
     display: block;
     /* THE FACE IS DECLARED HERE, and until 2026-09-18 it was INHERITED. This block wore

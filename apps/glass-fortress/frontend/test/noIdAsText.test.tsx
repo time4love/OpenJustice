@@ -3,6 +3,21 @@ jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>
 
 import { ancestorsOf, renderPage, setAuthState, setPathname, setPublicBodies, textNodes, type Locale, type PageRender } from './render';
 import { ID_SHAPES, requireSubjects } from './scan';
+import { captureRead } from './fixtures/corpus/capture';
+import { diffInput } from './fixtures/corpus/diffInput';
+import { resolvedCaptureRecord } from './fixtures/corpus/record';
+
+const TRACKED = 'page-one';
+const CAPTURE = '20211223211940';
+const CAPTURE_PATH = `/api/pages/${TRACKED}/captures/${CAPTURE}`;
+const capturePage = async () => import('@/app/[locale]/pages/[trackedUrlId]/captures/[capture]/page');
+const diffPage = async () => import('@/app/[locale]/pages/[trackedUrlId]/diffs/[before]/[after]/page');
+const recordsPage = async () => import('@/app/[locale]/records/[fileHash]/page');
+const AFTER = '20220105090000';
+const PAIR_PATH = `/api/pages/${TRACKED}/diffs/${CAPTURE}/${AFTER}`;
+
+/** The pages that CITE, and so must render a dated tick — this case's subject set, as a value. */
+const TICKING = ['thesis', 'call', 'version'] as const;
 import { RightPane, TabsProvider } from '../src/components/shell/RightPane';
 import published from './fixtures/thesis/published.json';
 import callLive from './fixtures/thesis/call-live.json';
@@ -44,6 +59,9 @@ async function everyPage(locale: Locale): Promise<{ name: string; container: HTM
     [`/api/thesis/${published.thesisId}/call`]: { status: 200, body: callLive },
     [`/api/thesis/${published.thesisId}/versions/${versionPrevious.versionId}`]: { status: 200, body: versionPrevious },
     [`/api/thesis/${withdrawn.thesisId}`]: { status: 200, body: withdrawn },
+    [CAPTURE_PATH]: { status: 200, body: captureRead },
+    [PAIR_PATH]: { status: 200, body: diffInput },
+    [`/api/records/${resolvedCaptureRecord.fileHash}`]: { status: 200, body: resolvedCaptureRecord },
   });
   const thesis = (await thesisPage()).default;
   const call = (await callPage()).default;
@@ -56,6 +74,25 @@ async function everyPage(locale: Locale): Promise<{ name: string; container: HTM
       container: containerOf('version', await renderPage(version, { locale, id: published.thesisId, v: versionPrevious.versionId }, { locale })),
     },
     { name: 'notice', container: containerOf('notice', await renderPage(thesis, { locale, id: withdrawn.thesisId }, { locale })) },
+    // UI-7 chunk (c): the capture page carries FOUR exact values — the document hash, the text hash, the raw
+    // archive address and the citation token — and every one of them must be inside VERIFY or a COPY control.
+    // It is the page with the most ids per screen in the app, so it is the one this scan most needed.
+    {
+      name: 'capture',
+      container: containerOf('capture', await renderPage((await capturePage()).default, { locale, trackedUrlId: TRACKED, capture: CAPTURE }, { locale })),
+    },
+    // The DIFF page renders TWO archive timestamps in its heading — as DATES — and no hash at all, so it is
+    // the page where a timestamp is likeliest to leak back in as text.
+    {
+      name: 'diff',
+      container: containerOf('diff', await renderPage((await diffPage()).default, { locale, trackedUrlId: TRACKED, before: CAPTURE, after: AFTER }, { locale })),
+    },
+    // The RECORDS page renders a 0x-prefixed NAME in its URL and a citing version's whole text in its body —
+    // the two places §4's three shapes are likeliest to reach a reader on a page built around an id.
+    {
+      name: 'records',
+      container: containerOf('records', await renderPage((await recordsPage()).default, { locale, fileHash: resolvedCaptureRecord.fileHash }, { locale })),
+    },
   ];
 }
 
@@ -112,11 +149,16 @@ describe('no-id-as-text', () => {
 
   it('every dated tick renders a DATE, an interval or a claim’s words — never a stamp, a name or a cuid', async () => {
     const problems: string[] = [];
+    const examined: string[] = [];
     for (const locale of LOCALES) {
       for (const { name, container } of await everyPage(locale)) {
+        // THE PAGES THAT CITE, as a POSITIVE set — not a growing list of names to skip. A page with no
+        // citation has no tick, and requiring one of it would fail the PAGE rather than test the property.
+        // The withdrawal notice was already excepted by name; UI-7's record pages are the second such page,
+        // which is the point at which a skip-list should become a set.
+        if (!TICKING.some((ticking) => ticking === name)) continue;
+        examined.push(`${locale}/${name}`);
         const ticks = [...container.querySelectorAll('[data-tick]')];
-        // A page that cites something and renders no tick has not been read by this case at all.
-        if (name === 'notice') continue;
         requireSubjects(`dated ticks on the ${name} page (${locale})`, ticks);
         problems.push(
           ...ticks
@@ -127,6 +169,9 @@ describe('no-id-as-text', () => {
       }
     }
     expect(problems).toEqual([]);
+    // THE FLOOR: every ticking page in every locale was actually rendered and read. Without it the positive
+    // set above could silently match nothing and the case would pass over an unexamined app.
+    expect(examined).toEqual(LOCALES.flatMap((locale) => TICKING.map((name) => `${locale}/${name}`)));
   });
 
   it('every right-pane tab LABEL is free of the three shapes — the label is the page’s to compose', async () => {

@@ -1,9 +1,10 @@
 import { parseCaptureRead, parseChainAnswer, parseCorpusPages, parseDiffInput, parseResolvedRecord } from '@/lib/corpusBody';
+import type { ResolvedRecord } from '@/types/corpus';
 import { requireSubjects } from './scan';
 import { corpusStream } from './fixtures/corpus/stream';
 import { captureRead } from './fixtures/corpus/capture';
 import { diffInput } from './fixtures/corpus/diffInput';
-import { resolvedRecord } from './fixtures/corpus/record';
+import { resolvedCaptureRecord, resolvedDiffRecord } from './fixtures/corpus/record';
 import { chainAnswer } from './fixtures/corpus/chain';
 import { chainUnavailableWire } from './fixtures/corpus/chainUnavailable';
 
@@ -111,15 +112,18 @@ describe('corpus-body — the record pages\' bodies', () => {
   it('RB-1 EVERY APPENDIX FIXTURE PARSES WHOLE, field for field — the control, so a throwing parser is not mistaken for a strict one', () => {
     expect(parseCaptureRead(captureRead)).toEqual(captureRead);
     expect(parseDiffInput(diffInput)).toEqual(diffInput);
-    expect(parseResolvedRecord(resolvedRecord)).toEqual(resolvedRecord);
+    expect(parseResolvedRecord(resolvedCaptureRecord)).toEqual(resolvedCaptureRecord);
+    expect(parseResolvedRecord(resolvedDiffRecord)).toEqual(resolvedDiffRecord);
     expect(parseChainAnswer(chainAnswer)).toEqual(chainAnswer);
 
-    // A NON-EMPTY FLOOR on the two collections, because `toEqual` over empty arrays is satisfied by a
+    // A NON-EMPTY FLOOR on every collection, because `toEqual` over empty arrays is satisfied by a
     // parser that dropped every row.
-    expect(resolvedRecord.captures.length).toBeGreaterThanOrEqual(2);
-    expect(resolvedRecord.citedBy.length).toBeGreaterThanOrEqual(1);
+    const captureArm = resolvedCaptureRecord.verified;
+    expect('captures' in captureArm && captureArm.captures.length).toBeGreaterThanOrEqual(1);
+    expect(resolvedCaptureRecord.citedBy.length).toBeGreaterThanOrEqual(1);
+    expect(resolvedDiffRecord.citedBy.length).toBeGreaterThanOrEqual(1);
     expect(chainAnswer.available && chainAnswer.captures.length).toBeGreaterThanOrEqual(1);
-    expect(diffInput.current?.chunks.length).toBeGreaterThanOrEqual(2);
+    expect(diffInput.current.chunks.length).toBeGreaterThanOrEqual(2);
   });
 
   it('RB-2 EVERY REQUIRED FIELD OF `get_capture` NAMES ITSELF when it is missing', () => {
@@ -138,31 +142,151 @@ describe('corpus-body — the record pages\' bodies', () => {
     });
   });
 
-  it('RB-3 `get_diff_input`\'s required fields name themselves; `current` MAY be null and that is the 409 state', () => {
-    const fields = requireSubjects('the diff input\'s required fields', ['before', 'after', 'beforeText', 'afterText', 'awaitingDerivation', 'page']);
-    for (const field of fields) {
-      expect(() => parseDiffInput(dropped(diffInput as unknown as Record<string, unknown>, field))).toThrow(new RegExp(field));
-    }
-    // `current: null` IS A STATE AND NOT A DEFECT (A2's 409 row, §26 :856) — it must parse, not throw.
-    const awaiting = parseDiffInput({ ...diffInput, current: null, awaitingDerivation: true });
-    expect(awaiting.current).toBeNull();
-    expect(awaiting.awaitingDerivation).toBe(true);
+  it('RB-3 `get_diff_input`: endpoints are OBJECTS, `current` is required, the page has no id, and the row`s three fields are the stream`s', () => {
+    // THE ENVELOPE, not the field list. A4 :1096's amendment exists because the clause named the FIELDS and
+    // this parser was written from that naming: `before`/`after` as bare timestamps, the texts beside them as
+    // `beforeText`/`afterText`, a nullable `current` and an `awaitingDerivation` flag. Every one of those
+    // parsed the fixture and none of them is what the route sends.
+    expect(parseDiffInput(diffInput)).toEqual(diffInput);
+
+    // A BARE TIMESTAMP WHERE AN ENDPOINT BELONGS MUST FAIL — that is precisely the old reading, so a parser
+    // that still accepted it would be one this case could not tell from a repaired one.
+    expect(() => parseDiffInput({ ...diffInput, before: '20211223211940' })).toThrow('before expected an object');
+
+    const fields = requireSubjects("the diff input's top-level fields", ['page', 'before', 'after', 'current']);
+    const thrown = fields.map((field) => {
+      try {
+        parseDiffInput(dropped(diffInput as unknown as Record<string, unknown>, field));
+        return `${field}: NO THROW`;
+      } catch (error) {
+        return (error as Error).message.includes(field) ? `${field}: named` : `${field}: threw without naming itself`;
+      }
+    });
+    expect({ count: fields.length, thrown }).toEqual({
+      count: 4,
+      thrown: ['page: named', 'before: named', 'after: named', 'current: named'],
+    });
+
+    // `current` IS NOT NULLABLE AND NULL IS NOT THE 409. The refusal is `{ error, code }` at 409 and never
+    // reaches a parser (ui §6 :267; `getDiffInput.ts` :114-:121 returns it before the body is built), so a
+    // null read as "awaiting derivation" would render that state over a body that is merely broken.
+    expect(() => parseDiffInput({ ...diffInput, current: null })).toThrow('current expected an object');
+
+    // Each nested field names itself THROUGH its endpoint, so a drift says which side moved.
+    expect(() => parseDiffInput({ ...diffInput, after: dropped(diffInput.after as unknown as Record<string, unknown>, 'text') })).toThrow('after.text');
+    expect(() => parseDiffInput({ ...diffInput, current: dropped(diffInput.current as unknown as Record<string, unknown>, 'diffVersion') })).toThrow('current.diffVersion');
+
+    // `survival` IS READ AND DROPPED, DELIBERATELY — and nothing said so until this assertion. Every real
+    // body carries it on both routes (measured on the running route, an 8-character verdict) while no clause
+    // of §26 or the UI plan renders it, so the parser narrows to what a page uses. The fixture's SILENCE about
+    // a field the wire always sends is not agreement; this is where the drop is stated.
+    const withSurvival = parseDiffInput({
+      ...diffInput,
+      current: { ...diffInput.current, chunks: [{ side: 'REMOVED', text: '\u05e0\u05d2\u05e8\u05e2', survival: 'SURVIVED' }] },
+    });
+    expect(withSurvival.current.chunks.at(0)).toEqual({ side: 'REMOVED', text: '\u05e0\u05d2\u05e8\u05e2' });
+    expect(withSurvival.current.chunks.at(0)).not.toHaveProperty('survival');
+
+    // THE DIFF ROW'S OWN THREE FIELDS — ruled 2026-09-20 (A4 :1096), and narrowed by the SAME functions the
+    // stream's rows use. A second spelling here could accept an opinion the stream refuses, and the two
+    // surfaces would then disagree about one record while both looked correct.
+    const parsedWhole = parseDiffInput(diffInput);
+    expect(parsedWhole.opinion).toEqual(diffInput.opinion);
+    expect(parsedWhole.narrowed).toBe(false);
+    expect(parsedWhole.evidence).toEqual(diffInput.evidence);
+    // EACH IS REQUIRED: `narrowed` is a claim about what intervened, so a missing one may not read as `false`.
+    expect(() => parseDiffInput(dropped(diffInput as unknown as Record<string, unknown>, 'narrowed'))).toThrow('narrowed');
+    // AND THE TWO NULLABLE ONES PARSE AS NULL rather than as an absence nobody noticed.
+    const bare = parseDiffInput({ ...diffInput, opinion: null, evidence: null });
+    expect({ opinion: bare.opinion, evidence: bare.evidence }).toEqual({ opinion: null, evidence: null });
+    // A MALFORMED OPINION IS REFUSED BY NAME, through the stream's own narrowing.
+    expect(() => parseDiffInput({ ...diffInput, opinion: { ...diffInput.opinion, draws: 'two' } })).toThrow('opinion.draws');
+
+    // THE PAGE IS `{ url, public }` AND CARRIES NO `trackedUrlId`: the reader asked with the id, so the route
+    // does not send it back. A parser that required it threw on every REAL body while every fixture-fed case
+    // stayed green — the third defect of this envelope, and the one no field list would have shown.
+    expect(diffInput.page).not.toHaveProperty('trackedUrlId');
+    expect(parseDiffInput(diffInput).page).toEqual({ url: diffInput.page.url, public: true });
   });
 
-  it('RB-4 `recomputable` AND `verified` NEVER DEFAULT — each is a claim about a record\'s integrity', () => {
-    // BOTH DIRECTIONS FAIL, and for different reasons: `false` understates an integrity claim the platform
-    // did make, `true` asserts a check nobody ran. Neither is a reading of the body.
-    for (const field of ['recomputable', 'verified'] as const) {
-      let outcome: unknown = 'not attempted';
-      try {
-        outcome = parseResolvedRecord(dropped(resolvedRecord as unknown as Record<string, unknown>, field));
-      } catch (error) {
-        outcome = (error as Error).message;
-      }
-      expect(outcome).toBe(`corpus body: ${field} expected a boolean, got undefined`);
+  it('RB-4 `resolve_record` reports VERIFIED and FLAGGED, never bits; both `record` arms and both `verified` arms parse', () => {
+    const arms = requireSubjects('the resolved-record arms', [resolvedCaptureRecord, resolvedDiffRecord]);
+    const armAt = (index: number): ResolvedRecord => {
+      const arm = arms.at(index);
+      if (arm === undefined) throw new Error(`RB-4: no arm at ${String(index)} — the fixture set no longer spans the contract`);
+      return arm;
+    };
+
+    // THE FLOOR, BEFORE ANYTHING IS PARSED. `verified` and `record` are each a union, and a fixture set that
+    // lost an arm would leave this case reading one shape twice and reporting it as coverage.
+    expect(arms).toHaveLength(2);
+    expect([armAt(0).kind, armAt(1).kind]).toEqual(['CAPTURE', 'DIFF']);
+    expect('capture' in armAt(0).record).toBe(true);
+    expect('before' in armAt(1).record).toBe(true);
+    expect('captures' in armAt(0).verified).toBe(true);
+    expect('notEvaluable' in armAt(1).verified).toBe(true);
+    for (const arm of arms) expect(parseResolvedRecord(arm)).toEqual(arm);
+
+    // VERIFIED IS NOT A BIT. Read as a boolean it parses and silently loses every per-capture attribution —
+    // the marks §26 :859 requires the record page to show.
+    expect(() => parseResolvedRecord({ ...resolvedCaptureRecord, verified: true })).toThrow('verified');
+    // FLAGGED IS NOT A BIT EITHER (A3 :1054): the report names the arms actually asked, and a check that
+    // examined nothing must say so rather than passing.
+    const bitFlagged = resolvedCaptureRecord.citedBy.map((one) => ({ ...one, flagged: false }));
+    expect(() => parseResolvedRecord({ ...resolvedCaptureRecord, citedBy: bitFlagged })).toThrow('citedBy[0].flagged');
+
+    // `notEvaluable` NARROWS to `evidencePredicates.ts` :566's three reasons — the opposite call from
+    // `armsEvaluated`/`reasons`, which stay open. A fourth reason is a body this page cannot render, so it
+    // fails by name rather than arriving as an unshown string.
+    expect(() => parseResolvedRecord({ ...resolvedDiffRecord, verified: { notEvaluable: 'SOMETHING_ELSE' } })).toThrow('verified.notEvaluable');
+
+    // A CAPTURE NOTHING HAS CHECKED IS NOT A CAPTURE THAT FAILED: every stored-verdict field may be null and
+    // each parses as null, never as "no".
+    const evaluable = resolvedCaptureRecord.verified;
+    if (!('captures' in evaluable)) throw new Error('RB-4: the CAPTURE fixture must carry the evaluable arm');
+    const anchored = evaluable.captures.at(0);
+    if (anchored === undefined) throw new Error('RB-4: the evaluable arm must carry at least one capture');
+    const unchecked = parseResolvedRecord({
+      ...resolvedCaptureRecord,
+      verified: {
+        verified: false,
+        captures: [{ ...anchored, anchoredHash: null, attributed: null, verdict: null, verifierVersion: null, checkedAt: null }],
+      },
+    });
+    if (!('captures' in unchecked.verified)) throw new Error('RB-4: the parsed arm must still be the evaluable one');
+    expect(unchecked.verified.captures.at(0)?.checkedAt).toBeNull();
+    expect(unchecked.verified.captures.at(0)?.attributed).toBeNull();
+
+    // `recomputable` NEVER DEFAULTS — it is a claim about a record's integrity, and `false` understates a
+    // check that ran while `true` asserts one that did not.
+    let outcome: unknown = 'not attempted';
+    try {
+      outcome = parseResolvedRecord(dropped(resolvedCaptureRecord as unknown as Record<string, unknown>, 'recomputable'));
+    } catch (error) {
+      outcome = (error as Error).message;
     }
-    // And a `kind` outside the two the corpus holds is refused by name rather than rendered as neither.
-    expect(() => parseResolvedRecord({ ...resolvedRecord, kind: 'DOCUMENT' })).toThrow("kind expected 'CAPTURE' or 'DIFF'");
+    expect(outcome).toBe('corpus body: recomputable expected a boolean, got undefined');
+
+    // A `kind` outside the two the corpus holds is refused by name rather than rendered as neither.
+    expect(() => parseResolvedRecord({ ...resolvedCaptureRecord, kind: 'DOCUMENT' })).toThrow("kind expected 'CAPTURE' or 'DIFF'");
+
+    // THE PAGE CARRIES ITS ID HERE AND ON NO OTHER RECORD READ — ruled 2026-09-20 (A4 :1106). A stranger
+    // arrives by the record's NAME and holds no page id, so the one link onward (§26 :860) has no other
+    // source. `get_capture` and `get_diff_input` keep `{ url, public }`: their reader named the page.
+    expect(parseResolvedRecord(resolvedCaptureRecord).page).toEqual({
+      trackedUrlId: resolvedCaptureRecord.page.trackedUrlId,
+      url: resolvedCaptureRecord.page.url,
+      public: true,
+    });
+    expect(() =>
+      parseResolvedRecord({ ...resolvedCaptureRecord, page: { url: resolvedCaptureRecord.page.url, public: true } }),
+    ).toThrow('page.trackedUrlId');
+
+    // THE THREE FIELDS THE ROUTE HAS NEVER SENT, asserted absent so a fixture cannot quietly reintroduce them.
+    for (const invented of requireSubjects('the invented fields', ['first', 'last', 'captures'])) {
+      expect(resolvedCaptureRecord).not.toHaveProperty(invented);
+    }
+    expect(resolvedCaptureRecord.citedBy.at(0)).not.toHaveProperty('publishedAt');
   });
 
   it('RB-5 CHAIN_UNAVAILABLE NARROWS INTO THE UNION from the WIRE\'s spelling, and is never raised', () => {

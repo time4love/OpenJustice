@@ -5,6 +5,9 @@ import { apiCallsMade, renderPage, setAuthState, setPathname, setPublicBodies, t
 import { requireSubjects } from './scan';
 import { readCorpusFilters, toReadParameters, writeCorpusQuery, writeReadQuery } from '../src/lib/corpusQuery';
 import { corpusStream } from './fixtures/corpus/stream';
+import { captureRead } from './fixtures/corpus/capture';
+import { diffInput } from './fixtures/corpus/diffInput';
+import { resolvedCaptureRecord } from './fixtures/corpus/record';
 
 // ---------------------------------------------------------------------------
 // filter-is-a-query — docs/gf-ui-flows.md §31's named instrument, and §8 (a filter is a parameter of the ONE
@@ -120,5 +123,75 @@ describe('filter-is-a-query · the wire', () => {
       cursor: 'c',
       limit: '50',
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE RECORD PAGES' ARM (UI-7 chunk (c)) — §8 :344: "a filter is a query on one read, never a second read."
+//
+// A RECORD PAGE HAS NO FILTERS AT ALL, which makes the property sharper here than on `/corpus`: the page must
+// make its ONE read and no other. The reads it must not make are named as VALUES and not as a pattern —
+// `/api/pages/:id/findings` is the page's whole timeline, which the capture page used to be pointed at before
+// the 2026-09-19 re-point, and `/api/research/pages` is the gated twin a public page may never touch.
+// ---------------------------------------------------------------------------
+
+const TRACKED = 'page-one';
+const CAPTURE = '20211223211940';
+const CAPTURE_PATH = `/api/pages/${TRACKED}/captures/${CAPTURE}`;
+
+/** Reads a record page may NEVER make — spelled out, because a regex over `/findings` would miss the twin. */
+const FORBIDDEN = ['/api/pages/page-one/findings', '/api/research/pages', '/api/corpus', '/api/mcp'] as const;
+
+describe('filter-is-a-query — the record pages', () => {
+  it('THE CAPTURE PAGE MAKES ITS ONE READ AND NO SECOND ONE — not the page`s findings, not the research twin', async () => {
+    setPublicBodies({ [CAPTURE_PATH]: { status: 200, body: captureRead } });
+    const page = (await import('@/app/[locale]/pages/[trackedUrlId]/captures/[capture]/page')).default;
+    const rendered = await renderPage(page, { locale: LOCALE, trackedUrlId: TRACKED, capture: CAPTURE }, { locale: LOCALE });
+    expect(rendered.notFound).toBe(false);
+
+    const reads = requireSubjects('reads the capture page made', apiCallsMade());
+    // EXACTLY ONE, and it is the resource read — not a superset filtered in the page.
+    expect(reads.map((call) => call.path)).toEqual([CAPTURE_PATH]);
+    // AND IT WAS PARSED: a body read without a guard at its boundary has no witness at all.
+    expect(reads.at(0)?.parsed).toBe(true);
+    for (const forbidden of requireSubjects('the forbidden reads', FORBIDDEN)) {
+      expect(reads.filter((call) => call.path.startsWith(forbidden))).toEqual([]);
+    }
+  });
+
+  it('THE DIFF PAGE MAKES ITS ONE READ TOO — and its 409 state makes no second read to find the links', async () => {
+    const AFTER = '20220105090000';
+    const PAIR = `/api/pages/${TRACKED}/diffs/${CAPTURE}/${AFTER}`;
+    const page = (await import('@/app/[locale]/pages/[trackedUrlId]/diffs/[before]/[after]/page')).default;
+
+    setPublicBodies({ [PAIR]: { status: 200, body: diffInput } });
+    const shown = await renderPage(page, { locale: LOCALE, trackedUrlId: TRACKED, before: CAPTURE, after: AFTER }, { locale: LOCALE });
+    expect(shown.notFound).toBe(false);
+    expect(requireSubjects('reads the diff page made', apiCallsMade()).map((call) => call.path)).toEqual([PAIR]);
+
+    // AND IN THE 409 STATE. The capture links are composed from the URL's own segments, so a page that went
+    // looking for them would make a SECOND read precisely where the first one had nothing to give it — the
+    // exact shape §8 :344 forbids, and the one a reader would never notice.
+    setPublicBodies({ [PAIR]: { status: 409 } });
+    const awaiting = await renderPage(page, { locale: LOCALE, trackedUrlId: TRACKED, before: CAPTURE, after: AFTER }, { locale: LOCALE });
+    expect(awaiting.notFound).toBe(false);
+    expect(requireSubjects('reads the awaiting diff page made', apiCallsMade()).map((call) => call.path)).toEqual([PAIR]);
+  });
+
+  it('THE RECORDS PAGE MAKES ITS ONE READ — it resolves a NAME and never browses the page it belongs to', async () => {
+    const RECORD = `/api/records/${resolvedCaptureRecord.fileHash}`;
+    setPublicBodies({ [RECORD]: { status: 200, body: resolvedCaptureRecord } });
+    const page = (await import('@/app/[locale]/records/[fileHash]/page')).default;
+    const rendered = await renderPage(page, { locale: LOCALE, fileHash: resolvedCaptureRecord.fileHash }, { locale: LOCALE });
+    expect(rendered.notFound).toBe(false);
+
+    const reads = requireSubjects('reads the records page made', apiCallsMade());
+    expect(reads.map((call) => call.path)).toEqual([RECORD]);
+    expect(reads.at(0)?.parsed).toBe(true);
+    // IT HOLDS `page.trackedUrlId` FROM THIS READ, which is the whole reason the id was ruled onto the
+    // envelope — a page that fetched the timeline to find it would be the second read §8 :344 forbids.
+    for (const forbidden of requireSubjects('the forbidden reads', FORBIDDEN)) {
+      expect(reads.filter((call) => call.path.startsWith(forbidden))).toEqual([]);
+    }
   });
 });

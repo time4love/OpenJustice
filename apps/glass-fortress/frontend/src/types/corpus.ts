@@ -179,15 +179,71 @@ export interface CorpusAnswer {
   nextCursor: string | null;
 }
 
-/** `get_diff_input`'s answer (A4 :1095–:1099): the pair's two texts and the CURRENT version's chunks. */
+/**
+ * ONE ENDPOINT OF A PAIR (A4 :1096) — an OBJECT carrying its own bytes, never a bare timestamp.
+ */
+export interface DiffSide {
+  capture: string;
+  textHash: string;
+  textExtractionVersion: string;
+  text: string;
+}
+
+/**
+ * `get_diff_input`'s CURRENT version (A4 :1096) — ITS OWN TYPE, and not `CurrentContent`.
+ *
+ * The two are different bodies from different tools: `list_findings` sends `{ contentVersionHash, chunks }`
+ * for every diff row (A4 :1084) and `get_diff_input` sends `diffVersion` beside them. Widening one type to
+ * cover both would make `diffVersion` optional everywhere and assert nothing at either door.
+ *
+ * `diffVersion` is PROVENANCE — "the inputs" (evidence :237, :969). It is narrowed because the body carries
+ * it; no clause of §26 or the UI plan renders it, and nothing does.
+ */
+export interface DiffCurrent {
+  contentVersionHash: string;
+  diffVersion: string;
+  chunks: DiffChunk[];
+}
+
+/**
+ * `get_diff_input`'s answer for one pair (A4 :1096).
+ *
+ * `current` IS NOT NULLABLE AND THERE IS NO `awaitingDerivation` FIELD. An undefined CURRENT is the
+ * AWAITING_DERIVATION refusal — `{ error, code }` at 409 (ui §6 :267), an early return in `getDiffInput.ts`
+ * :114-:121 — and so a page state, never a value in a 200 body. The boolean this type used to carry was
+ * `list_findings`' diff row (A4 :1085), a neighbouring clause of a different tool.
+ */
 export interface DiffInput {
-  before: string;
-  after: string;
-  beforeText: string;
-  afterText: string;
-  current: CurrentContent | null;
-  awaitingDerivation: boolean;
-  page: CorpusPage;
+  page: PageRef;
+  before: DiffSide;
+  after: DiffSide;
+  current: DiffCurrent;
+  /**
+   * THE DIFF ROW'S OWN THREE FIELDS — ruled 2026-09-20 (A4 :1096), so the diff page can draw what §26
+   * :852–:856 asks of it without a second read of the page's whole timeline (§8 :344).
+   *
+   * THEY ARE THE STREAM'S TYPES, not new ones: the backend builds them with `diffRow`, the one builder
+   * `list_findings` uses, so a second spelling on either side would let the corpus and the diff page show
+   * two accounts of one record. The intervening captures BEHIND `narrowed` are served by no read and stay
+   * owed — `narrowed` is the MARK, not the list.
+   */
+  opinion: ClassifierOpinion | null;
+  narrowed: boolean;
+  evidence: EvidenceLink | null;
+}
+
+/**
+ * THE PAGE A RECORD'S READ NAMES — `{ url, public }`, and deliberately NOT `CorpusPage`.
+ *
+ * `get_capture`, `get_diff_input` and `resolve_record` all send this and no `trackedUrlId` (evidence A4 :1082,
+ * :1096, :1106; confirmed on all three running routes). It is named once rather than spelled inline three
+ * times, and it is a DIFFERENT type from `CorpusPage` rather than a subset of it: the stream's rows carry the
+ * id because a list must link to each row, while these reads answer about a page the reader already named in
+ * the URL — "a page that read it back out of the body would be deriving an identity it was already handed".
+ */
+export interface PageRef {
+  url: string;
+  public: boolean;
 }
 
 /**
@@ -199,7 +255,7 @@ export interface DiffInput {
  * and a page that read it back out of the body would be deriving an identity it was already handed (§4).
  */
 export interface CaptureRead {
-  page: { url: string; public: boolean };
+  page: PageRef;
   capture: Omit<CaptureEntry, 'kind' | 'page'>;
   text: string;
   /** WHICH extraction the bytes are — stated by the read, never assumed by the page. */
@@ -208,32 +264,83 @@ export interface CaptureRead {
   current: boolean;
 }
 
-/** One capture beneath a record, with its own attribution (A4 :1105–:1108, "per-capture attribution"). */
-export interface RecordCapture {
+/**
+ * ONE CAPTURE BENEATH A RECORD, and what the chain state stored about its anchor (A4 :1106).
+ *
+ * `checkedAt` IS A STRING HERE AND A `Date` ON THE BACKEND (`evidencePredicates.ts` :546). What crosses the
+ * wire is JSON, so the page reads the ISO text the route serialised and never a `Date` it did not receive.
+ */
+export interface RecordCaptureAttribution {
   capture: string;
-  snapshotDate: string;
-  attributed: boolean;
+  documentHash: string;
+  anchoredHash: string | null;
+  anchoredHashMatchesDocumentHash: boolean;
+  attributed: boolean | null;
+  verdict: string | null;
+  verifierVersion: string | null;
+  checkedAt: string | null;
 }
 
-/** A published version citing a record, with its FLAGGED mark and its text (A4 :1108–:1109). */
+/**
+ * FLAGGED'S REPORT (A3 :1054) — never a bit.
+ *
+ * `armsEvaluated` and `reasons` are `string[]` AND ARE NOT NARROWED TO A UNION, which is the opposite call
+ * from `notEvaluable` below, deliberately. Both are OPEN sets by construction: SHED joins the arms when the
+ * `Document` table lands (`evidencePredicates.ts` :755-:758), and A4 :1106 writes `[string]` for each. A page
+ * renders the report's own words; a frontend union would refuse a body the backend legitimately widened.
+ */
+export interface FlagReport {
+  flagged: boolean;
+  armsEvaluated: string[];
+  reasons: string[];
+}
+
+/** A published version citing a record, with its FLAGGED report and its text (A4 :1106). */
 export interface CitingPublishedVersion {
   thesisId: string;
   versionId: string;
-  publishedAt: string;
-  flagged: boolean;
+  contentHash: string;
+  pin: string | null;
+  flagged: FlagReport;
   text: string;
 }
 
-/** `resolve_record`'s answer (A4 :1105–:1109) — what a stranger holding a citation needs. */
+/**
+ * VERIFIED, OR THE REASON IT CANNOT BE ASKED of this record (A4 :1106).
+ *
+ * The three reasons ARE narrowed — they are `evidencePredicates.ts` :566's closed union, reached through
+ * `resolveRecord.ts` :134 (`notEvaluable: report.reason`), and §18 :574 shows each as a reason rather than a
+ * failure. A fourth reason must reach the page as a loud parse failure and not as an unrendered string.
+ */
+export const NOT_EVALUABLE_REASONS = ['NOT_PROMOTED', 'MALFORMED_RECORD_KEY', 'DOCUMENT_CLASS_NOT_BUILT'] as const;
+
+export type NotEvaluableReason = (typeof NOT_EVALUABLE_REASONS)[number];
+
+export type RecordVerified =
+  | { verified: boolean; captures: RecordCaptureAttribution[] }
+  | { notEvaluable: NotEvaluableReason };
+
+/**
+ * THE RECORD'S ENDPOINTS BY THEIR ARCHIVE NAMES (A4 :1106) — "14-digit archive names, never dates".
+ *
+ * This replaced `first`/`last`, which the route has never sent: the frontend had read the clause's word
+ * "timestamps" as dates and invented two fields for them.
+ */
+export type RecordNames = { capture: string } | { before: string; after: string };
+
+/** `resolve_record`'s answer (A4 :1106) — what a stranger holding a citation needs. */
 export interface ResolvedRecord {
   fileHash: string;
   kind: EntryKind;
+  /**
+   * `CorpusPage` AND NOT `PageRef` — ruled 2026-09-20 (A4 :1106). This is the ONE record read whose page
+   * carries its id, because its reader arrived by the record's NAME and holds no page id: the link onward
+   * to the record's page (§26 :860) has no other source. The other two reads keep `PageRef`.
+   */
   page: CorpusPage;
-  first: string;
-  last: string;
+  record: RecordNames;
   recomputable: boolean;
-  verified: boolean;
-  captures: RecordCapture[];
+  verified: RecordVerified;
   citedBy: CitingPublishedVersion[];
 }
 
@@ -271,7 +378,7 @@ export interface CaptureChainStatus {
 export type ChainAnswer =
   | {
       available: true;
-      page: { url: string; public: boolean };
+      page: PageRef;
       captures: CaptureChainStatus[];
       /** OBSERVED, never configured — a wrong environment records itself (the 2026-08-29 rule). */
       registry: { chainId: number | null; registryAddress: string | null };
