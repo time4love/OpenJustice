@@ -48,6 +48,8 @@ export interface RenderOptions {
   locale?: Locale;
   /** Rendered INSIDE the provider, around the subject — `nav-is-the-map` (UI-4) passes the `AuthContext` double here. */
   wrapper?: ComponentType<{ children: ReactNode }>;
+  /** A page's query, for the pages whose STATE is the query — `/corpus` and every lens of it (UI-7). */
+  searchParams?: Record<string, string | string[] | undefined>;
 }
 
 /**
@@ -388,12 +390,21 @@ function isNotFound(error: unknown): boolean {
 export async function renderPage<P extends Record<string, string>>(
   // A page's own `params` type is its segment's (`{ locale, id }`), so the parameter is GENERIC in it: a helper
   // typed to `Record<string, string>` would reject every real page, the parameter position being contravariant.
-  page: (props: { params: Promise<P> }) => Promise<ReactElement | null> | ReactElement | null,
+  //
+  // `searchParams` IS ALWAYS PASSED, and a page that does not declare it simply ignores it. From UI-7 a page's
+  // state can live in the QUERY rather than the path (`/corpus` is the pages list or the stream by its
+  // parameters alone, ui flows §24 :681), so a harness that could only supply `params` could not render those
+  // pages at all — and a page made to tolerate a missing `searchParams` would be shaped around the harness
+  // rather than around Next, which always supplies it.
+  page: (props: { params: Promise<P>; searchParams: Promise<Record<string, string | string[] | undefined>> }) =>
+    | Promise<ReactElement | null>
+    | ReactElement
+    | null,
   params: P,
   options: RenderOptions = {},
 ): Promise<PageRender> {
   try {
-    const rendered = await renderServer(async () => page({ params: Promise.resolve(params) }), {
+    const rendered = await renderServer(async () => page({ params: Promise.resolve(params), searchParams: Promise.resolve(options.searchParams ?? {}) }), {
       ...options,
       wrapper: withTabsProvider(options.wrapper),
     });

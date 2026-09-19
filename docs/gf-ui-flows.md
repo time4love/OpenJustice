@@ -87,8 +87,8 @@ is a query, never a second page.
 | `/theses/[id]` | `GET /api/thesis/:id` | THE THESIS PAGE, exactly T5 :809–:829: statement and disclaimer first; claim; text with citations resolved; appeals; rationale; history; the link to each cited page's chronology (`/corpus?page=`) | T5; A5 :1565–:1569; T6 :915 the notice |
 | `/theses/[id]/versions/[v]` | `GET /api/thesis/:id/versions/:v` | a version that was published, and what changed to the next — the history's read, linkable | A5 :1570; T6 :898–:901 |
 | `/call/[id]` | `GET /api/thesis/:id` · `/call` | the appeals alone, shareable: statement, disclaimer, the call items, the requests ready to send, the intake instruction | A5 :1569 "a call page"; COMPLIANCE :26–:27, :92; step-23 Live-13 |
-| `/corpus` | `list_corpus` (public scope) | THE CHRONOLOGY over every opened page: captures with anchors, diffs with current chunks and the classifier's opinion labelled, published citations as linkage; filters `?page=`, `?since=&until=`, `?kind=`, `?cited=1` (the RECORDS lens) | evidence §5 :464–:479; A4 :1080–:1093; §6.1 below |
-| `/corpus/claims` | `list_trajectories` (public scope) | the CLAIMS lens: every trajectory across opened pages, "removed and never restored" first; `?page=` | evidence A4 :1103; prosecutor §4 :87; §6.1 |
+| `/corpus` | `list_corpus` (public scope) | THE CHRONOLOGY over every opened page: captures with anchors, diffs with current chunks and the classifier's opinion labelled, published citations as linkage; filters `?page=`, `?since=&until=`, `?kind=`, `?cited=1` (the CITED lens — renamed from RECORDS 2026-09-18, §25) | evidence §5 :464–:479; A4 :1080–:1093; §6.1 below |
+| `/corpus/claims?page=` | `list_trajectories` (public scope) | **PER PAGE, amended 2026-09-18 (§25):** one page's trajectories, "removed and never restored" first, reached from that page's own view. **`page` is REQUIRED** — ordering by the date a claim LEFT has no meaning across unrelated documents | evidence A4 :1103; prosecutor §4 :87; §6.1 |
 | `/pages/[trackedUrlId]/captures/[capture]` | `list_findings`' capture row · `check_on_chain_status` | ONE CAPTURE RECORD: the text version, its anchor, the chain check on demand | evidence A4 :1081–:1083, :1111 |
 | `/pages/[trackedUrlId]/diffs/[before]/[after]` | `get_diff_input` | ONE DIFF RECORD: the pair's two texts and the CURRENT chunks | evidence A4 :1095–:1099 |
 | `/records/[fileHash]` | `resolve_record` | what a stranger holding a citation needs | evidence A4 :1105–:1109 |
@@ -240,7 +240,7 @@ list_corpus({ scope, since?, until?, page?: url, kind?: CAPTURE | DIFF, cited?: 
   returns   { entries: [ list_findings' capture row | diff row (A4 :1081–:1090), each with
               page: { trackedUrlId, url } ], nextCursor | null } — amended by docs/gf-ui-refactor-plan.md UI-2 (2026-09-15): `page` gains `public: bool`, so the gated door can mark a row of a page not yet opened (§27) without a second read; always true at `public`
             in TIMESTAMP order across pages; no other order exists (A4 :1091). `cited` keeps the entries
-            with `evidence` ≠ null — the RECORDS lens, no second read. `limit` is an operational parameter
+            with `evidence` ≠ null — the CITED lens (renamed 2026-09-18, §25), no second read. `limit` is an operational parameter
             (flows A8), never a judgement.
   refuses   INVALID_RANGE · NOT_SURVEYED (`page` names none) · NO_RESEARCHER (scope all, no identity)
             — publicly, NOT_SURVEYED and a page not PUBLIC_PAGE are one 404 (§6's table)
@@ -663,7 +663,26 @@ door adds the extraction sheet (§27) and marks the rows of pages not yet opened
 **Two weights of row, because two kinds of thing.** A CAPTURE is an endpoint: a thin row — the page's label,
 the timestamp, the anchor mark (ATTRIBUTED, or not yet). Its COPY gives the citation token. A DIFF is the event: a card —
 the page's label, the interval (before → after), the size of the change (chunks by side, from `current`),
-the classifier's opinion as ONE chip under rule 3's label (significance; the rest in the sheet — evidence §5
+the classifier's opinion **CLAMPED TO TWO LINES under rule 3's label, with „עוד" opening the rest — NOT a chip
+(amended 2026-09-18, the researcher).** Measured on the real corpus: `opinion.significance` runs **197 characters**,
+and a chip at 375px shows about forty of them — cutting the conclusion, which in the measured case was „ללא גריעה
+של אזהרות בטיחות". A chip is a label; this is a paragraph, and the clause named the wrong element.
+
+**AND THE STREAM HIDES WHAT THE CLASSIFIER DID NOT FLAG — BY `legallySignificant`, NEVER BY `editorial`
+(amended 2026-09-18, the researcher: „למה צריך להציג מידע שנקבע שהוא לא מהותי").** THE FIELD MATTERS AND THE
+MEASUREMENT IS WHY: of 21 diffs in the real body, **20 carry `editorial: true` — and 8 of those same 20 are also
+`legallySignificant: true` with an investigative category**. The two are not opposites; most real changes are an
+editorial rewrite AND material. Gating on `editorial` would have hidden **8 changes the classifier itself
+flagged**, and their absence would have been invisible, because absence in a corpus is invisible by construction.
+The gate is `legallySignificant` / `categories.length > 0` — the backend's own `deriveSignificance`.
+
+**IT IS A FILTER THAT ANNOUNCES ITSELF, NOT A SUPPRESSION.** A line states the count and one tap reveals them:
+„13 שינויים שסווגו לא מהותיים מוסתרים — הצג". This is required, not decoration. The classifier's opinion is
+LABELLED AS OPINION and is the only model voice on a public page precisely because **the model describes and does
+not decide**; a default that silently removed rows on its judgement would make an AI an editorial gate over a
+forensic corpus — and this platform exists because official pages changed in ways someone preferred unexamined,
+which is the shape a classifier trained on "routine policy update" is likeliest to misfile. **A hidden row that
+announces itself can be audited; one that does not, cannot.** (significance; the rest in the sheet — evidence §5
 :469–:470, A4 :1086–:1087: "LABELLED as opinion"), the CITED mark with the published theses that cite it, the
 NARROWED mark, and AWAITING DERIVATION as a state, not an error. The stream reads as pages changing over time,
 the captures as the ticks between changes.
@@ -696,7 +715,36 @@ and `no-model-prose-public` (§9) is written to allow exactly this field and not
                       is the stream filtered to that page. An empty value (`?page=`) is not a filter, and
                       neither is a value the page cannot parse.
 1  THE CONTEXT LINE   sticky: the scope (opened pages · every page) · the active filters as chips · the count
-                      the read returned so far · the LENS control: PAGES · STREAM · CLAIMS · RECORDS
+                      the read returned so far · the LENS control: PAGES · CITED RECORDS („עמודים · רשומות מצוטטות” — the
+                      qualifier is required: „מצוטטות” alone is an adjective with no noun and does not say cited WHAT)
+
+                      **THE STREAM IS NOT A LENS, amended 2026-09-18 (the researcher).** It was one, and the
+                      lens contradicted the rule four lines above it in this same block: the stream is WHAT A
+                      FILTER RETURNS, so a doorway offering it with NO question attached had nothing to
+                      return but everything. The researcher, on being asked what „זרם” means to a reader:
+                      *„אם ב״זרם״ אתה מתכוון בציר זמן אחד שמראה את כל הצילומים — אני לא חושב שצריך להיות
+                      כזה. רשימה של צילומים זה משהו שצריך להראות רק בתוך url אחד. כשמראים רשימה של הרבה url
+                      שונים, מספיק להראות רק את האחרון מכל scanned url, אחרת המשתמש יגלול דרך עשרות שורות
+                      שנראות זהות (למעט התאריך) וזה לא מעניין.”*
+
+                      **MEASURED, on the real corpus:** one opened page holds 43 records, about 21 captures
+                      to 19 changes. At ten pages an unfiltered stream is some 430 rows, half of them capture
+                      lines differing from each other only by a date. That is not a reading; it is a scroll.
+
+                      **THE STREAM LOSES NOTHING — ONLY ITS DOORWAY.** Every row weight below stands, captures
+                      included. It is reached by asking: `?page=` for ONE page's captures and changes, which
+                      is where a capture list belongs; `?since=` / `?until=` for the records in a range across
+                      pages, which the researcher rules a LATER stage — *„אם המשתמש מחפש בטווח זמנים אז כן
+                      צריך להראות את הצילומים הרלוונטיים לזמנים”*; `?cited=1` for the CITED lens. What is
+                      removed is the entry that answered no question.
+
+                      **AND THE NAMES ARE THE READER'S, NOT THE DESIGN'S.** „עדשות” was this document's
+                      English metaphor transliterated and is replaced by **„תצוגות”** (the control's own
+                      label, heard by a screen reader and never drawn). RECORDS is renamed **CITED —
+                      „מצוטטות”** — because it filters to what a published thesis leans on, while „רשומות” is
+                      already the UNIT: every row in every view is a רשומה, and each page's count reads
+                      „43 רשומות”. One word for two things, six centimetres apart, was a defect and not a
+                      preference.
 2  THE FILTERS        one row of chips, horizontally scrolling: PAGE (a picker from the read's own `pages`
                       facet, §28) · SINCE / UNTIL · KIND (captures · diffs · both) · CITED. Every chip is a
                       query parameter of the one read (§8: never a second read); the URL carries them, so a
@@ -708,25 +756,63 @@ and `no-model-prose-public` (§9) is written to allow exactly this field and not
                       and never a row in region 0. The stream is long (a page can hold hundreds of real
                       changes, interaction :95) and a reader arrives with a date in mind (researcher day
                       :56–:58); the strip answers that without a second element.
-4  THE STREAM         cursor-paginated on the read's own cursor, oldest first within the range, "load older"
-                      and "load newer" at the ends; a row tap opens THE RECORD as a RIGHT-PANE TAB (§26, and
-                      the UI plan's §10 :1138 — a tab since the shell gained a pane, not a sheet); a page
-                      label tap adds the PAGE filter
+4  THE STREAM         WHAT A FILTER RETURNS, and never a destination of its own (amended 2026-09-18 — see
+                      region 1). Cursor-paginated on the read's own cursor, oldest first within the range,
+                      "load older" and "load newer" at the ends; a row tap opens THE RECORD as a RIGHT-PANE
+                      TAB (§26, and the UI plan's §10 :1138 — a tab since the shell gained a pane, not a
+                      sheet); a page label tap adds the PAGE filter. Both row weights stand: inside ONE page
+                      the captures are the ticks between its changes and belong there, and in a date range
+                      they are what the reader asked for.
 5  EMPTY              public: "no page is open yet — a page opens when a published thesis cites it" (evidence
                       §5 :475–:479); filtered: "nothing in this range" with the filters shown for removal
 ```
 
-## 25. THE LENSES
+## 25. THE LENSES — **AMENDED 2026-09-18, TWICE, and what is left is ONE.** PAGES is `/corpus`'s own default state (§24 region 0), not a lens over the stream. The **STREAM** lens is REMOVED (§24 region 1 carries the ruling and its measurement). The **CLAIMS** lens is REMOVED FROM THE TOP LEVEL and becomes PER-PAGE, reached from a page's own view — see below. What a reader sees at `/corpus` is therefore **PAGES · CITED**, labelled „תצוגות”.
 
-**CLAIMS — `/corpus/claims`, `list_trajectories`.** The same context line, filters and axis; the rows are
+**WHY CLAIMS IS NOT A GLOBAL LENS (the researcher, 2026-09-18).** The list is ordered by THE DATE THE CLAIM LEFT,
+latest first — and the researcher's question was *„לפי מה ממיינים את הטענות אם מציגים ברשימה אחת טענות של
+scanned url 1 ו־scanned url 2?”* That ordering has no meaning across unrelated documents: when a sentence left one
+ministry page has nothing to do with when a sentence left another, so a mixed list interleaves two chronologies
+into one that tells neither. *„אין מובן לרשימת טענות על פני אתרים שונים.”*
+
+**WITHIN ONE PAGE THE SAME ORDERING IS THE WHOLE POINT** — this document's sentences, in the order they were
+withdrawn, "removed and never restored" first. So the view is not deleted; it is SCOPED to where its own ordering
+means something, and it is reached from the page a reader is already looking at, never from the corpus root.
+
+**THE SHAPE:** a page's view is `/corpus?page=<trackedUrlId>` (§24's rule: a parameter is the stream). The claims
+of that page are reached from there and carry the page in their own address; **there is no bare `/corpus/claims`**,
+because a claims list with no page is the list this amendment removes.
+
+
+**CLAIMS — PER PAGE, reached from that page's own view; `list_trajectories` with its `page` parameter REQUIRED
+(amended 2026-09-18 — the header above carries the ruling).** The same context line, filters and axis; the rows are
 trajectories, ordered by the date the claim LEFT, latest first (§6.1), so "removed and never restored" reads
 first (prosecutor §4 :87; researcher day :61–:62). A row: the claim's first words · the page's label · the
-pattern as a strip of ticks — present, absent, present — across its captures · the currency mark:
-PINNED_IS_LATEST / RECOMPUTED_AGREES as current, RECOMPUTED_DISAGREES / NOT_FOLLOWED_BY_LATEST as STALE (A3
-:1386–:1388) · CITED when a published thesis cites it. Tap → the claim's sheet: the captures in order with the
+pattern as a strip of ticks — present, absent, present — across its captures · **how many times it flipped
+(`transitions`)** · **whether it is present or absent in the LATEST capture (`finalState`)**. Tap → the claim's
+sheet:
+
+**THE CURRENCY MARK AND THE CITED MARK ARE REMOVED FROM THIS ROW (the researcher, 2026-09-18), and neither is a
+field the read is missing — both are questions that have NO MEANING here.** Currency compares a **pinned**
+computation against the latest: a thesis cites a trajectory and freezes the pass it saw, and the mark says whether
+a later pass still tells that story (`RECOMPUTED_DISAGREES` being the one that matters — the evidence moved under a
+published thesis). **It is a property of a CITATION — a (thesis, trajectory) pair — never of a trajectory.** This
+lens lists every trajectory in the corpus, cited or not; a trajectory nobody cited has no pin, so there is nothing
+to compare and no arbitrary citing thesis may be chosen to stand in for one. The same holds for CITED: the
+corpus-side read does not join to published theses, and `list_trajectories` computes neither. **Verified in the
+backend:** `resolveTrajectoryCitations` has six callers and every one is thesis-side — `get_thesis_context`,
+`get_thesis_trajectory_citations`, `check_publication_readiness`, `auditTheses`, `criticMaterial`,
+`thesisReviews`. **The capability is not lost and does not move**: a researcher meets staleness where they are
+looking at THEIR OWN citations and can act on it. What this row keeps is what the corpus knows without any thesis
+— the sentence, its shape over time, its flips, and where it stands now.
+
+Tap → the claim's sheet: the captures in order with the
 claim present or absent at each, each capture a link to its record, and the diffs in which it left or returned.
 
-**RECORDS — `/corpus?cited=1`.** Not a page: the stream filtered to rows with `evidence ≠ null` (A4 :1089),
+**CITED — `/corpus?cited=1`** (**RENAMED from RECORDS, 2026-09-18**: it filters to what a published thesis leans
+on, and „רשומות” is already the UNIT — every row in every view is a רשומה and each page's count reads
+„43 רשומות”. One word for two things on one screen was a defect, not a preference). Not a page: the stream
+filtered to rows with `evidence ≠ null` (A4 :1089),
 each card showing the record's standing — PROMOTED or WITHDRAWN — and its citing published theses. The
 unselected are one chip away, which is the point of a lens over the stream rather than a catalogue of
 selections (architecture §9.5 :377–:380).
@@ -845,13 +931,13 @@ dashboard of four regions in the same order; the owed strip stays first and full
 
 ---
 
-## 32. THE LAYOUT — what every page carries, and nothing more — **AMENDED 2026-09-16:** the sidebar IS the nav, with the categories תזות · הארכיון and their last-watched lists; the dove is the door's, not the sidebar's (docs/gf-ui-design-session-2026-09-16.md §1.1, §1.3, §3).
+## 32. THE LAYOUT — what every page carries, and nothing more — **AMENDED 2026-09-16:** the sidebar IS the nav, with the categories תזות · הארכיון and their last-watched lists; the dove is the door's, not the sidebar's (docs/gf-ui-design-session-2026-09-16.md §1.1, §1.3, §3). **AMENDED 2026-09-18 (the researcher): `תזות` LEADS TO `/theses`, as `הארכיון` leads to `/corpus`.** The two categories were asymmetric from UI-4b until now — one a real link with a destination, the other a bare `<span>` with none — and the asymmetry had no reason behind it once `/theses` was un-retired (§3, §33). **The nav's set therefore GAINS `/theses` for every identity**, which is what `nav-is-the-map` holds; a category drawn without a destination is the same defect as an entry that leads nowhere.
 
 ```
 THE NAME       "צדק לעם - תיק הקורונה", the dove, at the top of every page; never "Glass Fortress" in
                anything a reader sees (CLAUDE.md). Where the name leads — this site's door, or the Teder
                portal that fronts both cases — is THE RESEARCHER'S: no design names the portal.
-THE NAV        public, in this order: הבית · הארכיון (`/corpus`) · אודות · הגנה (`/safety`, when live) ·
+THE NAV        public, in this order: הבית · **תזות (`/theses`)** · הארכיון (`/corpus`) · אודות · הגנה (`/safety`, when live) ·
                לחוקרים (`/researchers`). A signed-in researcher gains מחקר (`/research`) and their handle
                → `/profile`; an admin gains `/admin`. Nothing else is in the nav: not a dialog (§1),
                not a lens, not a retired page. On a phone the nav is a sheet from one control.

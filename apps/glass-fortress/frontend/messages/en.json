@@ -1957,5 +1957,11 @@
     "markedEmpty": "Nothing marked yet — click an element in the structure.",
     "collapseToolbox": "Collapse the toolbox",
     "expandToolbox": "Expand the toolbox"
+  },
+  "corpus": {
+    "title": "The archive",
+    "empty": "No page is open yet — a page opens when a published thesis cites it",
+    "interval": "{first} – {last}",
+    "records": "{count} records"
   }
 }

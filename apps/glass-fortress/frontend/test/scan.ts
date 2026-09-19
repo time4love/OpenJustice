@@ -408,6 +408,11 @@ export const ID_SHAPES: readonly { name: string; pattern: RegExp }[] = [
   { name: '64-hex', pattern: /(?:0x)?[0-9a-f]{64}/i },
   { name: 'cuid', pattern: /\bc[a-z0-9]{24}\b/ },
   { name: '14-digit timestamp', pattern: /\b\d{14}\b/ },
+  // A UUID, added 2026-09-18 with UI-7's pages list — the first page whose body carries one. Production
+  // `trackedUrlId`s are UUIDs (`c7039812-d3ed-4206-95ed-8205c3f2b63c`) and matched NONE of the three shapes
+  // above, so a page printing one passed this scan. Measured before widening: the whole suite green with it
+  // added, so no page renders one today and this closes a hole rather than declaring a debt.
+  { name: 'uuid', pattern: /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i },
 ];
 
 /** The three public thesis pages, by path — the subjects of every UI-5 source scan. */
