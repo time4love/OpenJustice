@@ -143,16 +143,16 @@ export const corpusStream: CorpusAnswer = {
       "trackedUrlId": "page-one",
       "url": "https://example.gov/one/",
       "public": true,
-      "first": "2021-12-23",
-      "last": "2022-02-11",
+      "first": "20211223211940",
+      "last": "20220211120000",
       "entries": 4
     },
     {
       "trackedUrlId": "page-two",
       "url": "https://example.gov/two/",
       "public": true,
-      "first": "2022-03-01",
-      "last": "2022-04-15",
+      "first": "20220301080000",
+      "last": "20220415080000",
       "entries": 1
     }
   ],

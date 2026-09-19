@@ -60,7 +60,7 @@ notice is 200; labels are the body's; never `/api/mcp` from a page; a filter is 
 | `/theses/[id]/history` | history ON the thesis page; `/theses/[id]/versions/[v]` linkable | §3 :144; T6 :898–:901; A5 :1570 | UI-5 |
 | `/call` (list) | nothing — RETIRED, the researcher's mark ruled 2026-09-15 | §3 :145 | UI-10 |
 | `/call/[thesisId]` | the appeals alone, two public reads | §20; A5 :1569; A4 :1501 | UI-5 |
-| `/evidence`, `/evidence/[id]` | `/corpus` (the RECORDS lens `?cited=1`) and `/records/[hash]` | §3 :140; evidence A5 :1191–:1193 | UI-7 · UI-10 |
+| `/evidence`, `/evidence/[id]` | `/corpus` (the CITED lens `?cited=1`) and `/records/[hash]` | §3 :140; evidence A5 :1191–:1193 | UI-7 · UI-10 |
 | `/figures`, `/figures/[id]` | nothing | §3 :139; thesis A5 :1579; T2 :472 | UI-10 |
 | `/forensics`, `/forensics/[id]` | `/corpus`, `/corpus/claims`, `/research/corpus`; the walk's state from a record | §3 :141; §1 :57–:68; §27 | UI-7 · UI-8 · UI-10 |
 | `/submit` | nothing; the intake dialog is the document plan's, after its step 32 | §3 :142; document A5 :1513; plan :342–:346 | UI-10 |
@@ -572,7 +572,7 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
   has cited yet (§27). Writing it twice is the defect this repository names as its dominant shape.
 - **`/corpus`'s STREAM** — ONE component, the CHRONOLOGY, rendered here at `scope: 'public'` from `GET /api/corpus`; UI-8 renders the
   same component at `all` with its three additions and completes `one-stream-two-doors`. §24 top to bottom: (1) the sticky
-  context line — the scope, the count returned so far, the LENS control PAGES · STREAM · CLAIMS · RECORDS; (2) the
+  context line — the scope, the count returned so far, the LENS control **PAGES · CITED RECORDS („עמודים · רשומות מצוטטות”)** (amended 2026-09-18: the STREAM lens is REMOVED, RECORDS is renamed CITED, and CLAIMS becomes PER-PAGE — flows §24 region 1, §25); (2) the
   FILTERS; (3) the PAGE CARD with the TIME STRIP — captures as dots with cited ones ringed, diffs as bars by chunk count —
   which is ALSO the scrubber and REPLACES the date axis; then (4) the
   filter chips — one horizontally scrolling row: PAGE (a picker from the read's own `pages` facet, §28), SINCE / UNTIL,
@@ -583,7 +583,11 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
   "nothing in this range" with the filters shown for removal, which is also the 400 state.
 - **Two weights of row** (§24 :660–:666): a CAPTURE is a thin row — the page's label, the date and time, the anchor mark
   (ATTRIBUTED or not yet), a COPY giving the citation token; a DIFF is a card — the page's label, the interval, the size of the
-  change by side from `current`, the classifier's opinion as ONE chip under rule 3's label, the CITED mark with the published
+  change by side from `current`, **the classifier's opinion CLAMPED TO TWO LINES with „עוד" — not a chip; it runs 197
+  characters and a chip shows forty (amended 2026-09-18, flows §24)** — and **the stream HIDES rows the classifier did
+  not flag, by `legallySignificant` and NEVER by `editorial`: 20 of 21 diffs are editorial and EIGHT of those are also
+  legally significant, so that gate would bury what it was meant to surface. A count line states how many are hidden and
+  one tap reveals them.** The CITED mark with the published
   theses that cite it, the NARROWED mark, AWAITING DERIVATION as a state.
 - **The third voice is born here** (§10 :378–:381; §24 :668–:670): `components/opinion/LabelledOpinion.tsx`, the ONE container
   carrying "ניתוח AI — אינו מהווה קביעה שיפוטית" with the model and version beside it — here the classifier's `classifierVersion`.
@@ -609,12 +613,19 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
   a list of what has been scanned is worth more than a search across it while the pages are few and grow slowly.
   `GET /api/corpus/search` stays mounted from UI-2 and unused. The sidebar's search icon beside הארכיון currently links to
   `/corpus/search` and would 404 — it is REMOVED here and returns with the page.
-- **The CLAIMS lens, `/corpus/claims`** (§25 :691–:697), from `GET /api/corpus/claims`: the same context line, filters and axis;
+- **THE CLAIMS VIEW IS PER PAGE** (the researcher, 2026-09-18; §25) — reached from that page's own view, `page`
+  REQUIRED, and **there is no bare cross-page claims list**. The rows are ordered by the date the claim LEFT, and
+  that ordering has no meaning across unrelated documents: *„לפי מה ממיינים את הטענות אם מציגים ברשימה אחת טענות של
+  scanned url 1 ו־scanned url 2?”* Within one page it is the whole point — this document's sentences in the order
+  they were withdrawn. From `GET /api/corpus/claims` with its page filter: the same context line, filters and axis;
   rows are trajectories ordered by the date the claim LEFT, latest first — the claim's first words, the page's label, the
-  pattern as a strip of ticks across its captures, the currency mark (PINNED_IS_LATEST / RECOMPUTED_AGREES current;
-  RECOMPUTED_DISAGREES / NOT_FOLLOWED_BY_LATEST STALE — A3 :1386–:1388), CITED; tap → the claim's sheet: the captures in
+  pattern as a strip of ticks across its captures, **`transitions` (how many times it flipped) and `finalState`
+  (present or absent in the latest capture)**. **THE CURRENCY MARK AND CITED ARE REMOVED 2026-09-18 (§25) — not
+  missing fields but questions with no meaning on this row: currency compares a PINNED computation against the
+  latest, and a trajectory no thesis cited has no pin. Both stay thesis-side, where a researcher can act on them.**
+  Tap → the claim's sheet: the captures in
   order with the claim present or absent at each, each a link to its record, and the diffs in which it left or returned.
-- **The RECORDS lens** (§25 :699–:702) is `/corpus?cited=1`, not a page: the stream filtered to `evidence ≠ null`, each card
+- **The CITED lens** (§25, renamed from RECORDS 2026-09-18 — „רשומות” is the UNIT, every row is one) is `/corpus?cited=1`, not a page: the stream filtered to `evidence ≠ null`, each card
   showing the record's standing — PROMOTED or WITHDRAWN — and its citing published theses.
 - **The RECORD SHEET** (§26 :706–:709) over the stream: a capture's text or a diff's CURRENT chunks stacked by side; the marks
   in full — the anchor, VERIFIED per capture where the row is cited, the opinion's categories, editorial, classifier version
@@ -671,7 +682,7 @@ five pages in its subjects — `no-id-as-text` with a decoy timestamp as text ca
 over the records page's stub, `nav-is-the-map`, `name-never-glass-fortress`; `npm test`, `npm run build`, `npm run lint` green.
 On staging at 375 px, in the dated doc: `/corpus` over the pages run B opened, both row weights present, the facet's pages
 equal to the thesis page's links; the thesis page's `/corpus?page=` link landing filtered; `?cited=1` showing the three cited
-records with their citing thesis; `/corpus/claims`; one capture page with the chain check pressed once against Base Sepolia
+records with their citing thesis; the CLAIMS view of ONE page, reached from that page (there is no cross-page claims list — §25); one capture page with the chain check pressed once against Base Sepolia
 and its answer beside `check_on_chain_status`' through the connector, the archive link opened once, the VERIFY hashes equal
 to the connector's; one diff page; `/records/<one cited fileHash>`; a surveyed page not opened answering the one sentence
 (`corona`, if still unopened — the id read from `list_pages` through the connector, never typed); no horizontal scroll on any
