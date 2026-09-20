@@ -320,6 +320,22 @@ export interface TrajectoryGroup {
   patternHash: string;
   /** The shared shape: the flips, each carrying how long its state held. */
   changes: ChangeSpan[];
+  /**
+   * THE SHARED VECTOR: one entry per capture examined, in capture order.
+   *
+   * `changes` above says what the claim DID — the run of states, each span naming its first capture and
+   * counting the rest. This says WHERE it did it. A span names one capture of however many it covers, so
+   * from `changes` alone a reader can neither mark each capture nor name the pair a claim left in: that
+   * pair is (last capture of span i, first capture of span i+1), and the last capture of a span is the one
+   * thing a span does not carry (docs/gf-ui-flows.md §6.1 :248, ruled 2026-09-20).
+   *
+   * It is a PROJECTION, never a second source. The members of a group have identical observations by
+   * construction — that identity is what `presencePatternHash` buckets on — so the group states the vector
+   * once, from its first member, and nothing recomputes it. `snapshotUrl` is left behind: it is a
+   * deterministic function of the url and the timestamp, and repeating it here would put a second spelling
+   * of the archive's address in every row.
+   */
+  captures: { snapshotDate: string; waybackTimestamp: string; present: boolean }[];
   transitions: number;
   firstSeen: string;
   lastSeen: string;
@@ -964,15 +980,29 @@ export function groupByMovement(trajectories: readonly Trajectory[]): Trajectory
     else byPattern.set(pattern, [t]);
   }
 
-  const groups: TrajectoryGroup[] = [...byPattern.entries()].map(([patternHash, members]) => ({
-    patternHash,
-    changes: changeSpans(members[0].observations),
-    transitions: members[0].transitions,
-    firstSeen: members[0].firstSeen,
-    lastSeen: members[0].lastSeen,
-    finalState: members[0].finalState,
-    claims: members.map((m) => ({ id: m.id, claimHash: m.claimHash, claimText: m.claimText })),
-  }));
+  const groups: TrajectoryGroup[] = [...byPattern.entries()].map(([patternHash, members]) => {
+    // THE SHARED MEMBER, BOUND ONCE AND GUARDED LOUDLY. Every field below is "what the members agree on",
+    // and reading it six times from an index said that six times over. `.at(0)` is typed `T | undefined`
+    // unconditionally, so the guard is one the compiler agrees is necessary under both debt ratchets — and
+    // a bucket with no members is a broken grouping, never a group to emit quietly (a silent `filter` here
+    // would drop a movement from the findings and report the absence as "nothing moved").
+    const shared = members.at(0);
+    if (shared === undefined) {
+      throw new Error(`claimTrajectory: the pattern ${patternHash} bucketed no trajectory — a group with no members is a broken grouping.`);
+    }
+    return {
+      patternHash,
+      changes: changeSpans(shared.observations),
+      // THE VECTOR, from the same member the spans are built from — one read of one array, so the two
+      // accounts of one history cannot come from different places.
+      captures: shared.observations.map((o) => ({ snapshotDate: o.snapshotDate, waybackTimestamp: o.waybackTimestamp, present: o.present })),
+      transitions: shared.transitions,
+      firstSeen: shared.firstSeen,
+      lastSeen: shared.lastSeen,
+      finalState: shared.finalState,
+      claims: members.map((m) => ({ id: m.id, claimHash: m.claimHash, claimText: m.claimText })),
+    };
+  });
 
   // Largest blocks first: a section that moved as a unit is the stronger finding.
   groups.sort((a, b) => b.claims.length - a.claims.length || b.transitions - a.transitions);

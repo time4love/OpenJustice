@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 import { readPublic, readUnfiltered } from '@/lib/api';
 import { parseCorpusPages, parseCorpusStream } from '@/lib/corpusBody';
-import { readCorpusQuery, readCursor, toReadParameters, writeCorpusQuery, writeReadQuery, type CorpusFilters } from '@/lib/corpusQuery';
+import { queryOf, readCorpusQuery, readCursor, toReadParameters, writeCorpusQuery, writeReadQuery, type CorpusFilters } from '@/lib/corpusQuery';
 import { CorpusContextLine } from '@/components/corpus/CorpusContextLine';
 import { PagesList } from '@/components/corpus/PagesList';
 import { PageCard } from '@/components/corpus/PageCard';
@@ -52,22 +52,6 @@ import { Link } from '@/i18n/navigation';
 interface PageParams {
   params: Promise<{ locale: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
-}
-
-/**
- * The URL's query as `URLSearchParams`, which is what the pure module reads.
- *
- * A REPEATED PARAMETER TAKES ITS FIRST VALUE. Next hands `?page=a&page=b` to a page as an ARRAY, and the read
- * takes one page; `readCorpusFilters` would see neither. Taking the first is the same answer a browser's own
- * `URLSearchParams.get` gives, so the page agrees with every other reader of the same URL.
- */
-function queryOf(searchParams: Record<string, string | string[] | undefined>): URLSearchParams {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(searchParams)) {
-    const one = Array.isArray(value) ? value.at(0) : value;
-    if (one !== undefined) params.set(key, one);
-  }
-  return params;
 }
 
 /**

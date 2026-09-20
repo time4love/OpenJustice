@@ -1,10 +1,11 @@
 import { createElement, type ComponentType, type ReactElement, type ReactNode } from 'react';
-import { render, type RenderResult } from '@testing-library/react';
+import { fireEvent, render, type RenderResult } from '@testing-library/react';
 import { NextIntlClientProvider, createTranslator, type AbstractIntlMessages } from 'next-intl';
 import type { ResearcherProfile } from '@/context/AuthContext';
 import { routing } from '@/i18n/routing';
-import { TabsProvider } from '@/components/shell/RightPane';
+import { RightPane, TabsProvider } from '@/components/shell/RightPane';
 import { messageCatalogs, requireSubjects } from './scan';
+import { claimsAnswer } from './fixtures/corpus/claims';
 
 // ---------------------------------------------------------------------------
 // RENDER-SCAN HELPERS FOR THE FRONTEND'S INSTRUMENTS (docs/gf-ui-refactor-plan.md
@@ -439,4 +440,44 @@ export async function renderPage<P extends Record<string, string>>(
     if (isNotFound(error)) return { notFound: true };
     throw error;
   }
+}
+
+
+/**
+ * THE CLAIMS VIEW AS A READER MEETS IT — the rows, and the first claim's sheet open beside them.
+ *
+ * ONE SPELLING, IN THE HARNESS, because three instruments need the same thing and two of them had written
+ * it themselves. The third had NOT — `no-door-before-it-exists` rendered the LIST alone — and a decoy proved
+ * what that cost: an `/intake` anchor planted inside the sheet reddened NOTHING, because the half of the
+ * view that mints the most hrefs was never in the tree the scan read.
+ *
+ * THE SHEET IS HALF OF THE VIEW AND NOT A SEPARATE PAGE. It is declared into the shell's registry and drawn
+ * by `RightPane`, so the wrapper is part of the helper rather than each caller's business; and the tap goes
+ * through `fireEvent`, whose `act` is what lets the pane re-render before anything is asserted.
+ *
+ * IT FAILS LOUDLY AT EVERY STEP — no row, no sheet, a 404 — because a helper that returned a half-rendered
+ * tree would hand every caller a scan over less than it thinks it is scanning, which is this file's own
+ * recurring defect.
+ */
+export async function renderClaimsWithSheet(locale: Locale = routing.defaultLocale, page = 'page-one'): Promise<HTMLElement> {
+  setPublicBodies({ [`/api/corpus/claims?page=${page}`]: { status: 200, body: claimsAnswer } });
+  const claimsPage = (await import('@/app/[locale]/corpus/claims/page')).default;
+  const rendered = await renderPage(claimsPage, { locale }, {
+    locale,
+    searchParams: { page },
+    wrapper: ({ children }) => (
+      <TabsProvider>
+        {children}
+        <RightPane />
+      </TabsProvider>
+    ),
+  });
+  if (rendered.notFound) throw new Error('renderClaimsWithSheet: the claims view answered the one 404, not a body');
+  const tap = rendered.container.querySelector('[data-open-claim]');
+  if (tap === null) throw new Error('renderClaimsWithSheet: the claims view rendered no row to open');
+  fireEvent.click(tap);
+  if (rendered.container.querySelector('[data-claim-sheet]') === null) {
+    throw new Error('renderClaimsWithSheet: the tap opened no sheet — the pane drew nothing to scan');
+  }
+  return rendered.container;
 }

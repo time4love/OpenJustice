@@ -1993,6 +1993,20 @@
     "lens": {
       "pages": "Pages",
       "cited": "Cited records"
+    },
+    "claims": {
+      "entry": "This page's claims",
+      "title": "The page's claims",
+      "empty": "No tracked claims were found on this page",
+      "present": "Present in the latest capture",
+      "absent": "Absent from the latest capture",
+      "strip": "The claim's presence across the captures, {first} – {last}",
+      "alsoMoved": "{count, plural, one {and one more claim that moved with it} other {and # more claims that moved with it}}",
+      "overTime": "The claim over time",
+      "capturePresent": "Present",
+      "captureAbsent": "Absent",
+      "leftIn": "The change in which it was removed",
+      "returnedIn": "The change in which it returned"
     }
   },
   "opinion": {

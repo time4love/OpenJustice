@@ -8,6 +8,7 @@ import { corpusStream } from './fixtures/corpus/stream';
 import { captureRead } from './fixtures/corpus/capture';
 import { diffInput } from './fixtures/corpus/diffInput';
 import { resolvedCaptureRecord } from './fixtures/corpus/record';
+import { claimsAnswer } from './fixtures/corpus/claims';
 
 // ---------------------------------------------------------------------------
 // filter-is-a-query — docs/gf-ui-flows.md §31's named instrument, and §8 (a filter is a parameter of the ONE
@@ -193,5 +194,64 @@ describe('filter-is-a-query — the record pages', () => {
     for (const forbidden of requireSubjects('the forbidden reads', FORBIDDEN)) {
       expect(reads.filter((call) => call.path.startsWith(forbidden))).toEqual([]);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE CLAIMS VIEW'S ARM (UI-7 chunk 6) — §8 :344, and §25 :787's `page` REQUIRED.
+//
+// THE SECOND READ THIS VIEW COULD MAKE IS NOT A MISTAKE ANYONE WOULD SPOT. `GET /api/pages/:id/trajectories`
+// serves THE SAME ROWS at one page, row for row (§6.1 :248), so a page that read it instead of, or beside,
+// `/api/corpus/claims` would look perfectly correct on screen and would be a second spelling of one view —
+// which is what §8's rule is about, not performance. It is named as a VALUE below for that reason.
+//
+// THE WIRE PATH IS HAND-WRITTEN FROM THE MEASUREMENT, never composed from the page's own serialiser, exactly
+// as the stream's cases above are. Measured 2026-09-20 on the running backend:
+//
+//     GET /api/corpus/claims?page=<id>                    -> 200, 26 rows
+//     GET /api/corpus/claims                              -> 200 (the ROUTE does not require `page`)
+//     GET /api/corpus/claims?page=<unknown>               -> 404 { "error": "Not found" }
+//     GET /api/corpus/claims?page=<id>&since=…&until=…    -> 400 INVALID_RANGE when the range is empty
+// ---------------------------------------------------------------------------
+
+const CLAIMS_WIRE = '/api/corpus/claims?page=page-one';
+const claimsPage = () => import('../src/app/[locale]/corpus/claims/page');
+
+describe('filter-is-a-query — the claims view', () => {
+  it('THE CLAIMS VIEW MAKES ITS ONE READ — never `/api/pages/:id/trajectories`, which serves the same rows', async () => {
+    setPublicBodies({ [CLAIMS_WIRE]: { status: 200, body: claimsAnswer } });
+    const rendered = await renderPage((await claimsPage()).default, { locale: LOCALE }, { locale: LOCALE, searchParams: { page: 'page-one' } });
+    expect(rendered.notFound).toBe(false);
+
+    const reads = requireSubjects('reads the claims view made', apiCallsMade());
+    expect(reads.map((call) => call.path)).toEqual([CLAIMS_WIRE]);
+    expect(reads.at(0)?.parsed).toBe(true);
+    // THIS VIEW'S OWN FORBIDDEN SET, and it is NOT the record pages' above: `/api/corpus` is a PREFIX of this
+    // view's own read, so reusing that list would refuse the one read it must make. The stream is named as an
+    // exact path and a query, never as a prefix — which is why each entry below is a predicate rather than a
+    // string, and why the gated twin is spelled out beside the ungated one.
+    const FORBIDDEN_HERE: readonly { name: string; hit: (path: string) => boolean }[] = [
+      { name: 'the same rows at one page', hit: (path) => path.startsWith('/api/pages/page-one/trajectories') },
+      { name: "the page's whole timeline", hit: (path) => path.startsWith('/api/pages/page-one/findings') },
+      { name: 'the gated twin', hit: (path) => path.startsWith('/api/research/') },
+      { name: 'the stream', hit: (path) => path === '/api/corpus' || path.startsWith('/api/corpus?') },
+      { name: 'the tool surface', hit: (path) => path.startsWith('/api/mcp') },
+    ];
+    for (const forbidden of requireSubjects('the forbidden reads', FORBIDDEN_HERE)) {
+      expect([forbidden.name, reads.filter((call) => forbidden.hit(call.path))]).toEqual([forbidden.name, []]);
+    }
+  });
+
+  it('THE INTERVAL CHIPS RIDE THE ONE READ, and the STREAM`s two parameters never reach a route that refuses them', async () => {
+    const wire = '/api/corpus/claims?page=page-one&since=2022-01-01&until=2022-12-31';
+    setPublicBodies({ [wire]: { status: 200, body: claimsAnswer } });
+    await renderPage((await claimsPage()).default, { locale: LOCALE }, {
+      locale: LOCALE,
+      // `kind` and `cited` are the STREAM's and this read takes neither: a reader arriving from
+      // `/corpus?cited=1` must keep a working view, not earn `Unrecognized key` from the route.
+      searchParams: { page: 'page-one', since: '2022-01-01', until: '2022-12-31', kind: 'DIFF', cited: '1' },
+    });
+    const built = requireSubjects('reads the claims view made', apiCallsMade()).at(0)?.path ?? '';
+    expect({ path: built, carriesStreamOnly: /[?&](kind|cited)=/.test(built) }).toEqual({ path: wire, carriesStreamOnly: false });
   });
 });

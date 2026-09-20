@@ -199,6 +199,53 @@ export function writeReadQuery(read: CorpusReadParameters): URLSearchParams {
   return query;
 }
 
+/**
+ * NEXT'S `searchParams` AS `URLSearchParams`, which is what everything above reads.
+ *
+ * A REPEATED PARAMETER TAKES ITS FIRST VALUE. Next hands `?page=a&page=b` to a page as an ARRAY and the reads
+ * take one page; taking the first is the same answer a browser's own `URLSearchParams.get` gives, so a page
+ * agrees with every other reader of the same URL.
+ *
+ * It lives here, in the pure module, because TWO pages now read a query — `/corpus` and `/corpus/claims` —
+ * and the second copy of eight lines is the second spelling this repository names as its dominant defect.
+ */
+export function queryOf(searchParams: Record<string, string | string[] | undefined>): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(searchParams)) {
+    const one = Array.isArray(value) ? value.at(0) : value;
+    if (one !== undefined) params.set(key, one);
+  }
+  return params;
+}
+
+/**
+ * `list_trajectories`' parameters (§6.1 :247) — and they are NOT `list_corpus`'.
+ *
+ * `page` IS REQUIRED HERE AND OPTIONAL THERE, which is the whole of §25 :783 expressed in a type: the claims
+ * view has no meaning without one, so a caller cannot build this object without naming a page. `kind` and
+ * `cited` are absent because the read has neither, and the route answers 400 `Unrecognized key` to a
+ * parameter it does not take — so a serialiser that carried the stream's five would turn a working filter
+ * into a refusal the moment a reader arrived from `/corpus?cited=1`.
+ */
+export interface ClaimsReadParameters {
+  page: string;
+  since?: string;
+  until?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+/** The claims read's parameters as the wire carries them — the scope is the route, so it is never a key. */
+export function writeClaimsQuery(read: ClaimsReadParameters): URLSearchParams {
+  const query = new URLSearchParams();
+  query.set('page', read.page);
+  if (read.since !== undefined) query.set('since', read.since);
+  if (read.until !== undefined) query.set('until', read.until);
+  if (read.cursor !== undefined) query.set('cursor', read.cursor);
+  if (read.limit !== undefined) query.set('limit', String(read.limit));
+  return query;
+}
+
 export function toReadParameters(filters: CorpusFilters, scope: CorpusScope, cursor?: string, limit?: number): CorpusReadParameters {
   const read: CorpusReadParameters = { scope };
   if (filters.page !== undefined) read.page = filters.page;

@@ -251,12 +251,20 @@ export function RecordSheetTab({ entries, openId }: { entries: readonly CorpusEn
   );
 }
 
-/** Opening a record: the tab is declared, the layer opened and the tab selected — one act, one place. */
-export function useOpenRecord(): (entry: CorpusEntry) => void {
+/**
+ * Opening a thing in the pane: the layer opened and the tab selected — one act, one place.
+ *
+ * IT TAKES AN ID AND NOT A ROW (widened 2026-09-20). The act is "select this tab and open the layer", and it
+ * never read anything off the entry but its id. A corpus row is not the only thing the pane holds — the
+ * claims view opens a CLAIM's sheet through this same call — and the alternative was a second hook doing the
+ * same two things for a different shape, which is the one-rule-many-implementations defect. Each caller names
+ * its own id: `recordIdOf` for a row, `claimIdOf` for a trajectory.
+ */
+export function useOpenRecord(): (id: string) => void {
   const [, setLayer] = usePaneLayer();
   const [, select] = usePaneSelection();
-  return (entry: CorpusEntry) => {
-    select(recordIdOf(entry));
+  return (id: string) => {
+    select(id);
     setLayer(true);
   };
 }

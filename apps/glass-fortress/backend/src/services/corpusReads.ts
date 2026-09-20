@@ -4,7 +4,7 @@ import type { ChunkSide } from '../lib/diffChunking';
 import { prisma } from '../lib/prisma';
 import { recordId, isWaybackTimestamp, type RecordId } from '../lib/evidenceIdentity';
 import { phrasePresent } from '../lib/htmlText';
-import type { ComputeResult, ChangeSpan } from './claimTrajectory';
+import type { ComputeResult, ChangeSpan, TrajectoryGroup } from './claimTrajectory';
 import { CLASSIFICATION_KEYS } from './recordDiff';
 import {
   currentVersionOf,
@@ -903,6 +903,13 @@ export interface TrajectoryFinding {
   finalState: 'PRESENT' | 'REMOVED';
   claimCount: number;
   changes: ChangeSpan[];
+  /**
+   * One entry per capture examined, in capture order — the group's own vector, carried through unchanged
+   * (`TrajectoryGroup.captures`; docs/gf-ui-flows.md §6.1 :248, ruled 2026-09-20). `changes` says what the
+   * claim did; this says where. A reader marking each capture, or naming the diff a claim left in, needs
+   * the capture a span ENDS on, and a span carries only the one it starts on.
+   */
+  captures: TrajectoryGroup['captures'];
   /** trajectoryId is the citable identity; a group has none of its own, so every member is cited. */
   claims: { trajectoryId: string; claimHash: string; claimText: string }[];
 }
@@ -918,6 +925,7 @@ export function trajectoryFindings(result: ComputeResult): TrajectoryFinding[] {
     finalState: g.finalState,
     claimCount: g.claims.length,
     changes: g.changes,
+    captures: g.captures,
     claims: g.claims.map((c) => ({
       trajectoryId: c.id,
       claimHash: c.claimHash,

@@ -1,7 +1,7 @@
 jest.mock('../src/lib/api', () => jest.requireActual<typeof import('./render')>('./render').apiDouble());
 jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>('./render').navigationDouble());
 
-import { ancestorsOf, renderPage, setAuthState, setPathname, setPublicBodies, textNodes, type Locale, type PageRender } from './render';
+import { ancestorsOf, renderClaimsWithSheet, renderPage, setAuthState, setPathname, setPublicBodies, textNodes, type Locale, type PageRender } from './render';
 import { ID_SHAPES, requireSubjects } from './scan';
 import { captureRead } from './fixtures/corpus/capture';
 import { diffInput } from './fixtures/corpus/diffInput';
@@ -56,6 +56,7 @@ function containerOf(name: string, rendered: PageRender): HTMLElement {
   return rendered.container;
 }
 
+
 async function allPages(locale: Locale): Promise<{ name: string; container: HTMLElement }[]> {
   stage();
   const thesis = (await thesisPage()).default;
@@ -94,6 +95,15 @@ async function allPages(locale: Locale): Promise<{ name: string; container: HTML
         await renderPage((await recordsPage()).default, { locale, fileHash: resolvedCaptureRecord.fileHash }, { locale }),
       ),
     },
+    // UI-7 chunk 6: the CLAIMS view puts the ARCHIVE'S OWN HEBREW SENTENCE beside a url, and its SHEET
+    // composes an interval and two hrefs per flip — so a Hebrew row carrying an unisolated date is likelier
+    // here than anywhere this scan already looked.
+    //
+    // IT IS EXAMINED WITH ITS SHEET OPEN, and that is not a convenience. The LIST alone carries no date and
+    // no url text node at all — the row is the claim's words, the page's label and two words — so the
+    // vacuity guard refused it, correctly. The dates and the composed links live in the sheet, which is
+    // half of this view rather than a separate page, and a reader reaches it in one tap.
+    { name: '/corpus/claims', container: await renderClaimsWithSheet(locale) },
   ];
 }
 
