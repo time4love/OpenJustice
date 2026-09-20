@@ -6,6 +6,7 @@ import { ID_SHAPES, requireSubjects } from './scan';
 import { captureRead } from './fixtures/corpus/capture';
 import { diffInput } from './fixtures/corpus/diffInput';
 import { resolvedCaptureRecord } from './fixtures/corpus/record';
+import { claimsAnswer } from './fixtures/corpus/claims';
 
 const TRACKED = 'page-one';
 const CAPTURE = '20211223211940';
@@ -13,6 +14,7 @@ const CAPTURE_PATH = `/api/pages/${TRACKED}/captures/${CAPTURE}`;
 const capturePage = async () => import('@/app/[locale]/pages/[trackedUrlId]/captures/[capture]/page');
 const diffPage = async () => import('@/app/[locale]/pages/[trackedUrlId]/diffs/[before]/[after]/page');
 const recordsPage = async () => import('@/app/[locale]/records/[fileHash]/page');
+const claimsPage = async () => import('@/app/[locale]/corpus/claims/page');
 const AFTER = '20220105090000';
 const PAIR_PATH = `/api/pages/${TRACKED}/diffs/${CAPTURE}/${AFTER}`;
 
@@ -62,6 +64,7 @@ async function everyPage(locale: Locale): Promise<{ name: string; container: HTM
     [CAPTURE_PATH]: { status: 200, body: captureRead },
     [PAIR_PATH]: { status: 200, body: diffInput },
     [`/api/records/${resolvedCaptureRecord.fileHash}`]: { status: 200, body: resolvedCaptureRecord },
+    '/api/corpus/claims?page=page-one': { status: 200, body: claimsAnswer },
   });
   const thesis = (await thesisPage()).default;
   const call = (await callPage()).default;
@@ -92,6 +95,13 @@ async function everyPage(locale: Locale): Promise<{ name: string; container: HTM
     {
       name: 'records',
       container: containerOf('records', await renderPage((await recordsPage()).default, { locale, fileHash: resolvedCaptureRecord.fileHash }, { locale })),
+    },
+    // UI-7 chunk 6: the CLAIMS view renders a `patternHash`, a `trajectoryId` and one 14-digit instant PER
+    // CAPTURE — 22 of them on the real page's busiest row — and every one of those lives in a `data-`
+    // attribute or a COPY value. It is the page with the most ids per screen after the capture page.
+    {
+      name: 'claims',
+      container: containerOf('claims', await renderPage((await claimsPage()).default, { locale }, { locale, searchParams: { page: 'page-one' } })),
     },
   ];
 }

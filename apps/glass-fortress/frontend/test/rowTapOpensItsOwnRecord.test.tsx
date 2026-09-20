@@ -13,9 +13,7 @@ jest.mock('../src/components/corpus/RecordSheet', () => {
 import { renderPage, setAuthState, setPathname, setPublicBodies, type Locale, type PageRender } from './render';
 import { requireSubjects } from './scan';
 import { readCorpusFilters, toReadParameters, writeReadQuery } from '../src/lib/corpusQuery';
-import { recordIdOf } from '../src/components/corpus/RecordSheet';
 import { corpusStream } from './fixtures/corpus/stream';
-import type { CorpusEntry } from '../src/types/corpus';
 
 // ---------------------------------------------------------------------------
 // row-tap-opens-its-own-record — docs/gf-ui-flows.md §24 region 4 ("a row tap opens THE RECORD"), §26.
@@ -63,7 +61,11 @@ describe('row-tap-opens-its-own-record', () => {
     const container = await renderStream({ page: 'page-one' });
     const taps = requireSubjects('row taps', [...container.querySelectorAll('[data-open-record]')]);
     for (const tap of taps) (tap as HTMLButtonElement).click();
-    const got = requireSubjects('records opened', opened) as CorpusEntry[];
+    // THE ARGUMENT IS AN ID since `useOpenRecord` was widened (2026-09-20) so the claims view could open its
+    // own sheet through the SAME act. The property is unchanged and the assertion is now DIRECT: what the
+    // handler received is compared to the attribute itself, with no `recordIdOf` re-derivation standing
+    // between them — a case that re-derived both sides from one value could not tell them apart.
+    const got = requireSubjects('records opened', opened) as string[];
     expect({
       // One tap, one record, in the order the rows are drawn.
       openedCount: got.length,
@@ -71,10 +73,10 @@ describe('row-tap-opens-its-own-record', () => {
       // THE ASSERTION: what the handler RECEIVED is the record its own row NAMES. A component that opened the
       // first record from every row has the right attributes and the wrong arguments, and this is the arm
       // that separates them.
-      matchesItsOwnRow: got.map(recordIdOf),
+      matchesItsOwnRow: got,
       attributes: taps.map((tap) => tap.getAttribute('data-open-record') ?? ''),
       // TWO-SIDED, so "they are all equal" cannot be satisfied by all-the-same: the set is as large as the rows.
-      distinct: new Set(got.map(recordIdOf)).size,
+      distinct: new Set(got).size,
     }).toEqual({
       openedCount: 5,
       tapCount: 5,
@@ -90,13 +92,15 @@ describe('row-tap-opens-its-own-record', () => {
     const diff = container.querySelector('[data-diff-card] [data-open-record]');
     (capture as HTMLButtonElement).click();
     (diff as HTMLButtonElement).click();
-    const got = requireSubjects('records opened', opened) as CorpusEntry[];
+    const got = requireSubjects('records opened', opened) as string[];
     expect({
-      kinds: got.map((entry) => entry.kind),
-      ids: got.map(recordIdOf),
+      // THE KIND IS READ OFF THE ID the handler received — `recordIdOf`'s own two prefixes — so the arm still
+      // separates the two row weights without the entry the hook no longer carries.
+      kinds: got.map((id) => id.split(':').at(0)),
+      ids: got,
       expected: [capture?.getAttribute('data-open-record'), diff?.getAttribute('data-open-record')],
     }).toEqual({
-      kinds: ['CAPTURE', 'DIFF'],
+      kinds: ['capture', 'diff'],
       ids: [capture?.getAttribute('data-open-record'), diff?.getAttribute('data-open-record')],
       expected: [capture?.getAttribute('data-open-record'), diff?.getAttribute('data-open-record')],
     });

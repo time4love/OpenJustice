@@ -145,7 +145,7 @@ export function Stream({ entries }: { entries: readonly CorpusEntry[] }) {
   const openRecord = useOpenRecord();
   const open = (entry: CorpusEntry): void => {
     setOpenId(recordIdOf(entry));
-    openRecord(entry);
+    openRecord(recordIdOf(entry));
   };
   const { shown, hidden } = partitionBySignificance(entries);
   if (entries.length === 0) return <p data-stream-empty className="text-sm text-ink-muted">{t('emptyFiltered')}</p>;

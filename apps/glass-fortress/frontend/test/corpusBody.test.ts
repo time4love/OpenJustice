@@ -1,4 +1,4 @@
-import { parseCaptureRead, parseChainAnswer, parseCorpusPages, parseDiffInput, parseResolvedRecord } from '@/lib/corpusBody';
+import { parseCaptureRead, parseChainAnswer, parseClaims, parseCorpusPages, parseDiffInput, parseResolvedRecord } from '@/lib/corpusBody';
 import type { ResolvedRecord } from '@/types/corpus';
 import { requireSubjects } from './scan';
 import { corpusStream } from './fixtures/corpus/stream';
@@ -7,6 +7,7 @@ import { diffInput } from './fixtures/corpus/diffInput';
 import { resolvedCaptureRecord, resolvedDiffRecord } from './fixtures/corpus/record';
 import { chainAnswer } from './fixtures/corpus/chain';
 import { chainUnavailableWire } from './fixtures/corpus/chainUnavailable';
+import { claimsAnswer, claimsUndetected } from './fixtures/corpus/claims';
 
 // ---------------------------------------------------------------------------
 // corpus-body — docs/gf-ui-flows.md §8 :331–:333 ("bytes, not views"), §28 :792 (the facet), §27 (the gated
@@ -313,5 +314,103 @@ describe('corpus-body — the record pages\' bodies', () => {
       const damaged = { ...chainAnswer, captures: [dropped(chainAnswer.captures[0] as unknown as Record<string, unknown>, field)] };
       expect(() => parseChainAnswer(damaged)).toThrow(new RegExp(`captures\\[0\\]\\.${field}`));
     }
+  });
+
+  /**
+   * RB-7 — `list_trajectories`' body, §6.1 :248.
+   *
+   * THE THREE INVARIANTS ARE THE WIRE'S, not the fixture's. They are what makes `captures` and `changes` two
+   * accounts of ONE history rather than two facts that may disagree, and each is a property a hand-written
+   * fixture gets wrong: the file this set replaces declared `transitions: 3` over three spans and put two
+   * ABSENT spans next to each other, and no page ever read it, so nothing said so for five days.
+   *
+   * THE FLOOR IS OVER THE SET AND OVER EACH ROW. `requireSubjects` refuses an empty set; the arm assertions
+   * refuse a set that no longer spans the contract; and the per-row floors refuse a row degenerate enough to
+   * satisfy the invariants vacuously — a single-span row alternates trivially and sums trivially.
+   */
+  it('RB-7 the claims body: both accounts of one history, and the three invariants the wire holds', () => {
+    expect(parseClaims(claimsAnswer)).toEqual(claimsAnswer);
+    expect(parseClaims(claimsUndetected)).toEqual(claimsUndetected);
+
+    // THE INVARIANTS ARE READ OFF WHAT THE PARSER RETURNS, never off the fixture literal beside it. Read off
+    // the literal they are a claim about a file; read off the parse they are a claim about what a CALLER
+    // gets, which is the only version a page depends on. Found by the stub decoy: against a `parseClaims`
+    // that narrowed nothing, every invariant below still passed, because the fixture it was reading was
+    // valid — a case green about a parser it had never exercised.
+    const rows = requireSubjects('the claims fixture set', parseClaims(claimsAnswer).entries);
+    expect(rows.length).toBeGreaterThanOrEqual(4);
+
+    // THE SET SPANS THE CONTRACT — removed-and-never-restored, present, multi-flip, a group, and the empty
+    // page. Asserted BEFORE the invariants, so a set that lost an arm is a red case and not a quieter one.
+    expect(rows.some((row) => row.finalState === 'REMOVED' && row.captures.at(-1)?.present === false)).toBe(true);
+    expect(rows.some((row) => row.finalState === 'PRESENT')).toBe(true);
+    expect(rows.some((row) => row.transitions >= 5)).toBe(true);
+    expect(rows.some((row) => row.claimCount > 1 && row.claims.length > 1)).toBe(true);
+    expect(rows.some((row) => row.changes.some((one) => one.days === null))).toBe(true);
+    expect(claimsUndetected.undetected.length).toBeGreaterThanOrEqual(1);
+
+    // THE FLOOR THAT MAKES THE THIRD INVARIANT MEAN SOMETHING, and it belongs to the SET and not to a row.
+    // A row whose every span holds exactly one capture is legitimate — a claim that flipped at every
+    // capture — and on it `sum(changes[].captures) === captures.length` is true of any two equal-length
+    // lists. At least one row must carry a span COVERING several captures, or the invariant is satisfied by
+    // a `captures` vector that is merely the spans renamed, which is the reading §6.1 :248 exists to reject.
+    expect(rows.some((row) => row.changes.some((one) => one.captures > 1))).toBe(true);
+    expect(rows.some((row) => row.captures.length > row.changes.length)).toBe(true);
+
+    for (const row of rows) {
+      // A VACUITY FLOOR PER ROW: a single span alternates trivially and sums trivially.
+      expect(row.changes.length).toBeGreaterThanOrEqual(3);
+
+      // (1) a span per state, from the first capture on.
+      expect(row.changes.length).toBe(row.transitions + 1);
+      // (2) adjacent spans alternate — two spans in one state is a run that was not maximal.
+      expect(row.changes.filter((one, index) => index > 0 && one.present === row.changes.at(index - 1)?.present)).toEqual([]);
+      // (3) the spans account for exactly the captures in the vector.
+      expect(row.changes.reduce((total, one) => total + one.captures, 0)).toBe(row.captures.length);
+      // AND THE TWO AGREE ON WHERE: a span starts at a capture the vector holds, in the same state.
+      for (const one of row.changes) {
+        expect(row.captures.find((capture) => capture.waybackTimestamp === one.waybackTimestamp)?.present).toBe(one.present);
+      }
+      // `finalState` IS THE LATEST CAPTURE'S STATE, which is what the row's word tells a reader.
+      expect(row.captures.at(-1)?.present).toBe(row.finalState === 'PRESENT');
+    }
+  });
+
+  it('RB-8 EVERY REQUIRED FIELD OF A CLAIMS ROW NAMES ITSELF, and `days` is nullable where nothing else is', () => {
+    const fields = requireSubjects('a trajectory row\'s required fields', [
+      'patternHash',
+      'sourceStateHash',
+      'transitions',
+      'firstSeen',
+      'lastSeen',
+      'finalState',
+      'claimCount',
+      'captures',
+      'changes',
+      'claims',
+      'page',
+    ]);
+    const row = claimsAnswer.entries[0] as unknown as Record<string, unknown>;
+    for (const field of fields) {
+      expect(() => parseClaims({ ...claimsAnswer, entries: [dropped(row, field)] })).toThrow(new RegExp(`entries\\[0\\]\\.${field}`));
+    }
+
+    // `undetected` IS REQUIRED: without it an empty list cannot be told from a page nothing was tracked on.
+    expect(() => parseClaims(dropped(claimsAnswer as unknown as Record<string, unknown>, 'undetected'))).toThrow('undetected');
+
+    // `finalState` IS A CLOSED UNION AND NOT MERELY A STRING. A row's whole word to the reader is drawn
+    // from it — `corpus.claims.present` or `corpus.claims.absent` — so a third value must fail HERE, loudly
+    // and by name, rather than reach a page that would draw "absent" for anything that is not "PRESENT".
+    // The reasons are `claimTrajectory.ts`' own two, and a fourth arriving is a body that moved.
+    expect(() => parseClaims({ ...claimsAnswer, entries: [{ ...row, finalState: 'GONE' }] })).toThrow('entries[0].finalState');
+
+    // `days` IS THE ONE NULLABLE FIGURE, and a missing one is NOT read as zero.
+    const spans = claimsAnswer.entries[0]?.changes ?? [];
+    const nulled = { ...claimsAnswer, entries: [{ ...claimsAnswer.entries[0], changes: spans.map((one) => ({ ...one, days: null })) }] };
+    expect(parseClaims(nulled).entries[0]?.changes.every((one) => one.days === null)).toBe(true);
+    // Its NEIGHBOURS are not nullable — a span with no count is a span that says nothing about its run.
+    expect(() => parseClaims({ ...claimsAnswer, entries: [{ ...claimsAnswer.entries[0], changes: [dropped(spans[0] as unknown as Record<string, unknown>, 'captures')] }] })).toThrow(
+      'changes[0].captures',
+    );
   });
 });

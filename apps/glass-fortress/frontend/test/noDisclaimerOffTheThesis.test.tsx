@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { renderPage, setAuthState, setPathname, setPublicBodies, textNodes, type Locale, type PageRender } from './render';
 import { requireSubjects } from './scan';
 import { corpusStream } from './fixtures/corpus/stream';
+import { claimsAnswer } from './fixtures/corpus/claims';
 import { captureRead } from './fixtures/corpus/capture';
 import { diffInput } from './fixtures/corpus/diffInput';
 import { resolvedCaptureRecord } from './fixtures/corpus/record';
@@ -102,6 +103,22 @@ describe('no-disclaimer-off-the-thesis · the rendered pages', () => {
     }).toEqual({ found: [], rows: true, controlFindsBoth: 2 });
   });
 
+  it('THE CLAIMS VIEW CARRIES NO DISCLAIMER — a corpus view is neither a thesis page nor a call page', async () => {
+    setPublicBodies({ '/api/corpus/claims?page=page-one': { status: 200, body: claimsAnswer } });
+    const container = containerOf(
+      await renderPage((await import('../src/app/[locale]/corpus/claims/page')).default, { locale: LOCALE }, { locale: LOCALE, searchParams: { page: 'page-one' } }),
+    );
+    const shown = shownText(container);
+    const control = controlFragment();
+    expect({
+      found: DISCLAIMERS.filter((sentence) => shown.includes(sentence)),
+      // THE FLOOR: the view really drew its rows, so the absence is a fact about the chrome rather than
+      // about a render that produced nothing — the shape a rendered-case absence fails by default.
+      rows: container.querySelectorAll('[data-claim-row]').length > 0,
+      controlFindsBoth: DISCLAIMERS.filter((sentence) => (control.textContent ?? '').includes(sentence)).length,
+    }).toEqual({ found: [], rows: true, controlFindsBoth: 2 });
+  });
+
   it('`/corpus` AS THE STREAM CARRIES NO DISCLAIMER EITHER — it rendered one in EACH branch, so both are held', async () => {
     setPublicBodies({ '/api/corpus?kind=DIFF': { status: 200, body: corpusStream } });
     const container = containerOf(await renderPage((await import('../src/app/[locale]/corpus/page')).default, { locale: LOCALE }, { locale: LOCALE, searchParams: { kind: 'DIFF' } }));
@@ -183,7 +200,7 @@ describe('no-disclaimer-off-the-thesis · the set, over the source', () => {
       'public page files',
       // The set as a VALUE, and it fails on an empty one: a scan that examined nothing is the vacuity this
       // repository names as its own.
-      ['corpus/page.tsx', 'theses/page.tsx', ...MAY_CARRY_IT, 'pages/[trackedUrlId]/captures/[capture]/page.tsx', 'pages/[trackedUrlId]/diffs/[before]/[after]/page.tsx', 'records/[fileHash]/page.tsx']
+      ['corpus/page.tsx', 'corpus/claims/page.tsx', 'theses/page.tsx', ...MAY_CARRY_IT, 'pages/[trackedUrlId]/captures/[capture]/page.tsx', 'pages/[trackedUrlId]/diffs/[before]/[after]/page.tsx', 'records/[fileHash]/page.tsx']
         .map((rel) => ({ rel, source: sourceOf(rel) }))
         .filter(({ source }) => source !== undefined),
     );

@@ -180,6 +180,78 @@ export interface CorpusAnswer {
 }
 
 /**
+ * ONE CAPTURE OF A CLAIM'S VECTOR (§6.1 :248) — where the claim stood at one capture.
+ *
+ * `waybackTimestamp` is a 14-digit archive name and is NEVER rendered as text (§4 :167): the strip carries
+ * it in a `data-` attribute and the sheet's link puts it in an href. `snapshotUrl` is deliberately NOT in
+ * this type — the read does not send it, and `lib/archiveUrl.ts` is where the archive's address is made.
+ */
+export interface TrajectoryCapture {
+  snapshotDate: string;
+  waybackTimestamp: string;
+  present: boolean;
+}
+
+/**
+ * ONE SPAN OF STATE (§6.1 :248) — a run of consecutive captures in which the claim held one state.
+ *
+ * IT NAMES ITS FIRST CAPTURE AND COUNTS THE REST, and that is why `TrajectoryCapture[]` exists beside it:
+ * a strip drawn from spans has one tick per FLIP (4 for the real page's 22 captures), and the diff a claim
+ * left in is the pair (last capture of span i, first capture of span i+1) — a capture no span names.
+ *
+ * `days` IS NULLABLE AND IS A BOUND, NOT A DURATION (the backend's own words): it measures to the capture
+ * that ENDED the state, and the true change point lies inside that window. `null` when a date will not
+ * parse — a missing figure, never a zero.
+ */
+export interface TrajectorySpan extends TrajectoryCapture {
+  snapshotUrl: string;
+  captures: number;
+  days: number | null;
+  openEnded: boolean;
+}
+
+/**
+ * ONE TRAJECTORY ROW of `list_trajectories` (§6.1 :248) — a group of claims that moved as one unit.
+ *
+ * `patternHash`, `sourceStateHash`, `claimHash` and `trajectoryId` are ids and NEVER text (§4 :167).
+ * `trajectoryId` has the one home §4 :171–:173 gives it: a COPY control carrying `#tr_<trajectoryId>`.
+ *
+ * `claimCount` IS `claims.length` ON THE WIRE and is carried anyway, because it is the read's own count and
+ * a page that recomputed it would be deriving a number it was handed. 13 of the real page's 26 rows are
+ * groups, from 2 to 45 claims.
+ */
+export interface TrajectoryEntry {
+  patternHash: string;
+  sourceStateHash: string;
+  transitions: number;
+  firstSeen: string;
+  lastSeen: string;
+  finalState: 'PRESENT' | 'REMOVED';
+  claimCount: number;
+  captures: TrajectoryCapture[];
+  changes: TrajectorySpan[];
+  claims: { trajectoryId: string; claimHash: string; claimText: string }[];
+  page: CorpusPage;
+}
+
+/**
+ * `list_trajectories`' answer at one page (§6.1 :248).
+ *
+ * THE ORDER IS THE READ'S — by the date the claim LAST LEFT, latest first — and it is NOT `lastSeen`:
+ * `corpusReads.ts`' `leftAt` takes the last absent span after the first, so five PRESENT rows of the real
+ * page sit in the middle of the list under their departure date. The page re-sorts nothing, which is why
+ * no sort key is derivable from this type.
+ *
+ * `undetected` NAMES a page in scope whose current state no stored pass describes, so an absence never
+ * reads as "nothing moved". A page with no trajectories arrives here, with `entries: []`.
+ */
+export interface TrajectoryAnswer {
+  entries: TrajectoryEntry[];
+  undetected: CorpusPage[];
+  nextCursor: string | null;
+}
+
+/**
  * ONE ENDPOINT OF A PAIR (A4 :1096) — an OBJECT carrying its own bytes, never a bare timestamp.
  */
 export interface DiffSide {

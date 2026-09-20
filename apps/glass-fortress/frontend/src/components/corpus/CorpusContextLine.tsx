@@ -1,7 +1,7 @@
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { displayUrl } from '@/lib/format';
-import { writeCorpusQuery, type CorpusFilters } from '@/lib/corpusQuery';
+import { writeClaimsQuery, writeCorpusQuery, type CorpusFilters } from '@/lib/corpusQuery';
 import type { PagesFacetRow } from '@/types/corpus';
 
 // ---------------------------------------------------------------------------
@@ -36,22 +36,50 @@ const LENSES = [
 
 type LensId = (typeof LENSES)[number]['id'];
 
-/** `/corpus` with these filters — one spelling, through the pure module, for every link this line draws. */
-function href(filters: CorpusFilters): string {
+/**
+ * WHICH VIEW THIS LINE IS SERVING — `/corpus`'s stream, or `/corpus/claims`.
+ *
+ * ONE LINE, TWO VIEWS, AND THE DIFFERENCE IS WHAT EACH READ TAKES. `list_corpus` takes `kind` and `cited`
+ * and `list_trajectories` takes neither (§6.1 :237, :247), so a KIND chip drawn on the claims view would
+ * send a parameter the route answers 400 `Unrecognized key` to — a control that breaks the page it sits on.
+ * The LENSES are the same shape of mistake one level up: PAGES and CITED are `/corpus`'s two doorways, and
+ * marking one of them current on a view that is neither tells a reader they are somewhere they are not.
+ *
+ * IT IS A PARAMETER RATHER THAN A SECOND COMPONENT because §25 :788 says "the same context line": one count,
+ * one chip row, one set of rules about what a chip's href is. Two components would be two spellings of that.
+ */
+export type ContextView = 'stream' | 'claims';
+
+/**
+ * A chip's destination, and the ONE place the two views' spellings meet.
+ *
+ * ON THE CLAIMS VIEW A CHIP KEEPS THE READER ON THE CLAIMS VIEW — removing `since` leaves the same page's
+ * claims, not the stream — EXCEPT the PAGE chip, whose removal has nowhere to stay: without a page there is
+ * no claims view at all (§25 :783), so it lands on `/corpus` carrying whatever else is set.
+ *
+ * BOTH SERIALISERS ARE CALLED AND NEITHER IS RE-SPELLED. `writeClaimsQuery` requires a page in its TYPE, so
+ * the claims branch cannot be reached without one; `writeCorpusQuery` is the stream's, and is what the PAGE
+ * chip's exit uses.
+ */
+function href(filters: CorpusFilters, view: ContextView): string {
+  if (view === 'claims' && filters.page !== undefined) {
+    const { page, since, until } = filters;
+    return `/corpus/claims?${writeClaimsQuery({ page, ...(since === undefined ? {} : { since }), ...(until === undefined ? {} : { until }) }).toString()}`;
+  }
   const query = writeCorpusQuery(filters).toString();
   return query === '' ? '/corpus' : `/corpus?${query}`;
 }
 
 /** One chip: its label, and the link that ADDS or REMOVES it while leaving the others alone. */
-function Chip({ label, active, to }: { label: string; active: boolean; to: CorpusFilters }) {
+function Chip({ label, active, to, view }: { label: string; active: boolean; to: CorpusFilters; view: ContextView }) {
   return (
-    <Link data-chip data-chip-active={active ? 'true' : undefined} href={href(to)} className="whitespace-nowrap rounded-full border border-line px-3 py-1 text-xs text-ink-muted">
+    <Link data-chip data-chip-active={active ? 'true' : undefined} href={href(to, view)} className="whitespace-nowrap rounded-full border border-line px-3 py-1 text-xs text-ink-muted">
       {label}
     </Link>
   );
 }
 
-export function CorpusContextLine({ filters, count, pages }: { filters: CorpusFilters; count: number; pages: readonly PagesFacetRow[] }) {
+export function CorpusContextLine({ filters, count, pages, view = 'stream' }: { filters: CorpusFilters; count: number; pages: readonly PagesFacetRow[]; view?: ContextView }) {
   const t = useTranslations('corpus');
   const active: LensId = filters.cited === true ? 'cited' : 'pages';
   const without = (field: keyof CorpusFilters): CorpusFilters => {
@@ -73,6 +101,7 @@ export function CorpusContextLine({ filters, count, pages }: { filters: CorpusFi
             label={displayUrl(page.url)}
             active={filters.page === page.trackedUrlId}
             to={filters.page === page.trackedUrlId ? without('page') : { ...filters, page: page.trackedUrlId }}
+            view={view}
           />
         ))}
 
@@ -92,14 +121,24 @@ export function CorpusContextLine({ filters, count, pages }: { filters: CorpusFi
             is to take it out. Without them a reader who reached the 400 through `?since=` could press every
             chip on the page and keep sending the value that caused it — measured on the real body, where all
             three hrefs carried `since=garbage` forward. */}
-        {filters.page !== undefined && !pages.some((page) => page.trackedUrlId === filters.page) ? (
-          <Chip label={t('filters.page')} active to={without('page')} />
+        {/* THE PAGE CHIP, and on the CLAIMS view it is always this one rather than a picker: that read
+            returns no facet, and a page is REQUIRED, so the chip in force is the only page there is. Its
+            removal is the one link that leaves the view, because there is no claims view without a page. */}
+        {filters.page !== undefined && (view === 'claims' || !pages.some((page) => page.trackedUrlId === filters.page)) ? (
+          <Chip label={t('filters.page')} active to={without('page')} view="stream" />
         ) : null}
-        {filters.since === undefined ? null : <Chip label={t('filters.since')} active to={without('since')} />}
-        {filters.until === undefined ? null : <Chip label={t('filters.until')} active to={without('until')} />}
-        <Chip label={t('kind.capture')} active={filters.kind === 'CAPTURE'} to={filters.kind === 'CAPTURE' ? without('kind') : { ...filters, kind: 'CAPTURE' }} />
-        <Chip label={t('kind.diff')} active={filters.kind === 'DIFF'} to={filters.kind === 'DIFF' ? without('kind') : { ...filters, kind: 'DIFF' }} />
-        <Chip label={t('filters.cited')} active={filters.cited === true} to={filters.cited === true ? without('cited') : { ...filters, cited: true }} />
+        {filters.since === undefined ? null : <Chip label={t('filters.since')} active to={without('since')} view={view} />}
+        {filters.until === undefined ? null : <Chip label={t('filters.until')} active to={without('until')} view={view} />}
+        {/* KIND AND CITED ARE `list_corpus`' PARAMETERS AND NOT `list_trajectories`' (§6.1 :237 against
+            :247). Drawn on the claims view they would offer a reader a filter whose press earns a 400 from
+            the route — so the controls are not drawn there at all, rather than drawn and disarmed. */}
+        {view === 'stream' ? (
+          <>
+            <Chip label={t('kind.capture')} active={filters.kind === 'CAPTURE'} to={filters.kind === 'CAPTURE' ? without('kind') : { ...filters, kind: 'CAPTURE' }} view={view} />
+            <Chip label={t('kind.diff')} active={filters.kind === 'DIFF'} to={filters.kind === 'DIFF' ? without('kind') : { ...filters, kind: 'DIFF' }} view={view} />
+            <Chip label={t('filters.cited')} active={filters.cited === true} to={filters.cited === true ? without('cited') : { ...filters, cited: true }} view={view} />
+          </>
+        ) : null}
       </div>
 
       {/* WHAT IS STILL MISSING FOR SINCE AND UNTIL IS THE CONTROL THAT SETS THEM, and only that. §24 puts them
@@ -108,6 +147,11 @@ export function CorpusContextLine({ filters, count, pages }: { filters: CorpusFi
           are honoured wherever they arrive in the URL, and as of this chunk both can be REMOVED once set —
           removal needs no picker, and without it the 400 they can cause had no way out. */}
 
+      {/* THE LENSES ARE `/corpus`'s TWO DOORWAYS (§25 :770) and neither of them is this view. Drawing the
+          control here would mark PAGES or CITED as `aria-current` on a page that is neither — an answer to
+          "where am I" that is wrong. The claims view is reached from a page's own card, and the PAGE chip
+          above is the way back. */}
+      {view === 'stream' ? (
       <nav data-corpus-lenses className="flex flex-wrap gap-3 text-sm" aria-label={t('lenses')}>
         {LENSES.map((lens) =>
           lens.id === active ? (
@@ -115,12 +159,13 @@ export function CorpusContextLine({ filters, count, pages }: { filters: CorpusFi
               {t(`lens.${lens.id}`)}
             </span>
           ) : (
-            <Link key={lens.id} data-lens={lens.id} href={href(lens.filters)} className="text-ink-muted underline">
+            <Link key={lens.id} data-lens={lens.id} href={href(lens.filters, 'stream')} className="text-ink-muted underline">
               {t(`lens.${lens.id}`)}
             </Link>
           ),
         )}
       </nav>
+      ) : null}
     </div>
   );
 }

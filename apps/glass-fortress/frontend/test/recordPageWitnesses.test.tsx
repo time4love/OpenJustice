@@ -12,7 +12,7 @@ jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>
 import { fireEvent, screen } from '@testing-library/react';
 import { DiffRuns } from '@/components/record/DiffRuns';
 import { archiveUrl, rawArchiveUrl } from '@/lib/archiveUrl';
-import { apiCallsMade, globalFetchDouble, renderPage, setPublicBodies, type Locale, type PageRender } from './render';
+import { apiCallsMade, globalFetchDouble, renderClaimsWithSheet, renderPage, setPublicBodies, type Locale, type PageRender } from './render';
 import { readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { FRONTEND, requireSubjects, SRC, sourceFiles } from './scan';
@@ -102,6 +102,7 @@ async function renderCapture(locale: Locale): Promise<HTMLElement> {
   const page = (await capturePage()).default;
   return body(await renderPage(page, { locale, trackedUrlId: TRACKED, capture: CAPTURE }, { locale }));
 }
+
 
 afterEach(() => {
   setPublicBodies(undefined);
@@ -409,7 +410,10 @@ describe('record-page-witnesses — the record`s own classes', () => {
 
 describe('record-page-witnesses — the reading region', () => {
   /** The components that put a READ in front of someone: the researcher's prose, or the archive's bytes. */
-  const READ_COMPONENTS = ['ThesisText', 'ResearcherProse', 'RecordContent'] as const;
+  // `Claims` JOINED THE SET AT CHUNK 6: the claims view puts the ARCHIVE'S OWN SENTENCE in front of a
+  // reader — `.record-captured`, the same class the record pages use — so it is a read region by the same
+  // definition, and a detector that named only the three components would have passed over it in silence.
+  const READ_COMPONENTS = ['ThesisText', 'ResearcherProse', 'RecordContent', 'Claims'] as const;
 
   /**
    * DECLARED AND OWED, not excused. `/theses/[id]/versions/[v]` renders the SAME `ThesisText` as the
@@ -442,8 +446,10 @@ describe('record-page-witnesses — the reading region', () => {
       return READ_COMPONENTS.some((component) => source.includes(`<${component}`));
     });
     // THE FLOOR: the detector really found the read pages. A predicate that matched nothing would make
-    // "every read page carries `reading`" true of an empty set.
-    expect(reads.length).toBeGreaterThanOrEqual(4);
+    // "every read page carries `reading`" true of an empty set. MOVED UP BY ONE at chunk 6, and the claims
+    // view is named rather than merely counted — a floor that only went up says nothing about WHICH page.
+    expect(reads.length).toBeGreaterThanOrEqual(5);
+    expect(reads).toContain('src/app/[locale]/corpus/claims/page.tsx');
 
     // TWO ASSERTIONS, BECAUSE "a return" AND "a read" ARE NOT THE SAME THING — and four detectors were
     // wrong before this one, each found by a decoy going blind or by a page the case had no business
@@ -765,6 +771,10 @@ describe('record-page-witnesses — no mark is an empty capsule', () => {
     add('record DIFF evaluable', await renderRecord(resolvedDiffVerifiedRecord.fileHash, { status: 200, body: resolvedDiffVerifiedRecord }));
     setPublicBodies({});
     add('record #doc_', await renderPage((await recordsPage()).default, { locale: 'he', fileHash: 'doc_0123456789abcdef' }, { locale: 'he' }));
+    // THE CLAIMS VIEW, ROWS AND SHEET (chunk 6). It draws NO `.record-marks` today, and that is exactly why
+    // it belongs in the sweep rather than outside it: the next mark added to a claim's row would be the next
+    // empty capsule, and a sweep pinned to the pages that already have marks would not be there to see it.
+    arms.push({ name: 'claims', container: await renderClaimsWithSheet('he') });
 
     // `trim()` IS NOT ENOUGH, and a decoy proved it: U+200B ZERO WIDTH SPACE is a FORMAT character and not
     // White_Space, so `'\u200b'.trim()` returns it unchanged — a pill holding only a zero-width space

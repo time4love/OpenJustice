@@ -18,7 +18,7 @@ jest.mock('../src/lib/doors', () => {
 
 import { join } from 'node:path';
 import { fireEvent } from '@testing-library/react';
-import { renderPage, setAuthState, setPathname, setPublicBodies, type Locale, type PageRender } from './render';
+import { renderClaimsWithSheet, renderPage, setAuthState, setPathname, setPublicBodies, type Locale, type PageRender } from './render';
 import { FRONTEND, jsxTagsIn, publicThesisModules, requireSubjects, stringsIn } from './scan';
 import { RightPane, TabsProvider } from '../src/components/shell/RightPane';
 import { CALL_TAB_ID } from '../src/components/thesis/PaneTabs';
@@ -135,6 +135,14 @@ async function everyPublicPage(): Promise<{ name: string; hrefs: string[] }[]> {
         await renderPage((await recordsPage()).default, { locale: LOCALE, fileHash: resolvedCaptureRecord.fileHash }, { locale: LOCALE }),
       ),
     },
+    // UI-7 chunk 6: the CLAIMS view's sheet composes TWO anchors per flip — a capture page and a diff page —
+    // so it is the page in the app that mints the most hrefs from a body, and the one where a link to an
+    // unbuilt route would appear first.
+    //
+    // IT IS SCANNED WITH ITS SHEET OPEN, through the harness's one helper, and a decoy is why: an `/intake`
+    // anchor planted INSIDE the sheet reddened nothing at all while this scan rendered the list alone. The
+    // half of the view that mints the hrefs was the half nobody was reading.
+    { name: '/corpus/claims', hrefs: [...(await renderClaimsWithSheet(LOCALE)).querySelectorAll('a[href]')].map((a) => a.getAttribute('href') ?? '') },
   ];
 }
 

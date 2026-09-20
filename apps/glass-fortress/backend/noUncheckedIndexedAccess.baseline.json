@@ -1,10 +1,10 @@
 {
   "_comment": "RATCHET BASELINE. Regenerate with: UPDATE_BASELINE=1 npx jest test/noUncheckedIndexedAccessRatchet.test.ts — never edit by hand to make a failure go away.",
-  "total": 64,
+  "total": 59,
   "files": {
     "src/lib/thesisAssertions.ts": 18,
-    "src/services/claimTrajectory.ts": 17,
     "src/mcp/tools/getThesisTrajectoryCitations.ts": 13,
+    "src/services/claimTrajectory.ts": 12,
     "src/services/measureHrefChanges.ts": 8,
     "src/services/reportPatternService.ts": 3,
     "src/services/archiveVerification.ts": 2,

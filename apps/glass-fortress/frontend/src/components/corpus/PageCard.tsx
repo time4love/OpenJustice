@@ -1,4 +1,5 @@
 import { useLocale, useTranslations } from 'next-intl';
+import { Link } from '@/i18n/navigation';
 import { displayUrl, formatCaptureDate } from '@/lib/format';
 import { MAX_BAR_PX, monthsOf, stripOf } from '@/lib/timeStrip';
 import type { CorpusEntry, PagesFacetRow } from '@/types/corpus';
@@ -50,6 +51,14 @@ export function PageCard({ page, entries }: { page: PagesFacetRow; entries: read
         {' · '}
         {t('records', { count: page.entries })}
       </span>
+
+      {/* THE ONE ENTRY TO THE CLAIMS VIEW (§25 :780, :782–:783): it is reached "from the page a reader is
+          already looking at, never from the corpus root" — so it lives on the PAGE CARD, which is the one
+          element that exists only when `?page=` is set, and never in the sidebar as a category or in the
+          lens control beside PAGES and CITED. The page's id travels in the href and is never text (§4). */}
+      <Link data-claims-entry href={`/corpus/claims?page=${page.trackedUrlId}`} className="self-start text-xs text-ink-muted underline">
+        {t('claims.entry')}
+      </Link>
 
       <svg
         data-time-strip

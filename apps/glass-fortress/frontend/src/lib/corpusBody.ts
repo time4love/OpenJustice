@@ -16,6 +16,9 @@ import {
   type RecordNames,
   type RecordVerified,
   type ResolvedRecord,
+  type TrajectoryAnswer,
+  type TrajectoryCapture,
+  type TrajectorySpan,
   type DiffChunk,
   type EvidenceLink,
   type InvestigativeCategory,
@@ -451,6 +454,89 @@ export function parseCorpusStream(body: unknown): CorpusAnswer {
   return {
     entries: list(answer.entries, 'entries').map((entry, index) => corpusEntry(entry, `entries[${String(index)}]`)),
     pages: parseCorpusPages(body),
+    nextCursor: maybeText(answer.nextCursor, 'nextCursor'),
+  };
+}
+
+/** One capture of a claim's vector (§6.1 :248) — where the claim stood, at one capture, by its archive name. */
+const trajectoryCapture = (value: unknown, at: string): TrajectoryCapture => {
+  const row = object(value, at);
+  return {
+    snapshotDate: text(row.snapshotDate, `${at}.snapshotDate`),
+    waybackTimestamp: text(row.waybackTimestamp, `${at}.waybackTimestamp`),
+    present: flag(row.present, `${at}.present`),
+  };
+};
+
+/**
+ * One SPAN of state (§6.1 :248) — a run of captures in which the claim held one state.
+ *
+ * `days` IS NULLABLE AND NEVER DEFAULTED TO 0. It is a BOUND to the capture that ended the state, and the
+ * backend sends `null` when a capture date will not parse. Zero is a real answer there — two captures on one
+ * day — so reading the missing figure as zero would put a measurement in front of a reader that nobody made.
+ * `captures` and `openEnded` are required for the same reason `public` is elsewhere: each decides what the
+ * view draws, and a default either way would decide it silently.
+ */
+const trajectorySpan = (value: unknown, at: string): TrajectorySpan => {
+  const row = object(value, at);
+  return {
+    ...trajectoryCapture(value, at),
+    snapshotUrl: text(row.snapshotUrl, `${at}.snapshotUrl`),
+    captures: count(row.captures, `${at}.captures`),
+    days: row.days === null || row.days === undefined ? null : count(row.days, `${at}.days`),
+    openEnded: flag(row.openEnded, `${at}.openEnded`),
+  };
+};
+
+/**
+ * `list_trajectories`' answer at one page (§6.1 :248, the envelope written 2026-09-20).
+ *
+ * BOTH ACCOUNTS OF THE HISTORY ARE NARROWED, and neither is derived from the other. `captures` is the
+ * per-capture vector and `changes` the run of states; the view draws its strip and composes its links from
+ * the FIRST and states durations from the second. A parser that kept only one would force the page to
+ * reconstruct the other, and the reconstruction is exactly what the appendix's own amendment rejects: a span
+ * names its first capture, so the capture a state ENDS on cannot be recovered from `changes` at all.
+ *
+ * NOTHING IS RE-SORTED HERE OR ANYWHERE ABOVE THE READ. The order is the read's own — by the date the claim
+ * LAST LEFT, latest first — and it is not derivable from any field on the row: `lastSeen` is the last capture
+ * the claim was SEEN at, which for a claim that returned is newer than the day it left.
+ */
+export function parseClaims(body: unknown): TrajectoryAnswer {
+  const answer = object(body, 'the answer');
+  return {
+    entries: list(answer.entries, 'entries').map((value, index) => {
+      const at = `entries[${String(index)}]`;
+      const row = object(value, at);
+      const finalState = text(row.finalState, `${at}.finalState`);
+      if (finalState !== 'PRESENT' && finalState !== 'REMOVED') return fail(`${at}.finalState`, "'PRESENT' or 'REMOVED'", finalState);
+      return {
+        patternHash: text(row.patternHash, `${at}.patternHash`),
+        sourceStateHash: text(row.sourceStateHash, `${at}.sourceStateHash`),
+        transitions: count(row.transitions, `${at}.transitions`),
+        firstSeen: text(row.firstSeen, `${at}.firstSeen`),
+        lastSeen: text(row.lastSeen, `${at}.lastSeen`),
+        finalState,
+        // THE READ'S OWN COUNT, carried and never recomputed from `claims.length`: it is what the body says
+        // about the movement, and a page that derived it would be answering a question it was handed.
+        claimCount: count(row.claimCount, `${at}.claimCount`),
+        captures: list(row.captures, `${at}.captures`).map((one, i) => trajectoryCapture(one, `${at}.captures[${String(i)}]`)),
+        changes: list(row.changes, `${at}.changes`).map((one, i) => trajectorySpan(one, `${at}.changes[${String(i)}]`)),
+        claims: list(row.claims, `${at}.claims`).map((one, i) => {
+          const claim = object(one, `${at}.claims[${String(i)}]`);
+          return {
+            trajectoryId: text(claim.trajectoryId, `${at}.claims[${String(i)}].trajectoryId`),
+            claimHash: text(claim.claimHash, `${at}.claims[${String(i)}].claimHash`),
+            claimText: text(claim.claimText, `${at}.claims[${String(i)}].claimText`),
+          };
+        }),
+        // `corpusPage` AND NOT `pageRef`: this read lists rows, and a list must link each row to its page.
+        page: corpusPage(row.page, `${at}.page`),
+      };
+    }),
+    // `undetected` IS NARROWED AND NOT OPTIONAL. It is what makes an absence legible — a page whose state no
+    // pass describes is NAMED, never silently missing — so a body without it is a body the view cannot tell
+    // "nothing was tracked" from "nothing moved".
+    undetected: list(answer.undetected, 'undetected').map((one, index) => corpusPage(one, `undetected[${String(index)}]`)),
     nextCursor: maybeText(answer.nextCursor, 'nextCursor'),
   };
 }
