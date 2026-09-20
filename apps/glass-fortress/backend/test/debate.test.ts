@@ -105,6 +105,12 @@ function corpus(): void {
   // create, which is the order the handler actually runs in.
   store.openByKey = null;
   store.session = session();
+  // The opener's own row, so the transcript can name a handle instead of an id (A4 :1476).
+  store.researchers = [{ id: RESEARCHER, handle: 'חוקר_א' }];
+  // THE CITATION THIS SESSION ARGUES, with the version it pinned — the DEBATE_OPENED turn's `pin` (A4 :1476).
+  store.mentions = [
+    { id: 'mention-1', versionId: 'version-1', kind: 'EVIDENCE', name: DIFF_NAME, contentVersionHash: CURRENT_VERSION.contentVersionHash, debateSessionId: 'session-1' },
+  ];
   store.evidence = null;
   store.workList = null;
   store.captures = [BEFORE, AFTER];
@@ -144,7 +150,14 @@ function session(over: Row = {}): Row {
     },
     evidence: null,
     thesis: { createdById: RESEARCHER, headVersionId: 'version-1' },
-    events: [{ type: 'RATIONALE_SUBMITTED', content: 'the opening argument', createdAt: new Date() }],
+    // THE OPENER AND ITS MOMENT — the columns `DebateSession` has always had (evidence T3 :371, "attributed")
+    // and this fixture did not carry, because nothing read them until the answer became TURNS (:1123). The
+    // DEBATE_OPENED turn is the session's own row, so a world without them makes `handleOf` throw by name
+    // rather than putting "by nobody" in an answer.
+    researcherId: RESEARCHER,
+    createdAt: new Date('2026-09-10T09:00:00.000Z'),
+    closedAt: null,
+    events: [{ id: 'event-1', type: 'RATIONALE_SUBMITTED', content: 'the opening argument', createdAt: new Date() }],
     ...over,
   };
 }
@@ -670,6 +683,61 @@ describe('get_debate — GATED, and not by authorship', () => {
     expect(parse(await getDebateHandler({ sessionId: 'nope' }))['code']).toBe('SESSION_NOT_FOUND');
     expect(written).toEqual([]);
     expect(assess).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // ONE `DebateState` FOR EVERY DEBATE TOOL — evidence A4 :1123, RULED 2026-09-20 (the researcher, R66 „Q2
+  // amend”): the shape `get_debate` answers at :1144, `record` named as A1 names it, `turns` from the SAME
+  // builder the thesis transcript uses, and `events` as raw rows RETIRED from all four answers.
+  // -------------------------------------------------------------------------
+
+  it('answers `record` and `turns` and NO `events` — the key set of :1144 exactly', async () => {
+    const state = parse(await getDebateHandler({ sessionId: 'session-1' }));
+    expect(Object.keys(state).sort()).toEqual([
+      'blockedBy', 'canPromote', 'evidenceFileHash', 'fileHash', 'hasSubstance', 'promotedOverObjection',
+      'record', 'sessionId', 'status', 'thesisId', 'turns', 'verdict',
+    ]);
+    // THE RECORD AS A1 NAMES IT — a page and its two dates, never the fileHash alone, which is what a sheet
+    // needs to say which argument this is (`projectDebate` had dropped it).
+    expect(state['record']).toEqual({ url: URL, before: BEFORE.waybackTimestamp, after: AFTER.waybackTimestamp });
+  });
+
+  it('`turns` are the thread\'s turns of A4 :1476 — the session\'s own opening, then its events, each with a VOICE and a handle', async () => {
+    store.session = session({
+      events: [
+        { id: 'e1', type: 'RATIONALE_SUBMITTED', content: 'the opening argument', createdAt: new Date('2026-09-10T09:01:00.000Z') },
+        { id: 'e2', type: 'ASSESSMENT_RETURNED', content: '{"verdict":"SUPPORTS","hasSubstance":true}', createdAt: new Date('2026-09-10T09:02:00.000Z') },
+        { id: 'e3', type: 'RESPONSE_SUBMITTED', content: 'the answer', createdAt: new Date('2026-09-10T09:03:00.000Z') },
+        { id: 'e4', type: 'PROMOTED', content: '', createdAt: new Date('2026-09-10T09:04:00.000Z') },
+      ],
+    });
+    const turns = parse(await getDebateHandler({ sessionId: 'session-1' }))['turns'] as Record<string, unknown>[];
+    expect(turns.map((t) => [t['kind'], (t['by'] as { voice: string }).voice])).toEqual([
+      ['DEBATE_OPENED', 'RESEARCHER'],
+      ['RATIONALE', 'RESEARCHER'],
+      ['ASSESSMENT', 'MODEL'],
+      ['RESPONSE', 'RESEARCHER'],
+      ['DEBATE_CLOSED', 'PLATFORM'],
+    ]);
+    // M8: THE PIN IS THE CITATION'S OWN CONTENT VERSION, read through the session the mention names — not a
+    // field of the session row. A null here would leave a sheet unable to say WHICH version of the record the
+    // argument was made against, which is the whole of what a pin is for (T2 :368–:376).
+    expect((turns[0]?.['body'] as { pin: unknown }).pin).toBe(CURRENT_VERSION.contentVersionHash);
+    // The ASSESSMENT's stored JSON is PARSED, not handed back as a string (:1144).
+    expect((turns[2]?.['body'] as { verdict: unknown; malformed: boolean }).verdict).toBe('SUPPORTS');
+    expect((turns[2]?.['body'] as { malformed: boolean }).malformed).toBe(false);
+    // NO ID ON THE WIRE: the opener is a handle (A4 :1476).
+    expect(JSON.stringify(turns)).not.toContain(RESEARCHER);
+    expect(JSON.stringify(turns)).toContain('חוקר_א');
+  });
+
+  it('open_debate and respond_in_debate answer the SAME shape — one projection, three tools (:1123)', async () => {
+    const keysOf = (out: string): string[] => Object.keys(parse(out)).sort();
+    const opened = keysOf(await open());
+    const responded = keysOf(await respondInDebateHandler({ sessionId: 'session-1', response: 'the answer' }));
+    const read = keysOf(await getDebateHandler({ sessionId: 'session-1' }));
+    expect([opened, responded]).toEqual([read, read]);
+    expect(read).not.toContain('events');
   });
 
   it('canPromote and blockedBy come from the SAME function the promotion refuses on', async () => {

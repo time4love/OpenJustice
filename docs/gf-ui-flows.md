@@ -396,7 +396,7 @@ removed by shape is made visible, never dropped.
 ## 11. THE PAGE AT PHONE WIDTH — top to bottom
 
 ```
-1  THE CONTEXT LINE   sticky. The CLAIM, verbatim — the claim is the heading (A2 :1268) — · the provision ·
+1  THE CONTEXT LINE   sticky — **RULED 2026-09-20 (the researcher, R66 „Q9 not sticky”): NOT sticky; the first block of the page, in flow. The reason is R60's, unchanged: a sticky title bar's precondition is a SHORT NAME (docs/gf-ui-step-5-2026-09-18.md), no thesis has one (A2 :1268, the claim is the heading), and this line carries the claim. It returns the day a thesis has a name.** The CLAIM, verbatim — the claim is the heading (A2 :1268) — · the provision ·
                       the author's handle, `mine` marked · the state: DRAFT ONLY · PUBLISHED = HEAD ·
                       PUBLISHED ≠ HEAD (n versions since) · WITHDRAWN on <date>. Never leaves the top.
 2  WHAT IS OWED       first, stop-shaped (T6 :881–:882): this thesis's entries of REVIEWS — FLAGGED
@@ -418,7 +418,7 @@ removed by shape is made visible, never dropped.
                       citation) · REQUESTED (the request: text, authority, legal basis, addresses,
                       restsOn) · CALLED (the call item) · CONCEDED / DISMISSED (the reason); a CITED gap
                       whose citation left the head reads OPEN, as derived
-     ANALYSIS         CURRENT_ANALYSIS or the word STALE / NONE with the fingerprint (A3 :1376–:1379);
+     ANALYSIS         CURRENT_ANALYSIS or the word STALE / NONE with the fingerprint (A3 :1376–:1379) — **RULED 2026-09-20 (the researcher, R66 „Q8 VERIFY”): the fingerprint is a hash and lives in a VERIFY disclosure on this tab (A5 :1220's two homes, VERIFY or a COPY value; UI-5's version-hash precedent), never a text node (§4 :167)**;
                       the opinion, labelled: strength as the critic's · each counter-argument with the
                       sentence it quotes and its quoteVerified mark · each assertion with its
                       phraseVerified mark · alternative readings · suggested gaps, each showing whether
@@ -428,12 +428,12 @@ removed by shape is made visible, never dropped.
                       contradictions with both marks; elements filled; the recommended framing) ·
                       CHOSEN (the claim verbatim, and whether HEAD restates it CHARACTER FOR CHARACTER —
                       CLAIM_FRAMED, A3 :1366)
-4  THE STREAM         HISTORY(t), OLDEST FIRST — the story of how the thesis was shaped, read top to
+4  THE STREAM         HISTORY(t), OLDEST FIRST — the story of how the thesis was shaped, read top to — **RULED 2026-09-20 (the researcher, R66: „Q1 transcript approved”): THE STREAM IS THE TRANSCRIPT (thesis §9 :974, A4 :1476), grouped under one heading per THREAD (a framing · a version · a debate on <record> · an analysis · a gap · a publication attempt · a withdrawal · a note), each TURN in its speaker's register — the researcher's plain and first, the model's inside rule 3's labelled container with its model and prompt version, the platform's as a mark — COLLAPSED to one row (the kind's frozen name · the speaker · the moment · the `line` DATUM; every composed phrase of the table below — the counts, the verdict, the checks — rendered by the PAGE from `body` through frozen ICU strings, RULED 2026-09-20 (the researcher, R66 „Q1 datum”): the backend authors no sentence) and EXPANDED IN PLACE to the turn's words; the SHEET opens for the turn's MATERIAL (the record, the diff to the parent, the request's addresses), never for the words. The table below maps the eleven rows onto the seventeen turn kinds; `every-kind-renders` (§15) holds the seventeen, exhaustively.**
                       bottom; "jump to now" returns to the end. One entry per row, one line each:
                       kind · who · when · the one line that identifies it. Tap → the SHEET for that kind.
 ```
 
-**The stream's kinds, and what each sheet holds** — every row of thesis §9 :974–:978, nothing invented:
+**The stream's kinds, and what each sheet holds** — every row of thesis §9 :974–:978, nothing invented — **RULED 2026-09-20 (R66): each row below is one or more TURN KINDS of A4 :1476 — FRAMING opened = FRAMING_OPENED · the three ROUND rows = ROUND_PROPOSED / ROUND_ASSESSED / ROUND_CHOSEN · VERSION = VERSION · DEBATE = DEBATE_OPENED → RATIONALE → ASSESSMENT → RESPONSE → DEBATE_CLOSED (the thread's turns in order, the researcher's and the model's alternating as they did in the chat) · ANALYSIS = ANALYSIS · GAP DECISION = GAP_DECISION · PUBLICATION ATTEMPT = PUBLICATION_RATIONALE → PUBLICATION_ASSESSMENT → PUBLICATION_VERDICT · WITHDRAWAL = WITHDRAWAL · NOTE = NOTE; "the line" is the page's frozen string over the turn's `line` DATUM and its `body` (Q1 datum), "the sheet" is the turn's material**:
 
 | kind (A2) | the line | the sheet |
 |---|---|---|
@@ -473,7 +473,7 @@ both. Nothing on this page navigates away except the record links of chunk 2 and
 | loading | the context line's skeleton, then the owed strip, then the rest — in that order, so what matters most paints first |
 | 401 | `/login?returnTo=` this URL (OAuth plan §5.2's threading) |
 | 403 | one sentence: this account is not an approved researcher; the `/researchers` page linked |
-| 404 `NO_THESIS` | "no such thesis", with the id |
+| 404 `NO_THESIS` | "no such thesis" — **RULED 2026-09-20 (R66, „Q3 B”): the SENTENCE ALONE; the id is in the URL and in the one COPY control (`thesis <id>`, §4 :170–:176), never a text node (§4 :167)** |
 | a thesis with one version and nothing else | the stream has one VERSION row; the state says UNARGUED n; the owed strip lists them |
 | PUBLISHED ≠ HEAD | the context line says so; TEXT shows the diff on a toggle |
 | WITHDRAWN | the context line says withdrawn on <date>; the stream carries the WITHDRAWAL with its reason; PUBLISHED reads none |

@@ -452,7 +452,8 @@ export function createMcpServer(): McpServer {
       description:
         'LIST THE PAGES THE CORPUS HOLDS — every surveyed page by its exact URL, with when it was surveyed ' +
         'and its captures counted per outcome (ACQUIRED is what the corpus holds; UNFETCHED what a walk ' +
-        'still owes). Free; writes nothing. Start here when the researcher names no URL: every other read ' +
+        'still owes), whether a published thesis has opened the page, and whether a stop is waiting on it ' +
+        'for judgement. Free; writes nothing. Start here when the researcher names no URL: every other read ' +
         'takes a page as this returns it. Refuses nothing — an empty list is an answer.',
       inputSchema: listPagesSchema,
     },
@@ -731,7 +732,8 @@ export function createMcpServer(): McpServer {
         'author), NOT_SURVEYED, NOT_A_CAPTURE, NOT_ACQUIRED (naming the work-list outcome), ' +
         'NO_SUCH_DIFF, NOT_CITED, AWAITING_DERIVATION (naming the pair — the walk owes a version), ' +
         'CONTRADICTED (carrying the chunks the documents refute), NOTHING_TO_PROMOTE and NARROWED ' +
-        '(naming the captures that now fall between the pair).',
+        '(naming the captures that now fall between the pair). Returns the debate as turns, the same ' +
+        'shape get_debate answers.',
       inputSchema: openDebateSchema,
     },
     async (input) => ({
@@ -747,9 +749,9 @@ export function createMcpServer(): McpServer {
         'or answer the objection it raised. A PAID call: it re-reads the ACCUMULATED argument, not ' +
         'your last message alone, so you need not repeat what you already quoted. An objection you ' +
         'have answered once no longer blocks promotion; one you never answer is carried on the ' +
-        'record forever. Refuses NO_RESEARCHER, REASON_REQUIRED, SESSION_NOT_FOUND, NOT_AUTHOR and ' +
-        'SESSION_CLOSED, plus every record refusal re-checked now — the corpus can move under an ' +
-        'argument.',
+        'record forever. Returns the debate as turns, the same shape get_debate answers. Refuses ' +
+        'NO_RESEARCHER, REASON_REQUIRED, SESSION_NOT_FOUND, NOT_AUTHOR and SESSION_CLOSED, plus every ' +
+        'record refusal re-checked now — the corpus can move under an argument.',
       inputSchema: respondInDebateSchema,
     },
     async (input) => ({
@@ -786,7 +788,9 @@ export function createMcpServer(): McpServer {
         "assessor's answers verbatim, the responses — whether SUBSTANCE cleared, the current " +
         'verdict, and whether it can promote yet with the list of what blocks it. Any researcher may ' +
         "read any thesis's debates: working state is gated from the public, not from colleagues. " +
-        'Calls no model and writes nothing. Refuses NO_RESEARCHER and SESSION_NOT_FOUND.',
+        'Calls no model and writes nothing. Returns the record the argument is about, by page and dates, ' +
+        'and the argument as turns: the opening, each rationale, each assessment, each answer, and the ' +
+        'close. Refuses NO_RESEARCHER and SESSION_NOT_FOUND.',
       inputSchema: getDebateSchema,
     },
     async (input) => ({
@@ -925,8 +929,8 @@ export function createMcpServer(): McpServer {
     'get_framing',
     {
       description:
-        'READ A FRAMING AND EVERY ROUND OF IT, in sequence, with every audit verdict beside its ' +
-        'assertion, and the thesis it attaches to. ANY researcher may read ANY framing: working ' +
+        'READ A FRAMING AND ITS THREAD AS TURNS — opened, proposed, assessed, chosen — each attributed, ' +
+        'with every audit verdict beside its assertion, and the thesis it attaches to. ANY researcher may read ANY framing: working ' +
         'state is gated from the public, not from colleagues. A round whose stored content is ' +
         'malformed is reported AS MALFORMED, never as empty. Writes nothing, spends nothing. ' +
         'Refuses NO_FRAMING.',
@@ -1009,8 +1013,10 @@ export function createMcpServer(): McpServer {
         'researcher may read ANY thesis — working state is gated from the public, not from colleagues. ' +
         'Returns the thesis; the HEAD and the PUBLISHED version with their texts and each citation\'s pin ' +
         'and whether it is argued; the unargued citations; the gap list at each decision in force; the ' +
-        'analysis state; the framings; and the HISTORY — every act on the thesis as its own attributed ' +
-        'row, derived and never logged — optionally only what happened after `since`. Refuses NO_THESIS.',
+        'analysis state; the framings; and its HISTORY as a transcript: every act on the thesis as a turn, ' +
+        'in order, each naming who spoke — the researcher by handle, the model by name and prompt version ' +
+        "with who spent the call, or the platform — with the act's own identifying line and its material. " +
+        '`since` returns the turns after an instant. Refuses NO_THESIS.',
       inputSchema: getThesisContextSchema,
     },
     async (input) => ({
@@ -1025,7 +1031,9 @@ export function createMcpServer(): McpServer {
         'LIST THE PUBLISHED THESES, and your own when you are signed in. Free; writes nothing. Anyone ' +
         'sees each PUBLISHED thesis — its claim, provision, publication date, author\'s handle and ' +
         'version hash. A signed-in researcher also sees every thesis of their own, drafts included, ' +
-        'each with its head, its published version, whether the public sees the head, the framings ' +
+        'each with its head, its published version, whether the public sees the head, each with its ' +
+        'state in one word — a draft, the published version, how many versions the public is behind, or ' +
+        'the date it was withdrawn and why — the framings ' +
         'attached, and how many citations are unargued and gaps open — or, with `scope: \'all\'`, every ' +
         'researcher\'s, each with its author\'s handle and whether it is theirs. Refuses NO_RESEARCHER at ' +
         'scope all without a researcher, and nothing else.',

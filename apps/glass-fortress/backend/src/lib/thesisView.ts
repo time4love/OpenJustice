@@ -61,3 +61,40 @@ export function versionIdForViewer(
 ): string | null {
   return viewer === 'RESEARCHER' ? thesis.headVersionId : thesis.publishedVersionId;
 }
+
+// ---------------------------------------------------------------------------
+// THE THESIS'S STATE AS ONE WORD — docs/gf-ui-flows.md §11 :398–:399; thesis A4 :1429 and :1476, the envelope
+// RULED 2026-09-20 (the researcher, R66 „Q1 transcript approved”).
+//
+// §11 gives a thesis four states and, as served on 2026-09-20, NO FIELD carried them: `headIsPublished` covers
+// two arms, `versionsAhead` was computed here and never sent, and a withdrawal was named by nothing at all. A
+// page would have had to derive the word from a boolean, a count it did not have and a row it cannot read —
+// one rule with as many implementations as there are surfaces. This is the one implementation, and BOTH gated
+// reads call it: `get_thesis_context` and `list_theses` answer the SAME union.
+//
+// IT STAYS PURE. It takes the `PublicationState` its caller already computed and the latest withdrawal ROW; it
+// reads no client. A pure module never gains a dependency (the researcher, 2026-09-11).
+//
+// THE PIN DECIDES, AND THE WITHDRAWAL IS SECOND. A thesis withdrawn and published again is PUBLISHED: publication
+// sets the pin, withdrawal clears it (T6 :916–:920), so a non-null pin is the later fact. The withdrawal does not
+// disappear — it stays in the transcript, "in its history between the two versions", which is where T6 puts it.
+// ---------------------------------------------------------------------------
+
+export type ThesisState =
+  | { kind: 'DRAFT_ONLY' }
+  | { kind: 'PUBLISHED_IS_HEAD' }
+  | { kind: 'PUBLISHED_BEHIND'; versionsAhead: number }
+  | { kind: 'WITHDRAWN'; at: Date; reason: string };
+
+export function thesisState(
+  state: PublicationState,
+  latestWithdrawal: { createdAt: Date; reason: string } | null,
+): ThesisState {
+  if (state.publishedVersionId !== null) {
+    return state.headIsPublished ? { kind: 'PUBLISHED_IS_HEAD' } : { kind: 'PUBLISHED_BEHIND', versionsAhead: state.versionsAhead };
+  }
+  if (latestWithdrawal !== null) {
+    return { kind: 'WITHDRAWN', at: latestWithdrawal.createdAt, reason: latestWithdrawal.reason };
+  }
+  return { kind: 'DRAFT_ONLY' };
+}

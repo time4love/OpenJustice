@@ -1,8 +1,12 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
-import type { Prisma } from '@prisma/client';
+import type { Prisma, ThesisGapDecision } from '@prisma/client';
 import { headFingerprint } from '../../services/criticMaterial';
-import { currentAnalysis, gapList, history, unargued, type GapEntry, type HistoryEntry } from '../../services/thesisPredicates';
+import { currentAnalysis, gapList, history, unargued, type GapEntry } from '../../services/thesisPredicates';
+import { getResearcherId } from '../../context/researcherContext';
+import { publicationState, thesisState, type ThesisState } from '../../lib/thesisView';
+import { handlesOf } from '../../services/publishedThesis';
+import { voicesOf, type ModelVoice, type Researcher, type Turn, type Voices } from '../../services/thesisTranscript';
 import { argued } from '../../services/evidencePredicates';
 import { resolveTrajectoryCitations, type TrajectoryCurrency } from '../../services/trajectoryCitation';
 import { answer, refusal, type Refusal } from './thesisRefusals';
@@ -55,6 +59,8 @@ interface ResolvedMention {
 
 interface VersionView {
   versionId: string;
+  /** The author, as a handle and a `mine` — never an id on the wire (A4 :1476). */
+  by: Researcher;
   text: string;
   claim: string;
   contentHash: string;
@@ -70,8 +76,8 @@ type AnalysisState =
       fingerprint: string;
       analysisId: string;
       runAt: Date;
-      model: string;
-      promptVersion: string;
+      /** The model that ran, its prompt version and who spent the call — A2 :1317, as one value. */
+      by: ModelVoice;
       opinion: Prisma.JsonValue;
     }
   | { state: 'STALE'; fingerprint: string; latest: { analysisId: string; inputFingerprint: string; runAt: Date } };
@@ -80,20 +86,30 @@ interface ThesisContext {
   thesis: {
     thesisId: string;
     provision: string | null;
-    createdById: string;
+    by: Researcher;
     headVersionId: string | null;
     publishedVersionId: string | null;
     publishedAt: Date | null;
     publicInterestStatement: string | null;
     createdAt: Date;
+    /** The four words of ui §11 :398–:399, through `thesisState` — the SAME union `list_theses` answers. */
+    state: ThesisState;
   };
   head: VersionView | null;
   published: VersionView | null;
   unargued: string[];
-  gapList: GapEntry[];
+  /**
+   * GAP_LIST with its decision in force — and the decision's `researcherId` PROJECTED OUT (M5, 2026-09-20).
+   *
+   * A4 :1476 spells `inForce` as "the ThesisGapDecision row", and the row carries the column; a walk of the
+   * serialised body found it to be the ONLY raw researcher id left on the wire. The same clause says a
+   * researcher is "NEVER an id on the wire", and `by: P` beside it already carries the attribution — so the
+   * row travels without the one field the other rule forbids, and nothing is lost.
+   */
+  gapList: (Omit<GapEntry, 'inForce'> & { inForce: Omit<ThesisGapDecision, 'researcherId'>; by: Researcher })[];
   analysis: AnalysisState;
-  framings: { framingId: string; question: string; provision: string | null; researcherId: string; createdAt: Date }[];
-  history: HistoryEntry[];
+  framings: { framingId: string; question: string; provision: string | null; by: Researcher; createdAt: Date }[];
+  history: Turn[];
 }
 
 /** THE ONE FUNCTION behind the tool and `GET /api/research/theses/:id` (UI-3). */
@@ -115,42 +131,87 @@ export async function thesisContextOf(input: GetThesisContextInput): Promise<The
     return refusal('NO_THESIS', `No thesis ${input.thesisId}. list_theses names the theses you can read.`);
   }
 
-  const head = thesis.headVersionId === null ? null : await versionView(thesis.id, thesis.headVersionId);
-  const published =
-    thesis.publishedVersionId === null ? null : await versionView(thesis.id, thesis.publishedVersionId);
-
-  const analysis = head === null ? ({ state: 'NONE' } as const) : await analysisOf(thesis.id, head.view.versionId);
-
   const decisions = await prisma.thesisGapDecision.findMany({ where: { thesisId: thesis.id } });
   const framings = await prisma.framing.findMany({
     where: { thesisId: thesis.id },
     select: { id: true, question: true, provision: true, researcherId: true, createdAt: true },
   });
+  const versions = await prisma.thesisVersion.findMany({
+    where: { thesisId: thesis.id },
+    select: { id: true, createdById: true, createdAt: true },
+  });
+  const withdrawals = await prisma.withdrawal.findMany({
+    where: { thesisId: thesis.id },
+    select: { createdAt: true, reason: true },
+  });
+
+  // EVERY RESEARCHER THIS ANSWER NAMES, in one query, resolved to a handle. `by: P` replaces `createdById` and
+  // `researcherId` on every arm of this read (A4 :1476: "a researcher — NEVER an id on the wire"), because
+  // §4 :167 bars an id from being rendered and a page cannot show what it is not given.
+  const handles = await handlesOf([
+    thesis.createdById,
+    ...framings.map((f) => f.researcherId),
+    ...versions.map((v) => v.createdById),
+    ...decisions.map((d) => d.researcherId),
+  ]);
+  const caller = getResearcherId();
+  const voices = voicesOf(handles, caller, thesis.id);
+
+  const head = thesis.headVersionId === null ? null : await versionView(thesis.id, thesis.headVersionId, voices);
+  const published =
+    thesis.publishedVersionId === null ? null : await versionView(thesis.id, thesis.publishedVersionId, voices);
+
+  const analysed = head === null ? null : await analysisOf(thesis.id, head.view.versionId, voices);
+  const analysis = analysed?.state ?? ({ state: 'NONE' } as const);
 
   return {
     thesis: {
       thesisId: thesis.id,
       provision: thesis.provision,
-      createdById: thesis.createdById,
+      by: voices.researcher(thesis.createdById),
       headVersionId: thesis.headVersionId,
       publishedVersionId: thesis.publishedVersionId,
       publishedAt: thesis.publishedAt,
       publicInterestStatement: thesis.publicInterestStatement,
       createdAt: thesis.createdAt,
+      // THE SAME UNION `list_theses` ANSWERS, from the same function — one spelling of what a thesis's state
+      // is, so the list and the working view can never disagree (A4 :1429, :1476).
+      state: thesisState(
+        publicationState(
+          {
+            headVersionId: thesis.headVersionId,
+            publishedVersionId: thesis.publishedVersionId,
+            publishedAt: thesis.publishedAt,
+            publishedBy: null,
+          },
+          versions,
+        ),
+        latestOf(withdrawals),
+      ),
     },
     head: head?.view ?? null,
     published: published?.view ?? null,
     unargued: head === null ? [] : unargued({ thesisId: thesis.id }, head.cited),
-    gapList: gapList(decisions, thesis.id, head?.view.mentions.map((m) => m.name) ?? []),
+    gapList: gapList(decisions, thesis.id, head?.view.mentions.map((m) => m.name) ?? []).map((gap) => {
+      const { researcherId, ...inForce } = gap.inForce;
+      return { ...gap, inForce, by: voices.researcher(researcherId) };
+    }),
     analysis,
     framings: framings.map((f) => ({
       framingId: f.id,
       question: f.question,
       provision: f.provision,
-      researcherId: f.researcherId,
+      by: voices.researcher(f.researcherId),
       createdAt: f.createdAt,
     })),
-    history: await history(thesis.id, input.since === undefined ? undefined : new Date(input.since)),
+    // THE TRANSCRIPT, from the one builder set. `currentFingerprint` is handed in rather than recomputed, so an
+    // ANALYSIS turn's `current` and the `analysis` arm above answer from ONE fingerprint — two computations of
+    // FINGERPRINT(head) in one body is the second spelling that drifts.
+    history: await history(thesis.id, {
+      since: input.since === undefined ? undefined : new Date(input.since),
+      callerId: caller,
+      currentFingerprint: analysed?.fingerprint ?? null,
+    }),
   };
 }
 
@@ -158,41 +219,65 @@ export async function getThesisContextHandler(input: GetThesisContextInput): Pro
   return answer(() => thesisContextOf(input));
 }
 
-/** The analysis arm: HEAD's fingerprint through the one loader, and CURRENT_ANALYSIS called over HEAD's analyses. */
-async function analysisOf(thesisId: string, headVersionId: string): Promise<AnalysisState> {
+/**
+ * The analysis arm: HEAD's fingerprint through the one loader, and CURRENT_ANALYSIS called over HEAD's analyses.
+ *
+ * It returns the FINGERPRINT beside the state, because the transcript's ANALYSIS turns need it to say whether
+ * each one is current (A4 :1476) and computing FINGERPRINT(head) twice in one answer is the second spelling
+ * that drifts. `null` when the head has none — awaiting derivation is not a fingerprint.
+ */
+async function analysisOf(
+  thesisId: string,
+  headVersionId: string,
+  voices: Voices,
+): Promise<{ state: AnalysisState; fingerprint: string | null }> {
   const headed = await headFingerprint(thesisId, headVersionId);
-  if (!headed.defined) return { state: 'AWAITING_DERIVATION', name: headed.name };
+  if (!headed.defined) return { state: { state: 'AWAITING_DERIVATION', name: headed.name }, fingerprint: null };
 
   const analyses = await prisma.thesisAnalysis.findMany({ where: { versionId: headVersionId } });
   const current = currentAnalysis(headVersionId, analyses, headed.fingerprint);
   if (current !== null) {
     return {
-      state: 'CURRENT',
+      state: {
+        state: 'CURRENT',
+        fingerprint: headed.fingerprint,
+        analysisId: current.id,
+        runAt: current.runAt,
+        by: voices.model(current.model, current.promptVersion, current.researcherId),
+        opinion: current.opinion,
+      },
       fingerprint: headed.fingerprint,
-      analysisId: current.id,
-      runAt: current.runAt,
-      model: current.model,
-      promptVersion: current.promptVersion,
-      opinion: current.opinion,
     };
   }
   const latest = [...analyses].sort((a, b) => b.runAt.getTime() - a.runAt.getTime()).at(0);
-  if (latest === undefined) return { state: 'NONE', fingerprint: headed.fingerprint };
+  if (latest === undefined) return { state: { state: 'NONE', fingerprint: headed.fingerprint }, fingerprint: headed.fingerprint };
   return {
-    state: 'STALE',
+    state: {
+      state: 'STALE',
+      fingerprint: headed.fingerprint,
+      latest: { analysisId: latest.id, inputFingerprint: latest.inputFingerprint, runAt: latest.runAt },
+    },
     fingerprint: headed.fingerprint,
-    latest: { analysisId: latest.id, inputFingerprint: latest.inputFingerprint, runAt: latest.runAt },
   };
+}
+
+/**
+ * The LATEST of a set of dated rows — the withdrawal in force (T6 :920). Seeded with `.at(0)`, so an empty set
+ * is `null` and never an unguarded index: the two debt ratchets' answer (`CLAUDE.md`).
+ */
+function latestOf<T extends { createdAt: Date }>(rows: readonly T[]): T | null {
+  return rows.reduce<T | null>((latest, row) => (latest === null || row.createdAt > latest.createdAt ? row : latest), rows.at(0) ?? null);
 }
 
 /** One version with its mentions resolved — and the mentions as UNARGUED reads them. */
 async function versionView(
   thesisId: string,
   versionId: string,
+  voices: Voices,
 ): Promise<{ view: VersionView; cited: Parameters<typeof unargued>[1] }> {
   const version = await prisma.thesisVersion.findUnique({
     where: { id: versionId },
-    select: { id: true, text: true, claim: true, contentHash: true, createdAt: true },
+    select: { id: true, text: true, claim: true, contentHash: true, createdAt: true, createdById: true },
   });
   if (version === null) {
     throw new Error(`get_thesis_context: thesis ${thesisId} points at version ${versionId}, which does not exist.`);
@@ -226,6 +311,7 @@ async function versionView(
   return {
     view: {
       versionId: version.id,
+      by: voices.researcher(version.createdById),
       text: version.text,
       claim: version.claim,
       contentHash: version.contentHash,

@@ -238,6 +238,35 @@ describe('get_thesis_context — A4 :1476–:1479, GATED (thesis step 20)', () =
     expect(tripped).toEqual([]);
   });
 
+  // -------------------------------------------------------------------------
+  // NO ID ON THE WIRE — A4 :1476, "a researcher — NEVER an id on the wire"; ui §4 :167, which bars a page from
+  // rendering one at all. Held on the SERIALISED answer, because that is what a route sends and what a page
+  // parses: a case reading the in-memory object would miss an id nested in a row the body carries whole.
+  //
+  // IT WAS NOT VACUOUS WHEN IT WAS WRITTEN. A walk of the live body on 2026-09-20 found exactly one path still
+  // carrying the caller's id — `gapList[].inForce.researcherId`, because :1476 spells `inForce` as "the
+  // ThesisGapDecision row" and the row has the column. The id is projected out of it and `by` carries the
+  // attribution instead; this case is what stops it coming back.
+  // -------------------------------------------------------------------------
+  it('the serialised context carries NO researcher id anywhere, and every `by` carries the seeded HANDLE instead (A4 :1476; §4 :167)', async () => {
+    seedThesis();
+    store.gapDecisions = [{ ...OPEN_GAP }];
+    store.notes = [{ ...NOTE }];
+    const text = await call('get_thesis_context', { thesisId: THESIS.id }, AUTHOR);
+    // THE VACUITY GUARD: the answer must actually hold the parts that name a researcher, or the absence below
+    // is an absence of everything.
+    const answer = answerOf(text) as { thesis: { by: { handle: string } }; gapList: unknown[]; history: unknown[] };
+    expect([answer.gapList.length > 0, answer.history.length > 0]).toEqual([true, true]);
+    expect(text).not.toContain(AUTHOR);
+    expect(text).not.toContain(OTHER_RESEARCHER);
+    expect(text).toContain('חוקר_א');
+    expect(answer.thesis.by).toEqual({ handle: 'חוקר_א', mine: true });
+    // Every `by` on every arm, from the serialised text: a handle and a `mine`, and no third key.
+    const byKeys = [...text.matchAll(/"by":\{([^{}]*)\}/g)].map((m) => m[1] ?? '');
+    expect(byKeys.length).toBeGreaterThan(3);
+    expect([...new Set(byKeys.map((keys) => keys.includes('"handle"') && keys.includes('"mine"')))]).toEqual([true]);
+  });
+
   it("HISTORY SINCE A DATE through the tool — `since`, ISO-8601, COINED (7.3 round 2, M2): the ONE predicate's entries after it and none before, the date BETWEEN two rows (A4 :1479; §9 :977–:978)", async () => {
     seedThesis();
     store.gapDecisions = [{ ...OPEN_GAP }];
@@ -249,7 +278,10 @@ describe('get_thesis_context — A4 :1476–:1479, GATED (thesis step 20)', () =
     const p = await built<ThesisPredicatesModule>('services/thesisPredicates', ['history']);
     // HISTORY as the predicate answers it, in the JSON a tool returns — dates as ISO.
     const asJson = (entries: readonly unknown[]): unknown[] => entries.map((e) => JSON.parse(JSON.stringify(e)) as unknown);
-    const after = asJson(await p.history(THESIS.id, since));
+    // DECLARED EDIT, 2026-09-20 (R66): the CALL SHAPE only — `history` takes its options as an object since
+    // A4 :1476's ruling. Not one assertion of this case moved; it still holds the strict boundary and its own
+    // vacuity guard on both sides of the instant.
+    const after = asJson(await p.history(THESIS.id, { since }));
     const before = asJson(await p.history(THESIS.id)).filter((entry) => !containsDeep(after, entry));
     // THE VACUITY GUARD: the date must have rows on BOTH sides, or the case holds nothing.
     expect([after.length > 0, before.length > 0]).toEqual([true, true]);

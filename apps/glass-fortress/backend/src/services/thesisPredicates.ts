@@ -10,6 +10,22 @@ import {
   type FlagReason,
   type RecordContent,
 } from './evidencePredicates';
+import { namedRecordOf } from './debateState';
+import { handlesOf } from './publishedThesis';
+import {
+  analysisTurns,
+  debateTurns,
+  framingTurns,
+  gapTurns,
+  noteTurns,
+  orderTurns,
+  publicationTurns,
+  versionTurns,
+  voicesOf,
+  withdrawalTurns,
+  type BuiltTurn,
+  type Turn,
+} from './thesisTranscript';
 import { evaluatePublication, publishabilityOf, type PublicationAssessment } from './publicationEvaluation';
 import { resolveTrajectoryCitations, type TrajectoryCurrency } from './trajectoryCitation';
 
@@ -555,105 +571,173 @@ export async function reviews(researcherId: string, scope: ListScope = 'mine'): 
 // HISTORY(t) — A3 :1407, §9 :971–:984 · thesis step 20 · derived, never logged
 // ---------------------------------------------------------------------------
 
-/** A3 :1407's listing order — the tie-break after `createdAt` (R47 §6-R5). */
-const HISTORY_KINDS = [
-  'FRAMING',
-  'FRAMING_ROUND',
-  'VERSION',
-  'DEBATE',
-  'ANALYSIS',
-  'GAP_DECISION',
-  'PUBLICATION_ATTEMPT',
-  'WITHDRAWAL',
-  'NOTE',
-] as const;
-
-export type HistoryKind = (typeof HISTORY_KINDS)[number];
-
-/** One act on a thesis: what kind of row, which, when, and who — since thesis step 23 every kind A2 lists records its researcher. */
-export interface HistoryEntry {
-  kind: HistoryKind;
-  id: string;
-  createdAt: Date;
-  researcherId: string;
-}
+// A3 :1407's listing order used to live here as `HISTORY_KINDS`, the tie-break after `createdAt` (R47 §6-R5).
+// It is GONE with the eight-kind history it ordered: the transcript's tie-break is `orderTurns`' — the thread
+// STEP, then the row's own turn order, then id (A4 :1476) — and `services/thesisTranscript` owns it. Kept as a
+// note and not as a constant, because a second ordering nothing calls is exactly the copy that drifts.
 
 /**
- * HISTORY(t) — every row naming the thesis, in time order, attributed (A3 :1407):
+ * HISTORY(t) — THE TRANSCRIPT (§9 :974 and A4 :1476, RULED 2026-09-20 by the researcher, R66).
  *
- *   framings and their rounds · versions · arguments (debates) · analyses · gap decisions ·
- *   publication attempts · withdrawals · notes
+ * "HISTORY(t) is a TRANSCRIPT of TURNS. A turn is one thing one voice said in one step." Every stored row that
+ * names the thesis is read back as one turn or several — a FramingRound is one, a PublicationAttempt is three,
+ * a debate is its opening, its events and its close — each with its thread, its voice, its identifying DATUM
+ * and its body.
  *
- * DERIVED, NEVER LOGGED (§9 :981–:984; `thesis-no-log`): every entry is a row that already exists as
- * its own act, read back, and nothing is written to produce it. Each is attributed AS A2 RECORDS IT —
- * a debate to its opener (`researcherId`, the researcher's ruling at step 18), an analysis to WHO SPENT
- * THE CALL (A2 :1317 as amended 2026-09-14, the column since thesis step 23; its instant is `runAt`).
+ * DERIVED, NEVER LOGGED (§9 :981–:984; `thesis-no-log`), exactly as before: every turn is a row that already
+ * exists as its own act, read back, and nothing is written to produce it. What changed on 2026-09-20 is that
+ * the read answers WHAT HAPPENED and not merely THAT something did — it served `{ kind, id, createdAt,
+ * researcherId }` and a page could render nothing from it without a second read per row.
  *
- * A framing's rounds and its notes name the FRAMING, not the thesis; they are the thesis's history
- * because the framing is attached to it (R47 D11). ORDER: `createdAt`, then A3's listing order, then id
- * — a tie is broken the same way every time and the order is stored nowhere (R5). `since` is STRICT:
- * what happened AFTER the instant given (R6).
+ * THE COMPOSITION IS `services/thesisTranscript`'s, one builder per thread, and this function is the LOADER.
+ * `get_framing` and `get_debate` call the same two builders for their own threads (A4 :1459; evidence :1123),
+ * so three doors tell one story.
+ *
+ * A framing's rounds and its notes name the FRAMING, not the thesis; they are the thesis's history because the
+ * framing is attached to it (R47 D11). `since` is STRICT: what happened AFTER the instant given (R6) — and it
+ * is applied to the TURN's moment, so a publication attempt's three turns cross the boundary together.
  */
-export async function history(thesisId: string, since?: Date): Promise<HistoryEntry[]> {
+export interface HistoryOptions {
+  /** STRICT: turns after this instant (R6). */
+  since?: Date;
+  /** Whose `mine` this is. Null for a caller with no identity — every turn then reads `mine: false`. */
+  callerId?: string | null;
+  /** FINGERPRINT(head) now, so an ANALYSIS turn can say whether it is CURRENT without a second read (A3 :1379). */
+  currentFingerprint?: string | null;
+}
+
+export async function history(thesisId: string, options: HistoryOptions = {}): Promise<Turn[]> {
   const framings = await prisma.framing.findMany({
     where: { thesisId },
-    select: { id: true, researcherId: true, createdAt: true },
+    select: { id: true, question: true, provision: true, fromRunId: true, researcherId: true, createdAt: true },
   });
   const framingIds = framings.map((f) => f.id);
   const versions = await prisma.thesisVersion.findMany({
     where: { thesisId },
-    select: { id: true, createdById: true, createdAt: true },
+    select: {
+      id: true,
+      claim: true,
+      text: true,
+      contentHash: true,
+      parentVersionId: true,
+      createdById: true,
+      createdAt: true,
+    },
   });
   const versionIds = versions.map((v) => v.id);
+  // THE MENTIONS IN ONE QUERY, attached here rather than nested in the select above. `get_thesis_context`
+  // reads them the same way, so the two callers ask the same table the same question — and a version's
+  // citations are a set this function groups, not a shape the version row carries.
+  const mentionRows =
+    versionIds.length === 0
+      ? []
+      : await prisma.thesisMention.findMany({
+          where: { versionId: { in: versionIds } },
+          select: { versionId: true, kind: true, name: true, contentVersionHash: true, debateSessionId: true },
+        });
+  const versionsWithMentions = versions.map((version) => ({
+    ...version,
+    mentions: mentionRows.filter((m) => m.versionId === version.id),
+  }));
 
-  const byThesis = { where: { thesisId }, select: { id: true, researcherId: true, createdAt: true } } as const;
-  const [rounds, debates, analyses, gaps, attempts, withdrawals, thesisNotes, framingNotes] = [
+  const rounds =
     framingIds.length === 0
       ? []
       : await prisma.framingRound.findMany({
           where: { framingId: { in: framingIds } },
-          select: { id: true, researcherId: true, createdAt: true },
-        }),
-    await prisma.debateSession.findMany(byThesis),
+          select: { id: true, framingId: true, sequence: true, type: true, content: true, researcherId: true, createdAt: true },
+        });
+  const debates = await prisma.debateSession.findMany({
+    where: { thesisId },
+    select: {
+      id: true,
+      researcherId: true,
+      createdAt: true,
+      closedAt: true,
+      status: true,
+      promotedOverObjection: true,
+      recordSnapshotId: true,
+      recordDiffId: true,
+      recordSnapshot: { select: { waybackTimestamp: true, trackedUrl: { select: { url: true } } } },
+      recordDiff: {
+        select: {
+          trackedUrl: { select: { url: true } },
+          beforeSnapshot: { select: { waybackTimestamp: true } },
+          afterSnapshot: { select: { waybackTimestamp: true } },
+        },
+      },
+      evidence: { select: { fileHash: true } },
+    },
+  });
+  // THE EVENTS AND THE PIN IN THEIR OWN QUERIES, for the same reason the mentions are: one question per
+  // table, grouped here. `loadDebate` (services/debateState) nests them because it loads ONE session; this
+  // loads every session of a thesis, and a nested select per row is a query per row.
+  const debateIds = debates.map((d) => d.id);
+  const debateEvents =
+    debateIds.length === 0
+      ? []
+      : await prisma.debateEvent.findMany({
+          where: { sessionId: { in: debateIds } },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, sessionId: true, type: true, content: true, createdAt: true },
+        });
+  const debatePins = mentionRows.filter((m) => m.debateSessionId !== null);
+  const analyses =
     versionIds.length === 0
       ? []
-      : await prisma.thesisAnalysis.findMany({
-          where: { versionId: { in: versionIds } },
-          select: { id: true, researcherId: true, runAt: true },
-        }),
-    await prisma.thesisGapDecision.findMany(byThesis),
-    await prisma.publicationAttempt.findMany(byThesis),
-    await prisma.withdrawal.findMany(byThesis),
-    await prisma.note.findMany(byThesis),
-    framingIds.length === 0
-      ? []
-      : await prisma.note.findMany({
-          where: { framingId: { in: framingIds } },
-          select: { id: true, researcherId: true, createdAt: true },
-        }),
+      : await prisma.thesisAnalysis.findMany({ where: { versionId: { in: versionIds } } });
+  const decisions = await prisma.thesisGapDecision.findMany({ where: { thesisId } });
+  const attempts = await prisma.publicationAttempt.findMany({ where: { thesisId } });
+  const withdrawals = await prisma.withdrawal.findMany({ where: { thesisId } });
+  const thesisNotes = await prisma.note.findMany({ where: { thesisId } });
+  const framingNotes =
+    framingIds.length === 0 ? [] : await prisma.note.findMany({ where: { framingId: { in: framingIds } } });
+
+  // EVERY RESEARCHER THE TRANSCRIPT NAMES, resolved to a handle in ONE query — a turn carries a handle and
+  // never an id (§4 :167), and `handleOf` throws on a row whose author does not exist rather than reading as
+  // an anonymous author (R47 §6-R8).
+  const handles = await handlesOf([
+    ...framings.map((f) => f.researcherId),
+    ...rounds.map((r) => r.researcherId),
+    ...versions.map((v) => v.createdById),
+    ...debates.map((d) => d.researcherId),
+    ...analyses.map((a) => a.researcherId),
+    ...decisions.map((d) => d.researcherId),
+    ...attempts.map((a) => a.researcherId),
+    ...withdrawals.map((w) => w.researcherId),
+    ...[...thesisNotes, ...framingNotes].map((n) => n.researcherId),
+  ]);
+  const voices = voicesOf(handles, options.callerId ?? null, thesisId);
+
+  const built: BuiltTurn[] = [
+    ...framings.flatMap((framing) =>
+      framingTurns(framing, rounds.filter((r) => r.framingId === framing.id), versions, voices),
+    ),
+    ...versionTurns(versionsWithMentions, voices),
+    ...debates.flatMap((debate) =>
+      debateTurns(
+        {
+          id: debate.id,
+          researcherId: debate.researcherId,
+          createdAt: debate.createdAt,
+          closedAt: debate.closedAt,
+          status: debate.status,
+          promotedOverObjection: debate.promotedOverObjection,
+          evidenceFileHash: debate.evidence?.fileHash ?? null,
+          record: namedRecordOf(debate),
+          pin: debatePins.find((m) => m.debateSessionId === debate.id)?.contentVersionHash ?? null,
+          events: debateEvents.filter((e) => e.sessionId === debate.id),
+        },
+        voices,
+      ),
+    ),
+    ...analysisTurns(analyses, options.currentFingerprint ?? null, voices),
+    ...gapTurns(decisions, voices),
+    ...publicationTurns(attempts, voices),
+    ...withdrawalTurns(withdrawals, voices),
+    ...noteTurns([...thesisNotes, ...framingNotes], voices),
   ];
 
-  const attributed = (kind: HistoryKind, rows: readonly { id: string; researcherId: string; createdAt: Date }[]): HistoryEntry[] =>
-    rows.map((row) => ({ kind, id: row.id, createdAt: row.createdAt, researcherId: row.researcherId }));
-
-  const entries: HistoryEntry[] = [
-    ...attributed('FRAMING', framings),
-    ...attributed('FRAMING_ROUND', rounds),
-    ...versions.map((v): HistoryEntry => ({ kind: 'VERSION', id: v.id, createdAt: v.createdAt, researcherId: v.createdById })),
-    ...attributed('DEBATE', debates),
-    ...analyses.map((a): HistoryEntry => ({ kind: 'ANALYSIS', id: a.id, createdAt: a.runAt, researcherId: a.researcherId })),
-    ...attributed('GAP_DECISION', gaps),
-    ...attributed('PUBLICATION_ATTEMPT', attempts),
-    ...attributed('WITHDRAWAL', withdrawals),
-    ...attributed('NOTE', [...thesisNotes, ...framingNotes]),
-  ];
-
-  return entries
-    .filter((entry) => since === undefined || entry.createdAt.getTime() > since.getTime())
-    .sort(
-      (a, b) =>
-        a.createdAt.getTime() - b.createdAt.getTime() ||
-        HISTORY_KINDS.indexOf(a.kind) - HISTORY_KINDS.indexOf(b.kind) ||
-        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
-    );
+  const since = options.since;
+  return orderTurns(since === undefined ? built : built.filter((b) => b.turn.at.getTime() > since.getTime()));
 }

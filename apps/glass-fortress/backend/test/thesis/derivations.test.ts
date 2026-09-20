@@ -17,6 +17,7 @@ import {
   MENTION,
   NEXT_VERSION,
   NOTE,
+  OPEN_GAP,
   OTHER_RESEARCHER,
   PROVISION,
   ROUNDS,
@@ -499,6 +500,10 @@ describe('HISTORY(t) — every row naming the thesis, in time order, attributed 
    * another thesis" holds per kind rather than for notes alone.
    */
   function seedHistory(): void {
+    // THE AUTHOR'S ROW, seeded 2026-09-20 (R66): the transcript names a researcher by HANDLE and `handleOf`
+    // THROWS on an id with no row — a thesis cannot outlive its author (R47 §6-R8). A world without it used to
+    // pass, because the old history emitted the id itself.
+    store.researchers = [{ id: AUTHOR, handle: 'חוקר_א' }];
     const other = 'thesis-2';
     const otherVersion = 'version-of-thesis-2';
     store.thesis = THESIS;
@@ -533,41 +538,87 @@ describe('HISTORY(t) — every row naming the thesis, in time order, attributed 
     ];
   }
 
-  it('lists all EIGHT kinds in createdAt order, none of another thesis, each attributed AS A2 RECORDS IT (M2)', async () => {
+  // -------------------------------------------------------------------------
+  // THE TRANSCRIPT — rewritten 2026-09-20 (R66) for A4 :1476's ruling, under refactor plan §4 rule 1: a case
+  // asserting a retired concept is rewritten in the commit that retires it. These three held HISTORY(t) as
+  // EIGHT kinds of `{ kind, id, createdAt, researcherId }` — ids alone. It is now SEVENTEEN turn kinds, each
+  // with its thread, its voice, its identifying DATUM and its body.
+  // -------------------------------------------------------------------------
+
+  it('is a TRANSCRIPT: every stored row read back as one turn or several, in A4 :1476\'s order, none of another thesis', async () => {
     const p = await predicates('history');
     seedHistory();
-    const entries = await p.history(THESIS.id);
-    expect(entries.map((e) => e.id)).toEqual([
-      FRAMING.id,
-      'round-1',
-      'round-2',
-      'round-3',
-      VERSION.id,
-      'gap-1-DISMISSED',
-      NOTE.id,
-      DEBATE.id,
-      ANALYSIS.id,
-      ATTEMPT.id,
-      WITHDRAWAL.id,
+    const turns = await p.history(THESIS.id);
+    expect(turns.map((t) => [t.kind, t.id])).toEqual([
+      ['FRAMING_OPENED', FRAMING.id],
+      ['ROUND_PROPOSED', 'round-1'],
+      ['ROUND_ASSESSED', 'round-2'],
+      ['ROUND_CHOSEN', 'round-3'],
+      ['VERSION', VERSION.id],
+      ['GAP_DECISION', 'gap-1-DISMISSED'],
+      ['NOTE', NOTE.id],
+      ['DEBATE_OPENED', DEBATE.id],
+      ['ANALYSIS', ANALYSIS.id],
+      // ONE ROW, THREE TURNS, in the row's own order — the whole reason `within` exists (A4 :1476).
+      ['PUBLICATION_RATIONALE', `${ATTEMPT.id}:rationale`],
+      ['PUBLICATION_ASSESSMENT', `${ATTEMPT.id}:assessment`],
+      ['PUBLICATION_VERDICT', `${ATTEMPT.id}:verdict`],
+      ['WITHDRAWAL', WITHDRAWAL.id],
     ]);
-    // An act names the researcher who made it; an ANALYSIS names who spent the call —
-    // A2 :1317 as amended 2026-09-14, the column landed at thesis step 23 (declared edit,
-    // the R49 sketch §f2), where until then A2 gave it no researcher and none was invented. THE DEBATE IS NOT ASSERTED: evidence A2's DebateSession has no
-    // researcher column, and whether HISTORY names the thesis's author for it — its
-    // only writer under NOT_AUTHOR — or no one is the researcher's to rule (7.2
-    // round 3's report, question 1).
-    expect(entries.filter((e) => e.id !== DEBATE.id).map((e) => [e.id, e.researcherId])).toEqual([
-      [FRAMING.id, AUTHOR],
-      ['round-1', AUTHOR],
-      ['round-2', AUTHOR],
-      ['round-3', AUTHOR],
-      [VERSION.id, AUTHOR],
-      ['gap-1-DISMISSED', AUTHOR],
-      [NOTE.id, AUTHOR],
-      [ANALYSIS.id, AUTHOR],
-      [ATTEMPT.id, AUTHOR],
-      [WITHDRAWAL.id, AUTHOR],
+  });
+
+  it('attributes every turn to a VOICE — the researcher by HANDLE and never an id, the model with its name and who spent the call, the platform as itself', async () => {
+    const p = await predicates('history');
+    seedHistory();
+    const turns = await p.history(THESIS.id, { callerId: AUTHOR });
+    expect(turns.map((t) => [t.kind, t.by.voice])).toEqual([
+      ['FRAMING_OPENED', 'RESEARCHER'],
+      ['ROUND_PROPOSED', 'RESEARCHER'],
+      ['ROUND_ASSESSED', 'MODEL'],
+      ['ROUND_CHOSEN', 'RESEARCHER'],
+      ['VERSION', 'RESEARCHER'],
+      ['GAP_DECISION', 'RESEARCHER'],
+      ['NOTE', 'RESEARCHER'],
+      ['DEBATE_OPENED', 'RESEARCHER'],
+      ['ANALYSIS', 'MODEL'],
+      ['PUBLICATION_RATIONALE', 'RESEARCHER'],
+      ['PUBLICATION_ASSESSMENT', 'MODEL'],
+      ['PUBLICATION_VERDICT', 'PLATFORM'],
+      ['WITHDRAWAL', 'RESEARCHER'],
     ]);
+    // NO ID ON THE WIRE (§4 :167): every researcher voice carries the handle and `mine`, and the author's own
+    // acts read `mine: true` for the author.
+    // `flatMap` NARROWS where `filter` does not: the voice is a discriminated union, and a filtered array
+    // stays `Voice[]` — reading `.handle` off it would need a cast, which is the escape hatch this repository
+    // does not take.
+    const researcherVoices = turns.flatMap((t) => (t.by.voice === 'RESEARCHER' ? [t.by] : []));
+    expect([...new Set(researcherVoices.map((v) => `${v.handle}/${String(v.mine)}`))]).toEqual(['חוקר_א/true']);
+    expect(JSON.stringify(turns)).not.toContain(AUTHOR);
+    // The ANALYSIS turn names the model and who spent the call (A2 :1317); the DEBATE's assessment would
+    // name neither, and this world holds none — the null case is `test/thesisHistory.test.ts`'s.
+    const modelVoice = turns.flatMap((t) => (t.kind === 'ANALYSIS' && t.by.voice === 'MODEL' ? [t.by] : [])).at(0);
+    expect([modelVoice?.model, modelVoice?.promptVersion, modelVoice?.spentBy.handle]).toEqual([
+      ANALYSIS.model,
+      ANALYSIS.promptVersion,
+      'חוקר_א',
+    ]);
+  });
+
+  it('`line` is the turn\'s identifying DATUM verbatim and NULL where the kind names it — never a sentence, in no language (A4 :1476)', async () => {
+    const p = await predicates('history');
+    seedHistory();
+    const turns = await p.history(THESIS.id);
+    const lineOf = (kind: string): string | null | undefined => turns.find((t) => t.kind === kind)?.line;
+    expect(lineOf('FRAMING_OPENED')).toBe(FRAMING.question);
+    expect(lineOf('ROUND_PROPOSED')).toBe(CLAIM);
+    expect(lineOf('ROUND_CHOSEN')).toBe(CLAIM);
+    expect(lineOf('VERSION')).toBe(VERSION.claim);
+    expect(lineOf('GAP_DECISION')).toBe(OPEN_GAP.description);
+    expect(lineOf('NOTE')).toBe(NOTE.text.split('\n')[0]);
+    // The nine the ruling names: their kind and body name them, so there is no datum to carry.
+    expect(
+      ['ROUND_ASSESSED', 'PUBLICATION_RATIONALE', 'PUBLICATION_ASSESSMENT', 'PUBLICATION_VERDICT', 'WITHDRAWAL'].map(lineOf),
+    ).toEqual([null, null, null, null, null]);
   });
 
   it('since a date is what happened after it — the date falls BETWEEN two rows, since A3 :1407 states no boundary (L1)', async () => {
@@ -576,13 +627,15 @@ describe('HISTORY(t) — every row naming the thesis, in time order, attributed 
     // Half a minute after VERSION (09:11) and before the gap decision (09:12). An
     // instant equal to a row's own createdAt would pin a strict-or-inclusive
     // boundary the appendix never states, and step 20 would inherit it as a rule.
-    expect((await p.history(THESIS.id, at(9, 11, 30))).map((e) => e.id)).toEqual([
-      'gap-1-DISMISSED',
-      NOTE.id,
-      DEBATE.id,
-      ANALYSIS.id,
-      ATTEMPT.id,
-      WITHDRAWAL.id,
+    expect((await p.history(THESIS.id, { since: at(9, 11, 30) })).map((t) => t.kind)).toEqual([
+      'GAP_DECISION',
+      'NOTE',
+      'DEBATE_OPENED',
+      'ANALYSIS',
+      'PUBLICATION_RATIONALE',
+      'PUBLICATION_ASSESSMENT',
+      'PUBLICATION_VERDICT',
+      'WITHDRAWAL',
     ]);
   });
 

@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { loadFraming, roundsOf, type Round } from '../../services/framingRounds';
+import { loadFraming, roundsOf } from '../../services/framingRounds';
+import { prisma } from '../../lib/prisma';
+import { getResearcherId } from '../../context/researcherContext';
+import { handlesOf } from '../../services/publishedThesis';
+import { framingTurns, orderTurns, voicesOf, type Researcher, type Turn } from '../../services/thesisTranscript';
 import { answer, refusal, type Refusal } from './thesisRefusals';
 
 // ---------------------------------------------------------------------------
@@ -35,34 +39,23 @@ export const getFramingSchema = {
  * provenance, and between them is nothing the design names. A malformed round
  * reported as `{}` would read as an assessment that found nothing.
  */
-interface ProjectedRound {
-  sequence: number;
-  type: string;
-  content: unknown;
-  malformed: boolean;
-  researcherId: string;
-  createdAt: Date;
-}
-
+/**
+ * THE FRAMING THREAD, AS TURNS — A4 :1459, RULED 2026-09-20 (the researcher, R66).
+ *
+ * `rounds` and `researcherId` are RETIRED with the builder, exactly as `get_debate`'s `events` were
+ * (evidence :1123): the sheet that renders a framing and the stream that renders the same acts inside
+ * `get_thesis_context` now draw the SAME four turn kinds from the SAME function, so neither can describe a
+ * round the other would describe differently. The malformed rule is unchanged and now lives in the builder —
+ * a stored content that is not an object is `malformed: true` with a null body, never `{}`.
+ */
 interface GetFramingAnswer {
   framingId: string;
   question: string;
   provision: string | null;
   thesisId: string | null;
-  researcherId: string;
-  rounds: ProjectedRound[];
-}
-
-function project(round: Round): ProjectedRound {
-  const whole = typeof round.content === 'object' && round.content !== null && !Array.isArray(round.content);
-  return {
-    sequence: round.sequence,
-    type: round.type,
-    content: whole ? round.content : null,
-    malformed: !whole,
-    researcherId: round.researcherId,
-    createdAt: round.createdAt,
-  };
+  /** The author, as a handle and a `mine` — never an id on the wire (A4 :1476). */
+  by: Researcher;
+  turns: Turn[];
 }
 
 /** THE ONE FUNCTION behind the tool and `GET /api/research/framings/:id` (UI-3). */
@@ -72,13 +65,35 @@ export async function framingOf(input: { framingId: string }): Promise<GetFramin
     return refusal('NO_FRAMING', `No framing ${input.framingId}.`);
   }
   const rounds = await roundsOf(input.framingId);
+  // The versions of the thesis this framing attaches to, for a CHOSEN round's `restatedBy` — none when the
+  // framing has produced no thesis yet (ui §29 :903, "a framing that produced none yet").
+  const versions =
+    framing.thesisId === null
+      ? []
+      : await prisma.thesisVersion.findMany({ where: { thesisId: framing.thesisId }, select: { id: true, claim: true } });
+  const handles = await handlesOf([framing.researcherId, ...rounds.map((r) => r.researcherId)]);
+  const voices = voicesOf(handles, getResearcherId(), framing.thesisId ?? framing.id);
   return {
     framingId: framing.id,
     question: framing.question,
     provision: framing.provision,
     thesisId: framing.thesisId,
-    researcherId: framing.researcherId,
-    rounds: rounds.map(project),
+    by: voices.researcher(framing.researcherId),
+    turns: orderTurns(
+      framingTurns(
+        {
+          id: framing.id,
+          question: framing.question,
+          provision: framing.provision,
+          fromRunId: framing.fromRunId,
+          researcherId: framing.researcherId,
+          createdAt: framing.createdAt,
+        },
+        rounds,
+        versions,
+        voices,
+      ),
+    ),
   };
 }
 

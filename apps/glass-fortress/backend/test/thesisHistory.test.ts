@@ -41,8 +41,11 @@ describe('HISTORY(t) — the framing notes and the boundary', () => {
       { ...NOTE, id: 'note-on-the-framing', thesisId: null, framingId: FRAMING.id, createdAt: at(20) },
       { ...NOTE, id: 'note-on-another-framing', thesisId: null, framingId: 'framing-unattached', createdAt: at(21) },
     ];
+    // ATTRIBUTION IS NOW A VOICE, not an id (A4 :1476, R66): the assertion is the same fact — this note is the
+    // author's — read through the handle the transcript carries, because `handleOf` resolves AUTHOR to it.
     const entries = await history(THESIS.id);
-    expect(entries.filter((e) => e.kind === 'NOTE').map((e) => [e.id, e.researcherId])).toEqual([['note-on-the-framing', AUTHOR]]);
+    const notes = entries.flatMap((e) => (e.kind === 'NOTE' && e.by.voice === 'RESEARCHER' ? [[e.id, e.by.handle]] : []));
+    expect(notes).toEqual([['note-on-the-framing', 'חוקר_א']]);
   });
 
   it('an entry whose createdAt EQUALS `since` is excluded — `since` is strict (R6)', async () => {
@@ -51,7 +54,7 @@ describe('HISTORY(t) — the framing notes and the boundary', () => {
       { ...NOTE, id: 'note-at-since', createdAt: at(30) },
       { ...NOTE, id: 'note-after-since', createdAt: at(31) },
     ];
-    const ids = (await history(THESIS.id, at(30))).map((e) => e.id);
+    const ids = (await history(THESIS.id, { since: at(30) })).map((e) => e.id);
     expect(ids).toEqual(['note-after-since']);
   });
 });
