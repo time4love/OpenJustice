@@ -1,7 +1,7 @@
 jest.mock('../src/lib/api', () => jest.requireActual<typeof import('./render')>('./render').apiDouble());
 jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>('./render').navigationDouble());
 
-import { ancestorsOf, renderPage, setAuthState, setPathname, setPublicBodies, textNodes, type Locale, type PageRender } from './render';
+import { type Locale, type PageRender, ancestorsOf, renderPage, renderResearchDashboard, setAuthState, setPathname, setPublicBodies, textNodes } from './render';
 import { ID_SHAPES, requireSubjects } from './scan';
 import { captureRead } from './fixtures/corpus/capture';
 import { diffInput } from './fixtures/corpus/diffInput';
@@ -103,6 +103,10 @@ async function everyPage(locale: Locale): Promise<{ name: string; container: HTM
       name: 'claims',
       container: containerOf('claims', await renderPage((await claimsPage()).default, { locale }, { locale, searchParams: { page: 'page-one' } })),
     },
+    // UI-8 chunk 4: `/research` is the first GATED page here, and it carries a thesis id per row — in the
+    // URL of the public-page link and in nothing else. §4 :167 has no door exception: the rule is about what
+    // a READER meets, and a researcher is a reader.
+    { name: 'research', container: await renderResearchDashboard(locale) },
   ];
 }
 
@@ -115,7 +119,12 @@ describe('no-id-as-text', () => {
   it('no 64-hex, cuid or 14-digit timestamp is a text node outside VERIFY or a COPY value — on every public page, in both locales', async () => {
     const problems: string[] = [];
     for (const locale of LOCALES) {
-      for (const { name, container } of await everyPage(locale)) {
+      const pages = await everyPage(locale);
+      // THE FLOOR, MOVED UP BY ONE AT UI-8 chunk 4, with the page NAMED — and the fixture's thesis ids are
+      // CUID-SHAPED so this scan has something to catch on it: with readable ids it would examine nothing.
+      expect(pages.length).toBeGreaterThanOrEqual(9);
+      expect(pages.map(({ name }) => name)).toContain('research');
+      for (const { name, container } of pages) {
         const nodes = textNodes(container);
         requireSubjects(`text nodes of the ${name} page (${locale})`, nodes);
         problems.push(

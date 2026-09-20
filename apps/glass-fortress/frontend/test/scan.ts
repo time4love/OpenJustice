@@ -210,6 +210,32 @@ export function callsOf(file: string, callee: string): CallOptions[] {
   return found;
 }
 
+export interface PropertyValue {
+  line: number;
+  /** The property's value as its SOURCE text — `'GET'`, `'POST'`, `verb`, so a computed one is visible as such. */
+  source: string;
+}
+
+/**
+ * Every property with this NAME in a file's object literals, read as NODES — so the word inside a comment or a
+ * string is never counted. `callsOf` reads one call's first argument; this reads a property wherever it sits,
+ * which is what a rule about a REQUEST's shape needs: `researchFetch(path, parse, { signal })` carries its
+ * options third, and a `fetch` in a helper carries them second.
+ * Callers: `no-write-from-research` (UI-8).
+ */
+export function propertiesNamed(file: string, name: string): PropertyValue[] {
+  const source = parse(file);
+  const found: PropertyValue[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isPropertyAssignment(node) && node.name.getText(source) === name) {
+      found.push({ line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1, source: node.initializer.getText(source) });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return found;
+}
+
 export interface JsxTag {
   /** An intrinsic element's tag — `html`, `a`, `form`. Components (capitalised or dotted) are not listed. */
   tag: string;

@@ -18,7 +18,7 @@ jest.mock('../src/lib/doors', () => {
 
 import { join } from 'node:path';
 import { fireEvent } from '@testing-library/react';
-import { renderClaimsWithSheet, renderPage, setAuthState, setPathname, setPublicBodies, type Locale, type PageRender } from './render';
+import { type Locale, type PageRender, renderClaimsWithSheet, renderPage, renderResearchDashboard, setAuthState, setPathname, setPublicBodies } from './render';
 import { FRONTEND, jsxTagsIn, publicThesisModules, requireSubjects, stringsIn } from './scan';
 import { RightPane, TabsProvider } from '../src/components/shell/RightPane';
 import { CALL_TAB_ID } from '../src/components/thesis/PaneTabs';
@@ -143,6 +143,10 @@ async function everyPublicPage(): Promise<{ name: string; hrefs: string[] }[]> {
     // anchor planted INSIDE the sheet reddened nothing at all while this scan rendered the list alone. The
     // half of the view that mints the hrefs was the half nobody was reading.
     { name: '/corpus/claims', hrefs: [...(await renderClaimsWithSheet(LOCALE)).querySelectorAll('a[href]')].map((a) => a.getAttribute('href') ?? '') },
+    // UI-8 chunk 4: `/research` is the first GATED page in this set, and it belongs here for the same reason
+    // the public ones do — the rule is about what the PLATFORM draws a door to before the door exists, not
+    // about who is reading. Its own anchors are the chrome's and the public thesis page's.
+    { name: '/research', hrefs: [...requireSubjects('anchors of /research', [...(await renderResearchDashboard('he')).querySelectorAll('a')].map((anchor) => anchor.getAttribute('href') ?? ''))] },
   ];
 }
 
@@ -184,7 +188,12 @@ async function intakeCtaCount(): Promise<{ call: number; thesisTab: number }> {
 describe('no-door-before-it-exists', () => {
   it('while DOORS_OPEN is false, no rendered public page carries an anchor to an intake or withdrawal URL', async () => {
     expect(landedDoorFlag()).toBe(false);
-    const offenders = (await everyPublicPage()).flatMap(({ name, hrefs }) =>
+    const pages = await everyPublicPage();
+    // THE FLOOR, MOVED UP BY ONE AT UI-8 chunk 4 — and the page is NAMED, because a floor that only counts
+    // says nothing about WHICH page joined the set.
+    expect(pages.length).toBeGreaterThanOrEqual(7);
+    expect(pages.map(({ name }) => name)).toContain('/research');
+    const offenders = pages.flatMap(({ name, hrefs }) =>
       hrefs.filter((href) => DOOR_URLS.some((pattern) => pattern.test(unprefixed(href)))).map((href) => `${name}: ${href}`),
     );
     expect(offenders).toEqual([]);

@@ -3,7 +3,7 @@ jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { renderPage, setPublicBodies, textNodes, type Locale, type PageRender } from './render';
+import { type Locale, type PageRender, renderPage, renderResearchDashboard, setPublicBodies, textNodes } from './render';
 import { FRONTEND, declarationsOf, importsOf, jsxTagsIn, publicThesisModules, requireSubjects, stringsIn } from './scan';
 import published from './fixtures/thesis/published.json';
 import callLive from './fixtures/thesis/call-live.json';
@@ -203,6 +203,10 @@ async function renderedPublicPages(): Promise<{ name: string; container: HTMLEle
       '/theses/[id]/versions/[v]',
       await renderPage(version, { locale: LOCALE, id: published.thesisId, v: versionPrevious.versionId }, { locale: LOCALE }),
     ),
+    // UI-8 chunk 4: `/research` joins the render arm. §11 :399's ruling is that the working view's context
+    // line is NOT sticky; the DOOR has no context line at all, and nothing held that until now. It is also
+    // the first page in this set whose tree is CLIENT-rendered, which is why it comes through the one helper.
+    { name: '/research', container: await renderResearchDashboard(LOCALE) },
   ];
   return [...requireSubjects('rendered public pages', rendered)];
 }
@@ -277,6 +281,9 @@ describe('no-context-line', () => {
 
   it('NO RENDERED PUBLIC PAGE CARRIES A CONTEXT LINE OR A STUCK ELEMENT — over pages that really rendered', async () => {
     const pages = await renderedPublicPages();
+    // THE FLOOR, MOVED UP BY ONE AT UI-8 chunk 4, with the page NAMED.
+    expect(pages.length).toBeGreaterThanOrEqual(4);
+    expect(pages.map(({ name }) => name)).toContain('/research');
     const offenders = pages.flatMap(({ name, container }) => [
       ...stickyRenderOffences(name, container),
       ...[...container.querySelectorAll(`[${RETIRED_MARKER}]`)].map(() => `${name}: [${RETIRED_MARKER}]`),

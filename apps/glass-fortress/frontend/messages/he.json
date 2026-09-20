@@ -626,7 +626,12 @@
       "publishedOverObjection": "פורסם למרות התנגדות המעריך",
       "trajectoryCurrent": "המעבר החדש ביותר מסכים",
       "trajectoryStale": "המעבר החדש ביותר אינו מסכים",
-      "trajectoryUnresolved": "מסלול שלא נמצא"
+      "trajectoryUnresolved": "מסלול שלא נמצא",
+      "notPublic": "לא פתוח לציבור",
+      "promoted": "הוכר כראיה",
+      "abandoned": "ננטש",
+      "refused": "סורב",
+      "published": "פורסם"
     },
     "chip": {
       "unresolved": "ציטוט שלא נמצא",
@@ -643,7 +648,8 @@
       "flag": {
         "WITHDRAWN": "הרשומה נמשכה",
         "NOT_CITATION_CURRENT": "התוכן המצוטט השתנה ולא אושר מחדש",
-        "SHED": "הפלטפורמה אינה מחזיקה עוד בתוכן הרשומה"
+        "SHED": "הפלטפורמה אינה מחזיקה עוד בתוכן הרשומה",
+        "AWAITING_DERIVATION": "הרשומה ממתינה לגזירה"
       },
       "argued": "נטען בדיון: כן",
       "overObjection": "למרות התנגדות המעריך: {answer}",
@@ -694,7 +700,8 @@
       "trajectoryId": "מזהה המסלול",
       "pin": "גרסת התוכן המצוטטת",
       "copyValue": "העתקה לבדיקה",
-      "how": "גיבוב הגרסה הוא SHA-256 של טקסט הגרסה, והוא אינו רשום בשום שרשרת. שם הרשומה וגרסת התוכן מזהים את מה שצוטט; עמוד הרשומה מראה כיצד לבדוק אותה מול ארכיון האינטרנט ומול השרשרת."
+      "how": "גיבוב הגרסה הוא SHA-256 של טקסט הגרסה, והוא אינו רשום בשום שרשרת. שם הרשומה וגרסת התוכן מזהים את מה שצוטט; עמוד הרשומה מראה כיצד לבדוק אותה מול ארכיון האינטרנט ומול השרשרת.",
+      "fingerprint": "טביעת האצבע של קלט הניתוח"
     },
     "version": {
       "banner": "זו גרסה קודמת שפורסמה.",
@@ -2071,6 +2078,185 @@
       "openBefore": "הצילום שלפני",
       "openAfter": "הצילום שאחרי",
       "narrowedWith": "צילומים שהתווספו בין השניים"
+    }
+  },
+  "research": {
+    "state": {
+      "forbidden": "החשבון הזה אינו חוקר מאושר.",
+      "forbiddenLink": "בקשת גישת מחקר",
+      "noThesis": "אין תזה כזו.",
+      "noFraming": "אין מסגור כזה.",
+      "noDebate": "אין דיון כזה.",
+      "notSurveyed": "הדף הזה לא נסקר.",
+      "noRule": "אין כלל כזה."
+    },
+    "scope": {
+      "label": "היקף",
+      "mine": "שלי",
+      "all": "של כולם"
+    },
+    "owed": {
+      "heading": "מה אני חייב/ת",
+      "empty": "אין כרגע מה שחייבים.",
+      "command": "הפקודה להדבקה בשיחה",
+      "since": "פתוח מ־{date}",
+      "byAuthor": "הפקודה היא של {handle}, מחבר/ת התזה",
+      "affirmed": "הקטעים שאושרו",
+      "current": "הקטעים כעת",
+      "entered": "נכנסו",
+      "left": "יצאו",
+      "citedBy": "תזות המצטטות את הרשומה",
+      "notEvaluable": "לא ניתן להעריך כרגע",
+      "kind": {
+        "FLAGGED": "ציטוט מסומן",
+        "STALE_TRAJECTORY": "מסלול שהמעבר החדש אינו מסכים איתו",
+        "UNARGUED": "ציטוט שלא נטען בדיון",
+        "CONTENT_MOVED": "תוכן שצוטט וזז"
+      },
+      "notEvaluableReason": {
+        "AWAITING_DERIVATION": "הרשומה ממתינה לגזירה — אין עדיין גרסת תוכן לשפוט לפיה",
+        "AFFIRMED_VERSION_MISSING": "הגרסה שאושרה אינה בין גרסאות התוכן של הרשומה — אי אפשר להציג ישן מול חדש"
+      }
+    },
+    "theses": {
+      "empty": "עדיין אין תזות.",
+      "publicPage": "העמוד הציבורי",
+      "framingAttached": "מסגור מחובר",
+      "noFraming": "בלי מסגור",
+      "unargued": "{count, plural, one {ציטוט אחד שלא נטען} other {# ציטוטים שלא נטענו}}",
+      "openGaps": "{count, plural, one {פער פתוח אחד} other {# פערים פתוחים}}"
+    },
+    "thesisState": {
+      "DRAFT_ONLY": "טיוטה בלבד",
+      "PUBLISHED_IS_HEAD": "מפורסם — הגרסה הנוכחית",
+      "PUBLISHED_BEHIND": "מפורסם — {count, plural, one {גרסה אחת מאחור} other {# גרסאות מאחור}}",
+      "WITHDRAWN": "הפרסום בוטל ב־{date}"
+    },
+    "framings": {
+      "heading": "מסגורים",
+      "empty": "עדיין אין מסגורים.",
+      "question": "השאלה",
+      "noThesis": "עדיין לא הוליד תזה",
+      "chosenClaim": "הטענה שנבחרה",
+      "malformed": "תוכן הסבב לא נקרא",
+      "rounds": "{count, plural, one {סבב אחד} other {# סבבים}}",
+      "latest": {
+        "PROPOSED": "הסבב האחרון: הצעה",
+        "ASSESSED": "הסבב האחרון: הערכה",
+        "CHOSEN": "הסבב האחרון: נבחר"
+      }
+    },
+    "corpus": {
+      "heading": "הארכיון במספרים",
+      "open": "הארכיון של החוקרים",
+      "surveyed": "{count, plural, one {דף אחד נסקר} other {# דפים נסקרו}}",
+      "rows": "{count, plural, one {שורה אחת} other {# שורות}}",
+      "stopsPending": "{count, plural, one {עצירה אחת ממתינה} other {# עצירות ממתינות}}"
+    },
+    "outcome": {
+      "UNFETCHED": "לא נשלף",
+      "UNSERVABLE": "הארכיון לא מסר אותו",
+      "IDENTICAL": "זהה לקודם",
+      "DUPLICATE": "כפילות",
+      "ACQUIRED": "נרכש",
+      "PENDING_JUDGEMENT": "ממתין לשיפוט",
+      "SKIPPED": "דולג"
+    },
+    "thesis": {
+      "owedHere": "מה חייבים על התזה הזו",
+      "copyId": "מזהה התזה לשיחה חדשה",
+      "jumpToNow": "לקפוץ לסוף"
+    },
+    "tab": {
+      "citations": "ציטוטים",
+      "gaps": "פערים",
+      "analysis": "ניתוח",
+      "framing": "מסגור"
+    },
+    "text": {
+      "published": "הגרסה שפורסמה",
+      "diffToggle": "מה שונה ביניהן",
+      "noPublished": "אף גרסה לא פורסמה"
+    },
+    "citations": {
+      "unargued": "לא נטען בדיון",
+      "openDebate": "הדיון",
+      "pin": "הגרסה המצוטטת"
+    },
+    "gaps": {
+      "decision": {
+        "OPEN": "פתוח",
+        "CITED": "צוטט",
+        "REQUESTED": "הוגשה בקשה",
+        "CALLED": "נקרא לעדים",
+        "CONCEDED": "הודה",
+        "DISMISSED": "נדחה"
+      },
+      "derivedOpen": "הציטוט עזב את הגרסה הנוכחית — הפער נקרא פתוח",
+      "earlier": "החלטות קודמות על אותו פער"
+    },
+    "analysis": {
+      "NONE": "לא הורץ ניתוח",
+      "AWAITING_DERIVATION": "הניתוח ממתין לגזירה",
+      "CURRENT": "הניתוח עדכני",
+      "STALE": "הניתוח אינו עדכני",
+      "spentBy": "את הקריאה שילם/ה {handle}"
+    },
+    "thread": {
+      "VERSION": "גרסה",
+      "DEBATE": "דיון",
+      "GAP": "פער",
+      "PUBLICATION": "ניסיון פרסום",
+      "WITHDRAWAL": "ביטול פרסום"
+    },
+    "model": {
+      "unrecorded": "הדגם וגרסת ההנחיה לא נרשמו"
+    },
+    "turn": {
+      "material": "החומר",
+      "FRAMING_OPENED": "המסגור נפתח",
+      "ROUND_PROPOSED": "מסגור הוצע",
+      "ROUND_ASSESSED": "המסגור הוערך",
+      "ROUND_CHOSEN": "הטענה נבחרה",
+      "VERSION": "גרסה נכתבה",
+      "DEBATE_OPENED": "דיון נפתח",
+      "RATIONALE": "הנימוק",
+      "ASSESSMENT": "ההערכה",
+      "RESPONSE": "התשובה",
+      "DEBATE_CLOSED": "הדיון נסגר",
+      "ANALYSIS": "ניתוח הורץ",
+      "GAP_DECISION": "הוכרע פער",
+      "PUBLICATION_RATIONALE": "נימוק הפרסום",
+      "PUBLICATION_ASSESSMENT": "הערכת הפרסום",
+      "PUBLICATION_VERDICT": "הכרעת הפרסום",
+      "NOTE": "הערה נרשמה"
+    },
+    "mark": {
+      "refusedBy": "נדחה על ידי: {checks}"
+    },
+    "stop": {
+      "pending": "עצירה ממתינה; היא נפתרת בשיחה"
+    },
+    "extraction": {
+      "open": "כיצד חולץ הטקסט הזה",
+      "workRow": "השורה ברשימת העבודה",
+      "rulesInForce": "הכללים שהיו בתוקף בתאריך הצילום",
+      "ruleHistory": "ההיסטוריה של הכלל",
+      "removed": "הטקסט שהוסר",
+      "trusted": "כלל שנסמך",
+      "stale": "ישן ביחס לכללים",
+      "comparedTo": "הושווה לצילום מ־{date}",
+      "stopGates": "שערי העצירה"
+    },
+    "line": {
+      "assessed": "הוערך: {contradictions} סתירות, {elements} רכיבים שמולאו",
+      "versionCitations": "+{added} ציטוטים, {unargued} לא נטענו",
+      "debateVerdict": "{record} · {verdict}",
+      "analysisState": "ניתוח: {strength}"
+    },
+    "verdict": {
+      "SUPPORTS": "המעריך הסכים",
+      "DISPUTES": "המעריך התנגד"
     }
   }
 }

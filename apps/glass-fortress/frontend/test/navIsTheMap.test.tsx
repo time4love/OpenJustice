@@ -261,6 +261,36 @@ describe('nav-is-the-map', () => {
     expect(problems).toEqual([]);
   });
 
+  it('every nav destination IS A PAGE — an entry that leads nowhere is the defect §32 names, and /research now exists', () => {
+    // THE CLAUSE'S OWN REASONING, MADE MECHANICAL (§32 :934, 2026-09-18): "a category drawn without a
+    // destination is the same defect as an entry that leads nowhere". Until UI-8 `/research` was in the nav
+    // for a researcher and had no page; the sidebar has drawn it since UI-4b, so the absence was real and
+    // nothing held it. The route's file is what a destination IS in the app router.
+    const destinations = new Set<string>();
+    for (const state of STATES) {
+      const { unmount } = renderSidebar(state);
+      try {
+        for (const [, href] of navAnchors()) {
+          const path = unprefixed(href);
+          if (path.startsWith('http') || path === '') continue;
+          destinations.add(path);
+        }
+      } finally {
+        unmount();
+      }
+    }
+    // THE FLOOR: the set really was collected, and `/research` is really in it — a builder that returned an
+    // empty set would make "every destination exists" true of nothing.
+    expect(destinations.size).toBeGreaterThanOrEqual(4);
+    expect([...destinations]).toContain('/research');
+
+    const missing = [...destinations]
+      .map((path) => ({ path, file: `src/app/[locale]${path === '/' ? '' : path}/page.tsx` }))
+      .filter(({ file }) => !existsSync(join(FRONTEND, file)))
+      .map(({ path, file }) => `${path} has no ${file}`);
+    expect(missing).toEqual([]);
+  });
+
   it('no file under src/app imports the shell, the sidebar, the right pane or the splitter, except app/[locale]/layout.tsx', () => {
     const missing = CHROME.filter((module) => !existsSync(join(FRONTEND, module))).map((module) => `${module} does not exist`);
     const importers = chromeScanSubjects()

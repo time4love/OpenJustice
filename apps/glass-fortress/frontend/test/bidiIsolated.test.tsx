@@ -1,7 +1,18 @@
 jest.mock('../src/lib/api', () => jest.requireActual<typeof import('./render')>('./render').apiDouble());
 jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>('./render').navigationDouble());
 
-import { ancestorsOf, renderClaimsWithSheet, renderPage, setAuthState, setPathname, setPublicBodies, textNodes, type Locale, type PageRender } from './render';
+import {
+  ancestorsOf,
+  renderClaimsWithSheet,
+  renderPage,
+  renderResearchDashboard,
+  setAuthState,
+  setPathname,
+  setPublicBodies,
+  textNodes,
+  type Locale,
+  type PageRender,
+} from './render';
 import { ID_SHAPES, requireSubjects } from './scan';
 import { captureRead } from './fixtures/corpus/capture';
 import { diffInput } from './fixtures/corpus/diffInput';
@@ -104,6 +115,10 @@ async function allPages(locale: Locale): Promise<{ name: string; container: HTML
     // vacuity guard refused it, correctly. The dates and the composed links live in the sheet, which is
     // half of this view rather than a separate page, and a reader reaches it in one tap.
     { name: '/corpus/claims', container: await renderClaimsWithSheet(locale) },
+    // UI-8 chunk 4: `/research` composes a DATE into a Hebrew sentence in every owed entry („פתוח מ־{date}")
+    // and names each record by its capture dates — so it carries the shape this scan exists for, and it is
+    // the first GATED page to join the set.
+    { name: '/research', container: await renderResearchDashboard(locale) },
   ];
 }
 
@@ -134,7 +149,12 @@ const RESEARCHER_PAGES = ['/theses/[id]', '/call/[thesisId]', '/theses/[id]/vers
 describe('bidi-isolated', () => {
   it('every URL, date and hash rendered inside Hebrew text is inside an isolating element', async () => {
     const problems: string[] = [];
-    for (const { name, container } of await allPages('he')) {
+    const pages = await allPages('he');
+    // THE FLOOR, MOVED UP BY ONE AT UI-8 chunk 4 — and the page is NAMED, because a floor that only counts
+    // says nothing about WHICH page joined the set.
+    expect(pages.length).toBeGreaterThanOrEqual(8);
+    expect(pages.map(({ name }) => name)).toContain('/research');
+    for (const { name, container } of pages) {
       const nodes = textNodes(container);
       const hebrew = nodes.filter((node) => HEBREW.test(node.data));
       requireSubjects(`Hebrew text nodes of ${name}`, hebrew);

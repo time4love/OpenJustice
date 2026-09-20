@@ -1,11 +1,12 @@
 import { createElement, type ComponentType, type ReactElement, type ReactNode } from 'react';
-import { fireEvent, render, type RenderResult } from '@testing-library/react';
+import { act, fireEvent, render, type RenderResult } from '@testing-library/react';
 import { NextIntlClientProvider, createTranslator, type AbstractIntlMessages } from 'next-intl';
 import type { ResearcherProfile } from '@/context/AuthContext';
 import { routing } from '@/i18n/routing';
 import { RightPane, TabsProvider } from '@/components/shell/RightPane';
 import { messageCatalogs, requireSubjects } from './scan';
 import { claimsAnswer } from './fixtures/corpus/claims';
+import { evidenceReviews, framings, pages as pagesFixture, thesesList, thesisReviewsOwed } from './fixtures/research/reads';
 
 // ---------------------------------------------------------------------------
 // RENDER-SCAN HELPERS FOR THE FRONTEND'S INSTRUMENTS (docs/gf-ui-refactor-plan.md
@@ -480,4 +481,64 @@ export async function renderClaimsWithSheet(locale: Locale = routing.defaultLoca
     throw new Error('renderClaimsWithSheet: the tap opened no sheet — the pane drew nothing to scan');
   }
   return rendered.container;
+}
+
+/**
+ * `/research`, RENDERED WHOLE, FOR EVERY SCAN THAT NEEDS IT — one helper, five callers (UI-8 chunk 4).
+ *
+ * The read view is CLIENT-rendered below a thin server shell: the bearer is in `window.localStorage` and a
+ * Server Component cannot read it. So `renderPage` cannot stage it the way it stages a public page — the
+ * reads are effects, and what a scan must examine is the tree AFTER they settle. This does the staging
+ * (`global.fetch` answering the five paths from the fixture set), the session, the render and the flush, and
+ * hands back the container.
+ *
+ * ONE HELPER RATHER THAN FIVE COPIES: `bidi-isolated`, `no-id-as-text`, `no-door-before-it-exists`,
+ * `no-disclaimer-off-the-thesis` and `no-context-line` all need the same tree, and five stagings of one page
+ * is one rule with five implementations — the shape `renderClaimsWithSheet` exists to prevent for the claims
+ * view, applied here.
+ *
+ * IT FAILS LOUDLY when the page draws no region, because a scan over a half-rendered tree examines less than
+ * it thinks it does.
+ */
+export async function renderResearchDashboard(locale: Locale = routing.defaultLocale): Promise<HTMLElement> {
+  const researchPage = (await import('@/app/[locale]/research/page')).default;
+  const answers: Record<string, { status: number; body?: unknown }> = {
+    '/api/research/reviews': { status: 200, body: thesisReviewsOwed },
+    '/api/research/evidence-reviews': { status: 200, body: evidenceReviews },
+    '/api/research/theses': { status: 200, body: thesesList },
+    '/api/research/framings': { status: 200, body: framings },
+    '/api/research/pages': { status: 200, body: pagesFixture },
+  };
+  window.localStorage.setItem('gf_access_token', JSON.stringify({ accessToken: 'scan-token', refreshToken: null, expiresAt: null }));
+  // THE PATHNAME IS THE HELPER'S, because the page's DOOR calls `useRouter` (§13 :474's 401 is an act) and
+  // next-intl's router reads `usePathname` — which the navigation double refuses until a case sets it. A
+  // caller that had to remember this would be a caller that forgets it; the callers' own `afterEach` clears it.
+  setPathname(`/${locale}/research`);
+  const fetching = globalFetchDouble(answers);
+  try {
+    // THE PAGE, NOT THE BODY — the server shell AND the client body, which is what a reader meets. Rendering
+    // the dashboard alone left `page.tsx`'s own markup (the `<main>`, the heading, anything a later hand adds
+    // there) outside every scan that calls this: a planted disclaimer on the shell reddened NOTHING until
+    // this changed, which is what a blind probe is for.
+    const rendered = await renderPage(researchPage, { locale }, { locale });
+    if (rendered.notFound) throw new Error('renderResearchDashboard: /research answered the one 404, not a body');
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // THE SCOPE IS WIDENED so the scan meets EVERY row the fixture set carries — a colleague's thesis, the
+    // UNARGUED entry, the withdrawn and the draft states. At `mine` the page correctly hides four of them,
+    // and a scan over the narrower tree would examine less than the page can show.
+    const all = rendered.container.querySelector('[data-scope-option="all"]');
+    if (all === null) throw new Error('renderResearchDashboard: the page drew no scope switch');
+    await act(async () => {
+      fireEvent.click(all);
+      await Promise.resolve();
+    });
+    if (rendered.container.querySelectorAll('[data-region]').length !== 4) {
+      throw new Error('renderResearchDashboard: the page drew fewer than four regions — there is less here than a scan expects');
+    }
+    return rendered.container;
+  } finally {
+    fetching.restore();
+  }
 }

@@ -26,16 +26,16 @@ const DIFF_RECORD = { url: 'https://example.gov/two/', before: '20220301120000',
 
 /** `list_thesis_reviews` at `all` — all three kinds, each with its material and its ONE command (A4 :1523). */
 export const thesisReviewsOwed: ThesisReviewList = {
-  owed: 3,
+  owed: 4,
   reviews: [
     {
       kind: 'FLAGGED',
-      thesisId: 'thesis-one',
+      thesisId: 'cmu0aaaa00011112222333344',
       name: 'record-one',
       versionId: 'version-1',
       mentionId: 'mention-1',
-      reasons: ['NOT_CITATION_CURRENT'],
-      command: 'add_thesis_version thesisId=thesis-one',
+      reasons: ['NOT_CITATION_CURRENT', 'AWAITING_DERIVATION'],
+      command: 'add_thesis_version thesisId=cmu0aaaa00011112222333344',
       owedSince: '2026-02-10T09:00:00.000Z',
       author: AUTHOR,
       mine: true,
@@ -51,7 +51,7 @@ export const thesisReviewsOwed: ThesisReviewList = {
     },
     {
       kind: 'STALE_TRAJECTORY',
-      thesisId: 'thesis-one',
+      thesisId: 'cmu0aaaa00011112222333344',
       name: 'trajectory-one',
       citedOn: [{ versionId: 'version-2', published: false }],
       state: 'RECOMPUTED_DISAGREES',
@@ -72,12 +72,37 @@ export const thesisReviewsOwed: ThesisReviewList = {
       },
     },
     {
+      // THE FOURTH CURRENCY WORD. A3 :1386–:1388 puts RECOMPUTED_DISAGREES and NOT_FOLLOWED_BY_LATEST in ONE
+      // class — both are STALE — and this entry is what makes that assertable by VALUE rather than by the
+      // one state the other entry happens to carry.
+      kind: 'STALE_TRAJECTORY',
+      thesisId: 'cmu0aaaa00011112222333344',
+      name: 'trajectory-two',
+      citedOn: [{ versionId: 'version-2', published: false }],
+      state: 'NOT_FOLLOWED_BY_LATEST',
+      command: 'get_claim_trajectories url=https://example.gov/two/',
+      owedSince: '2026-02-14T09:00:00.000Z',
+      author: AUTHOR,
+      mine: true,
+      material: {
+        citedOn: [{ versionId: 'version-2', published: false }],
+        cited: {
+          claimText: 'הנוהל עודכן בלי הודעה',
+          url: 'https://example.gov/two/',
+          finalState: 'PRESENT',
+          changes: [],
+          computation: { id: 'computation-2', computedAt: '2026-01-03T09:00:00.000Z' },
+        },
+        currency: { state: 'NOT_FOLLOWED_BY_LATEST' },
+      },
+    },
+    {
       kind: 'UNARGUED',
-      thesisId: 'thesis-two',
+      thesisId: 'cmu0bbbb00011112222333344',
       name: 'record-three',
       versionId: 'version-7',
       mentionId: 'mention-7',
-      command: 'open_debate thesisId=thesis-two',
+      command: 'open_debate thesisId=cmu0bbbb00011112222333344',
       owedSince: '2026-02-12T09:00:00.000Z',
       author: COLLEAGUE,
       mine: false,
@@ -120,8 +145,8 @@ export const evidenceReviews: EvidenceReviewList = {
         { kind: 'UNREADABLE', capture: '20220704090000', reason: 'הארכיון לא מסר את הבתים' },
       ],
       citedBy: [
-        { thesisId: 'thesis-one', versionId: 'version-1', published: true, argument: { debateSessionId: 'debate-1', argued: true } },
-        { thesisId: 'thesis-two', versionId: 'version-7', published: false, argument: null },
+        { thesisId: 'cmu0aaaa00011112222333344', versionId: 'version-1', published: true, argument: { debateSessionId: 'debate-1', argued: true } },
+        { thesisId: 'cmu0bbbb00011112222333344', versionId: 'version-7', published: false, argument: null },
       ],
       narrowed: null,
       commands: ['review_evidence fileHash=1111aaaa', 'resolve_record name=record-one'],
@@ -142,7 +167,7 @@ export const evidenceReviews: EvidenceReviewList = {
 export const thesesList: ThesesList = {
   theses: [
     {
-      thesisId: 'thesis-one',
+      thesisId: 'cmu0aaaa00011112222333344',
       state: { kind: 'PUBLISHED_BEHIND', versionsAhead: 1 },
       claim: 'המשרד החזיק במידע ולא מסר אותו במועד',
       provision: 'NUREMBERG_1',
@@ -156,7 +181,7 @@ export const thesesList: ThesesList = {
       mine: true,
     },
     {
-      thesisId: 'thesis-two',
+      thesisId: 'cmu0bbbb00011112222333344',
       state: { kind: 'PUBLISHED_IS_HEAD' },
       claim: 'התוכנית הורחבה לאחר האות',
       provision: 'NUREMBERG_10',
@@ -170,7 +195,7 @@ export const thesesList: ThesesList = {
       mine: false,
     },
     {
-      thesisId: 'thesis-three',
+      thesisId: 'cmu0cccc00011112222333344',
       state: { kind: 'WITHDRAWN', at: '2026-03-09T09:00:00.000Z', reason: 'הרשומה שצוטטה הוחלפה' },
       claim: 'התוכנית נמשכה לאחר האות',
       provision: 'NUREMBERG_10',
@@ -184,7 +209,7 @@ export const thesesList: ThesesList = {
       mine: true,
     },
     {
-      thesisId: 'thesis-four',
+      thesisId: 'cmu0dddd00011112222333344',
       state: { kind: 'DRAFT_ONLY' },
       claim: 'הנוהל לא פורסם',
       provision: null,
@@ -200,7 +225,7 @@ export const thesesList: ThesesList = {
   ],
   published: [
     {
-      thesisId: 'thesis-two',
+      thesisId: 'cmu0bbbb00011112222333344',
       claim: 'התוכנית הורחבה לאחר האות',
       provision: 'NUREMBERG_10',
       publishedAt: '2026-02-20T09:00:00.000Z',
@@ -217,7 +242,7 @@ export const framings: FramingRow[] = [
     question: 'מה נמסר לציבור על תופעות הלוואי, ומתי',
     provision: 'NUREMBERG_1',
     author: AUTHOR,
-    thesisId: 'thesis-one',
+    thesisId: 'cmu0aaaa00011112222333344',
     openedAt: '2026-01-04T09:00:00.000Z',
     rounds: 3,
     latest: { sequence: 3, type: 'CHOSEN' },
@@ -263,7 +288,7 @@ export const framingRead: FramingRead = {
   framingId: 'framing-5',
   question: 'מה נמסר לציבור על תופעות הלוואי, ומתי',
   provision: 'NUREMBERG_1',
-  thesisId: 'thesis-one',
+  thesisId: 'cmu0aaaa00011112222333344',
   by: { handle: AUTHOR, mine: true },
   turns: [
     {
@@ -310,7 +335,7 @@ export const framingRead: FramingRead = {
 /** `get_debate` — the record NAMED, and the five debate kinds in order from the one builder. */
 export const debateRead: DebateRead = {
   sessionId: 'debate-1',
-  thesisId: 'thesis-one',
+  thesisId: 'cmu0aaaa00011112222333344',
   fileHash: '1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa',
   record: CAPTURE_RECORD,
   status: 'PROMOTED',
