@@ -102,9 +102,13 @@ export default async function RecordPage({ params }: PageParams) {
         // it here would report a check that never ran — the fabrication class this platform refuses, in
         // one sentence. There is no approved sentence for "not evaluable" yet, so the arm carries the
         // machine-readable reason for an instrument and stays SILENT for a reader until one is frozen.
-        <p className="record-marks">
-          <span data-not-evaluable={verified.notEvaluable} />
-        </p>
+        //
+        // THE ATTRIBUTE IS ON THE ROW AND THERE IS NO CHILD SPAN, which is not a detail: `.record-marks >
+        // span` is a PILL (`globals.css`, 2026-09-20), so an empty span inside this row drew an 18 × 6 px
+        // capsule — a visible border around nothing, measured on staging. Silence has to be silent in the
+        // rendering too, or it is not silence but a glitch. W-24 sweeps every arm of all three pages for
+        // exactly this shape.
+        <p className="record-marks" data-not-evaluable={verified.notEvaluable} />
       ) : (
         <ul className="record-meta space-y-1" data-verified={String(verified.verified)}>
           {verified.captures.map((capture) => (
