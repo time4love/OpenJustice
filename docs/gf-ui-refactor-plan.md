@@ -688,10 +688,10 @@ to the connector's; one diff page; `/records/<one cited fileHash>`; a surveyed p
 (`corona`, if still unopened — the id read from `list_pages` through the connector, never typed); no horizontal scroll on any
 of the five; the density of §41 recorded in rows per month.
 
-**STATUS:** OPEN. **RE-BRIEFED 2026-09-16** against the design canvas, page 4 (docs/gf-ui-design-session-2026-09-16.md
-§4), and **RE-BRIEFED AGAIN 2026-09-18** — the ten rulings above, folded into this body. Closes with
-`docs/gf-ui-step-7-<date>.md`: the stream's initial `limit`, the density measured, the composed page labels as
-they read, the exercise. *(This line was SPLICED — the 2026-09-16 marker had landed inside the closing sentence,
+**STATUS:** CLOSED 2026-09-20 — `docs/gf-ui-step-7-2026-09-20.md`. Ten landings (#522, #524, #525, #526, #528, #529, #539, #540, #541, #542; `staging` `f09c909`): the corpus types and the two pure libraries, the pages list, the provision lookup, the theses list with the CI type-check gate, the third voice's container, the stream with the page card and the time strip, the CITED lens, the three record pages with their two ruled envelopes, and the CLAIMS view per page with the read that gained `captures[]`. Recorded there: the stream's initial `limit` (100, UI-2's, unmoved), the density MEASURED (43 rows over 23.12.2021–3.1.2023 on the one staging page — 22 captures + 21 diffs, May 2022 the densest at nine captures; 26 trajectories, 22 captures each, 13 of them groups of 2–45), the composed page label as it reads (`corona.health.gov.il/vaccine-for-covid/`), the exercise on staging at 375 px for every page of the step, the chain check pressed TRUE at index 22 — and the press RATE this line's :678 asked for read as UNMEASURABLE from the backend's request log as Railway retains it, which holds the current deployment only. RE-BRIEFED 2026-09-16 (docs/gf-ui-design-session-2026-09-16.md
+§4) and RE-BRIEFED AGAIN 2026-09-18 — the ten rulings above, folded into this body. What the step does NOT close, each carried to its owner in the doc's
+§10: the sheet's height on a phone (a group of 45 lists every member and every capture, 6,626 px), the `notEvaluable` reason sentences, the one 404 naming a THESIS on a record page, §3 :92,
+the version page's `reading`, „טען ישנים יותר", the pill drawn twice, the `routeIsTool` flake. *(This line was SPLICED — the 2026-09-16 marker had landed inside the closing sentence,
 orphaning its second half. Found by a cold read, 2026-09-18; it pre-dates today's amendments.)*
 
 ### UI-8 · The read view — `/research`, the working view, the gated chronology
