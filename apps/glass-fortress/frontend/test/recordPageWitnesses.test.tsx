@@ -480,12 +480,12 @@ describe('record-page-witnesses — the reading region', () => {
       [...source.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\}|\{'([^']*)'\})/g)].filter((match) =>
         (match[1] ?? match[2] ?? match[3] ?? '').split(/\s+/).includes('reading'),
       ).length;
-    const returns = (source: string): number => [...source.matchAll(/<main\b[^>]*>/g)].length;
-
     // A PER-RETURN COUNT READS NODES, NOT TEXT — the fifth detector defect of this case, and it was found by
     // the case itself when the read view's page arrived: that page's docblock EXPLAINS the `<main>` it
-    // renders, and the regex above counted the explanation as two more returns, so a page that opts in
-    // correctly read as under-opted-in. The file-wide count below (branch (b)) stays text-based on purpose —
+    // renders, and a `/<main\b[^>]*>/g` count over the FILE read the explanation as two more returns, so a
+    // page that opts in correctly read as under-opted-in. That regex counter is GONE rather than left beside
+    // its replacement: a superseded reader kept in the file is a reader a later hand may call again. The
+    // file-wide count below (branch (b)) stays text-based on purpose —
     // `/theses/[id]` carries its opt-in on the `<article>` INSIDE its main, which a `main`-only node count
     // cannot see and which that page is right about.
     const mainTags = (file: string) => jsxTagsIn(join(FRONTEND, file)).filter((tag) => tag.tag === 'main');

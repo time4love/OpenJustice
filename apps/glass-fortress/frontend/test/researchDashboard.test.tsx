@@ -12,7 +12,7 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { ResearchDashboard } from '@/components/research/ResearchDashboard';
 import { SCOPE_KEY } from '@/components/research/ScopeSwitch';
 import { globalFetchDouble, renderWithIntl, textNodes, type Locale } from './render';
-import { ID_SHAPES, requireSubjects } from './scan';
+import { requireSubjects } from './scan';
 import { articleRules, evidenceReviews, framings, pages, thesesList, thesisReviewsOwed } from './fixtures/research/reads';
 
 // ---------------------------------------------------------------------------
