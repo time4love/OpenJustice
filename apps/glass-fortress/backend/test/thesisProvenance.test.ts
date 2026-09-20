@@ -79,16 +79,32 @@ function seed(over: { thesisId?: string | null; rounds?: unknown[] } = {}): void
 const read = async (): Promise<Record<string, unknown>> =>
   JSON.parse(await getFramingHandler({ framingId: FRAMING_ID })) as Record<string, unknown>;
 
-interface ProjectedRound {
-  sequence: number;
-  type: string;
-  content: Record<string, unknown> | null;
-  malformed: boolean;
-  researcherId: string;
+/**
+ * A TURN of the framing thread — A4 :1459 as RULED 2026-09-20 (the researcher, R66). `rounds` and
+ * `researcherId` are RETIRED with the builder (as `get_debate`'s `events` were, evidence :1123), so these six
+ * cases read the same facts off the TURNS that carry them: refactor plan §4 rule 1, a case asserting a retired
+ * concept is rewritten in the commit that retires it. Not one of the six properties below changed meaning —
+ * the sequence order, the parsed structure, malformed, the attachment and the attribution are all still here.
+ */
+interface FramingTurn {
+  kind: string;
+  id: string;
+  by: { voice: string; handle?: string; mine?: boolean };
+  body: Record<string, unknown>;
 }
+
+const turnsOfAnswer = (answer: Record<string, unknown>): FramingTurn[] => answer['turns'] as FramingTurn[];
+/** The ROUND turns alone — the thread's opening is the framing's own row, not a round. */
+const roundTurns = (answer: Record<string, unknown>): FramingTurn[] =>
+  turnsOfAnswer(answer).filter((t) => t.kind !== 'FRAMING_OPENED');
 
 beforeEach(() => {
   resetDouble();
+  // THE HANDLES: a turn names a researcher by handle, and `handleOf` throws on an id with no row.
+  store.researchers = [
+    { id: AUTHOR, handle: 'חוקר_א' },
+    { id: OTHER, handle: 'watchdog_7' },
+  ];
 });
 
 describe('get_framing — the framing and every round, read back (A4 :1458–:1459)', () => {
@@ -103,20 +119,15 @@ describe('get_framing — the framing and every round, read back (A4 :1458–:14
         round(2, 'ASSESSED', ASSESSED_CONTENT),
       ],
     });
-    const rounds = (await read())['rounds'] as ProjectedRound[];
-    expect(rounds.map((r) => [r.sequence, r.type])).toEqual([
-      [1, 'PROPOSED'],
-      [2, 'ASSESSED'],
-      [3, 'CHOSEN'],
-    ]);
+    expect(roundTurns(await read()).map((t) => t.kind)).toEqual(['ROUND_PROPOSED', 'ROUND_ASSESSED', 'ROUND_CHOSEN']);
   });
 
   it('2 · the verdicts come back as STRUCTURE, never as a JSON string the caller must parse', async () => {
     seed();
-    const rounds = (await read())['rounds'] as ProjectedRound[];
-    const assessed = rounds.find((r) => r.type === 'ASSESSED');
-    const contradictions = assessed?.content?.['contradictions'] as { quoteVerified: unknown; phraseVerified: unknown }[];
-    expect(typeof assessed?.content).toBe('object');
+    const assessed = roundTurns(await read()).find((t) => t.kind === 'ROUND_ASSESSED');
+    const content = assessed?.body['content'] as Record<string, unknown>;
+    const contradictions = content['contradictions'] as { quoteVerified: unknown; phraseVerified: unknown }[];
+    expect(typeof content).toBe('object');
     expect(contradictions.map((c) => [c.quoteVerified, c.phraseVerified])).toEqual([[false, 'ABSENT']]);
   });
 
@@ -126,15 +137,20 @@ describe('get_framing — the framing and every round, read back (A4 :1458–:14
   // one register the researcher is told to defer to.
   it('3 · a malformed stored content is reported AS MALFORMED, never as absent or empty', async () => {
     seed({ rounds: [round(1, 'PROPOSED', 'not an object at all')] });
-    const rounds = (await read())['rounds'] as ProjectedRound[];
-    expect(rounds.map((r) => [r.malformed, r.content])).toEqual([[true, null]]);
+    // A PROPOSED turn's body is the FIELDS A2 :1305 names, and with nothing to read they are null beside the
+    // flag — never an empty object, which would read as a framing that proposed nothing.
+    expect(roundTurns(await read()).map((t) => [t.body['malformed'], t.body['framing'], t.body['elements']])).toEqual([
+      [true, null, null],
+    ]);
   });
 
   it('4 · a well-formed round is NOT flagged malformed, and an EMPTY object is well-formed', async () => {
     seed({ rounds: [round(1, 'PROPOSED', {}), round(2, 'ASSESSED', ASSESSED_CONTENT)] });
-    const rounds = (await read())['rounds'] as ProjectedRound[];
-    expect(rounds.map((r) => r.malformed)).toEqual([false, false]);
-    expect(rounds.at(0)?.content).toEqual({});
+    const turns = roundTurns(await read());
+    expect(turns.map((t) => t.body['malformed'])).toEqual([false, false]);
+    // An EMPTY object is well-formed: its fields read null because it holds none, and `malformed` stays false.
+    expect([turns.at(0)?.body['framing'], turns.at(0)?.body['elements']]).toEqual([null, null]);
+    expect(turns.at(1)?.body['content']).toEqual(ASSESSED_CONTENT);
   });
 
   it('5 · the thesis it attaches to — the id when attached, null when the framing stands alone (A2 :1297)', async () => {
@@ -144,12 +160,17 @@ describe('get_framing — the framing and every round, read back (A4 :1458–:14
     expect((await read())['thesisId']).toBeNull();
   });
 
-  it('6 · every round is ATTRIBUTED to the researcher who wrote it, and the read writes nothing', async () => {
+  it('6 · every turn is ATTRIBUTED — by HANDLE, never by an id — and the read writes nothing', async () => {
     seed();
     const answer = await read();
-    const rounds = answer['rounds'] as ProjectedRound[];
-    expect(rounds.map((r) => r.researcherId)).toEqual([AUTHOR, AUTHOR, OTHER]);
-    expect(answer['researcherId']).toBe(AUTHOR);
+    expect(roundTurns(answer).map((t) => (t.by.voice === 'MODEL' ? 'MODEL' : t.by.handle))).toEqual([
+      'חוקר_א',
+      // The ASSESSED round is the MODEL's voice, and its model is read from the content (A2 :1309).
+      'MODEL',
+      'watchdog_7',
+    ]);
+    expect(answer['by']).toEqual({ handle: 'חוקר_א', mine: false });
+    expect(JSON.stringify(answer)).not.toContain(AUTHOR);
     expect(written).toEqual([]);
   });
 });

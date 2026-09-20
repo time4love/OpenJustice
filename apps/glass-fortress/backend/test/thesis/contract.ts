@@ -285,12 +285,114 @@ export interface VersionPublishability {
   failed: readonly string[];
 }
 
-export interface HistoryEntry {
-  kind: string;
-  id: string;
-  createdAt: Date;
-  researcherId: string | null;
+/**
+ * A TURN OF THE TRANSCRIPT — thesis A4 :1476, RULED 2026-09-20 (the researcher, R66 „Q1 transcript approved”).
+ *
+ * Written here from the APPENDIX and not from the module, which is what an acceptance contract is for. It
+ * replaces the eight-kind `{ kind, id, createdAt, researcherId }` this file declared until 2026-09-20; that
+ * shape served ids alone and a page could render nothing from it (refactor plan §4 rule 1 — a case asserting a
+ * retired concept is rewritten in the commit that retires it).
+ */
+export interface Researcher {
+  handle: string;
+  mine: boolean;
 }
+
+export interface ModelVoice {
+  model: string | null;
+  promptVersion: string | null;
+  spentBy: Researcher;
+}
+
+export type Voice =
+  | ({ voice: 'RESEARCHER' } & Researcher)
+  | ({ voice: 'MODEL' } & ModelVoice)
+  | { voice: 'PLATFORM' };
+
+interface TurnBase {
+  id: string;
+  at: Date;
+  thread: { step: string; id: string };
+  by: Voice;
+  /** The identifying DATUM verbatim, or null where the kind and body name the turn (A4 :1476, „Q1 datum”). */
+  line: string | null;
+}
+
+/**
+ * THE SEVENTEEN BODIES, transcribed from A4 :1476 and from nothing else (M1/M2, 2026-09-20).
+ *
+ * `body: unknown` is what this file declared first, and it made the acceptance suite unable to state the one
+ * thing the appendix is most specific about: WHAT EACH KIND CARRIES. A case over `unknown` can pin a value it
+ * happens to find; it cannot say a body is missing half its fields.
+ */
+export type Turn =
+  | (TurnBase & { kind: 'FRAMING_OPENED'; body: { question: string; provision: string | null; fromRunId: string | null } })
+  | (TurnBase & { kind: 'ROUND_PROPOSED'; body: { framing: string | null; elements: unknown[] | null; malformed: boolean } })
+  | (TurnBase & { kind: 'ROUND_ASSESSED'; body: { content: Record<string, unknown> | null; malformed: boolean } })
+  | (TurnBase & {
+      kind: 'ROUND_CHOSEN';
+      body: { claim: string | null; provision: string | null; elements: unknown[] | null; restatedBy: string[]; malformed: boolean };
+    })
+  | (TurnBase & {
+      kind: 'VERSION';
+      body: {
+        text: string;
+        claim: string;
+        contentHash: string;
+        parentVersionId: string | null;
+        mentions: unknown[];
+        citationsVsParent: { added: string[]; repinned: string[]; dropped: string[]; carried: string[] };
+      };
+    })
+  | (TurnBase & { kind: 'DEBATE_OPENED'; body: { sessionId: string; record: unknown; pin: string | null } })
+  | (TurnBase & { kind: 'RATIONALE'; body: { text: string } })
+  | (TurnBase & {
+      kind: 'ASSESSMENT';
+      body: { hasSubstance: unknown; substanceGaps: unknown; verdict: unknown; objection: unknown; assessment: unknown; malformed: boolean };
+    })
+  | (TurnBase & { kind: 'RESPONSE'; body: { text: string } })
+  | (TurnBase & { kind: 'DEBATE_CLOSED'; body: { outcome: 'PROMOTED' | 'ABANDONED'; overObjection: boolean; evidenceFileHash: string | null } })
+  | (TurnBase & { kind: 'ANALYSIS'; body: { analysisId: string; inputFingerprint: string; current: boolean; opinion: unknown } })
+  | (TurnBase & {
+      kind: 'GAP_DECISION';
+      body: {
+        gapId: string;
+        description: string;
+        sequence: number;
+        decision: string;
+        citedName: string | null;
+        request: unknown;
+        callItem: unknown;
+        reason: string | null;
+        earlier: { sequence: number; decision: string; at: Date }[];
+      };
+    })
+  | (TurnBase & { kind: 'PUBLICATION_RATIONALE'; body: { attemptId: string; rationale: string } })
+  | (TurnBase & { kind: 'PUBLICATION_ASSESSMENT'; body: { attemptId: string; assessment: unknown; verdict: string | null } })
+  | (TurnBase & { kind: 'PUBLICATION_VERDICT'; body: { attemptId: string; outcome: 'PUBLISHED' | 'REFUSED'; refusedBy: string[] } })
+  | (TurnBase & { kind: 'WITHDRAWAL'; body: { versionId: string; reason: string } })
+  | (TurnBase & { kind: 'NOTE'; body: { text: string; on: 'THESIS' | 'FRAMING' } });
+
+/** Every kind A4 :1476 lists — the FLOOR an acceptance world must exercise. */
+export const TURN_KINDS_EXPECTED: readonly Turn['kind'][] = [
+  'FRAMING_OPENED',
+  'ROUND_PROPOSED',
+  'ROUND_ASSESSED',
+  'ROUND_CHOSEN',
+  'VERSION',
+  'DEBATE_OPENED',
+  'RATIONALE',
+  'ASSESSMENT',
+  'RESPONSE',
+  'DEBATE_CLOSED',
+  'ANALYSIS',
+  'GAP_DECISION',
+  'PUBLICATION_RATIONALE',
+  'PUBLICATION_ASSESSMENT',
+  'PUBLICATION_VERDICT',
+  'WITHDRAWAL',
+  'NOTE',
+];
 
 export interface ReviewEntry {
   kind: 'FLAGGED' | 'STALE_TRAJECTORY' | 'UNARGUED';
@@ -347,7 +449,7 @@ export interface ThesisPredicatesModule {
   theRequests(published: boolean, list: readonly GapEntry[]): unknown[];
   trajectoryCurrent(currency: TrajectoryCurrency): boolean;
   publishableVersion(versionId: string, assessment: PublicationAssessment): Promise<VersionPublishability>;
-  history(thesisId: string, since?: Date): Promise<HistoryEntry[]>;
+  history(thesisId: string, options?: { since?: Date; callerId?: string | null; currentFingerprint?: string | null }): Promise<Turn[]>;
   reviews(researcherId: string): Promise<ReviewEntry[]>;
 }
 

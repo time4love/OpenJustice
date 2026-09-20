@@ -696,17 +696,17 @@ orphaning its second half. Found by a cold read, 2026-09-18; it pre-dates today'
 
 ### UI-8 · The read view — `/research`, the working view, the gated chronology
 
-**Contract:** §10–§15 :361–:504 (what the working view is; the three voices; §11's four regions and the eleven kinds; what
-the page never has; the states; widening; the five instruments); §27 :731–:744 (the gated door's three additions); §29
-:755–:776 (`/research`, four regions; the `mine`/`all` switch is navigation, not an act); §30; §7 :288–:303 and §7.1 (the
-routes, all UI-3's; the routes pass `all`, the page opens on `mine`); §13 :468–:477 and A2 :1009–:1011 (401 → `/login?returnTo=`;
-403 one sentence with `/researchers` linked; 404 the refusal named); §37 :898 (`returnTo` threading from any gated page); §4
-(the COPY controls: `thesis <id>`, the owed command, the citation token; no id as text); §12 :455–:459 (the one actionable
-element is the COPY of a command the owed list names); §39 :922 (the switch is browser-local); §41 :954–:955 (the history
+**Contract:** §10–§15 :364–:504 (what the working view is; the three voices; §11's four regions and the eleven kinds; what
+the page never has; the states; widening; the five instruments); §27 :863–:876 (the gated door's three additions); §29
+:887–:909 (`/research`, four regions; the `mine`/`all` switch is navigation, not an act); §30; §7 :288–:303 and §7.1 (the
+routes, all UI-3's; the routes pass `all`, the page opens on `mine`); §13 :469–:477 and A2 :1150–:1152 (401 → `/login?returnTo=`;
+403 one sentence with `/researchers` linked; 404 the refusal named); §37 :1035 (`returnTo` threading from any gated page); §4
+(the COPY controls: `thesis <id>`, the owed command, the citation token; no id as text); §12 :456–:459 (the one actionable
+element is the COPY of a command the owed list names); §39 :1055 (the switch is browser-local); §41 :1093 (the history
 loads whole until a measurement says otherwise); §31 (`one-stream-two-doors` and `no-marking-link-from-research` complete
 here); thesis §9 :974–:978 (HISTORY's rows); T6 :866–:882 (what is owed, one command per entry); A2 :1309, :1317 (the model
 and prompt version beside every opinion); interaction MARKING :534–:535 (the copy button) and :576–:578 (the instruction
-comes from the chat, never the marking link); A3 :1021–:1023. Frontend only.
+comes from the chat, never the marking link); A3 :1157–:1171. Frontend only (cites recomputed in place 2026-09-20, R66).
 
 **What lands.**
 
@@ -725,7 +725,7 @@ comes from the chat, never the marking link); A3 :1021–:1023. Frontend only.
   `mine: bool` on every entry (§7.1 :322–:325), the page opens on `mine` by keeping the entries whose `mine` is true — a view
   over a field the body carries, not a derivation — and remembers the choice in the browser only (§39). Nothing on `/research` writes.
 - **`/research/theses/[id]`** — THE WORKING VIEW (§10–§14): one read, `GET /api/research/theses/:id` (`get_thesis_context`, A4
-  :1476–:1479), and two sheets on demand, `…/framings/:id` and `…/debates/:sessionId`. §11 top to bottom: (1) the sticky
+  :1476–:1479), and two sheets on demand, `…/framings/:id` and `…/debates/:sessionId`. §11 top to bottom: (1) the (NOT sticky — RULED 2026-09-20, R66 „Q9”, ui §11 :399)
   context line — the CLAIM verbatim as the heading, the provision, the handle with `mine` marked, the state DRAFT ONLY ·
   PUBLISHED = HEAD · PUBLISHED ≠ HEAD (n) · WITHDRAWN on <date>; (2) WHAT IS OWED for this thesis, each entry with its material
   and ONE COMMAND to paste, labelled as the author's on a colleague's thesis; (3) THE STATE NOW, one segmented control: TEXT
@@ -768,7 +768,7 @@ comes from the chat, never the marking link); A3 :1021–:1023. Frontend only.
 **Files.** NEW: `app/[locale]/research/page.tsx`, `research/theses/[thesisId]/page.tsx`, `research/corpus/page.tsx`,
 `research/corpus/claims/page.tsx`; `components/research/` — the owed strip, the thesis rows (UI-6's card with the researcher
 fields), the framing rows and sheet, the corpus numbers, the working view's context line, the five state segments, the
-stream and the eleven sheets, the extraction sheets, the NOT PUBLIC mark, the `mine`/`all` switch; `lib/researchFetch.ts` (the
+stream and the eleven sheets, the extraction sheets, the NOT PUBLIC mark (RULED 2026-09-20, R66 „Q7 extend”: NOT a new component — one more member of `components/thesis/PlatformMark.tsx`'s closed union, a DECLARED KEEP edit with its measured size, ui §21 :626's one-mark rule), the `mine`/`all` switch; `lib/researchFetch.ts` (the
 bearer, the 401 → `returnTo`, the 403 — one wrapper, no page composes it); `types/research.ts` (the bodies of thesis A4 :1476,
 :1458, :1432, :1523, evidence A4 :1144, :1146, interaction A5 :1071, :1199, :1208, :1214 — hand-written from the appendices);
 `messages/*.json` (`research`, new); `test/fixtures/research/` (a history carrying all eleven kinds; a colleague's thesis; a
@@ -776,9 +776,9 @@ withdrawn thesis; a thesis with one version and nothing else; an owed list; an e
 unopened page; a work-list row, rules and a rule history); the six instrument files. REWRITE: `components/corpus/*` (the scope
 prop, the NOT PUBLIC mark, the extraction sheet's mount point — the same component, no second stream). KEEP, `git diff` empty:
 `context/AuthContext.tsx`, `lib/api.ts`, `lib/session.ts`, `components/AuthGuard.tsx` (profile and admin keep it), the public
-pages of UI-5 and UI-6, every backend file.
+pages of UI-5 and UI-6, every backend file — **LIFTED 2026-09-20 (the researcher, R66 „Q1 transcript approved · Q2 add fields”) for exactly: the transcript builders and `thesisPredicates.history` (thesis §9 :974, A4 :1476), `getThesisContext.ts`, `getDebate.ts` / `debateState.ts` (the record named, `turns` from the builder), `getFraming.ts` (its rounds through the builder), `listPages.ts` (`trackedUrlId`, `public`, `stopPending`, interaction A5 :1071), `listTheses.ts` (the state through `publicationState`), and their tests; the surface stays 46; no migration.**
 
-*Verified by:* the six instruments green, each observed to fail first — `every-kind-renders` (the eleven-kind fixture renders one
+*Verified by:* the six instruments green, each observed to fail first — `every-kind-renders` (the eleven-kind fixture — **RULED 2026-09-20 (R66): the SEVENTEEN-TURN transcript fixture of A4 :1476, every kind at least once, held exhaustively over the closed union** — renders one
 row and one sheet per kind; a kind removed from the renderer fails it by name), `opinion-under-label` (every field of an ASSESSED
 round, a debate assessment, an analysis or a publication assessment a descendant of the labelled container; a decoy rendering
 one outside caught), `three-voices` (a decoy verdict rendered through the researcher's component caught), `no-write-from-research`

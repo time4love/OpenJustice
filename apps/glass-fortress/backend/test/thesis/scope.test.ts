@@ -58,10 +58,13 @@ const keySets = (haystack: unknown, test: (o: Record<string, unknown>) => boolea
 
 /** A4 :1427's six keys of a published entry, and :1429–:1431's nine of an own entry, as `list_theses` answers them today. */
 const PUBLISHED_KEYS = ['author', 'claim', 'contentHash', 'provision', 'publishedAt', 'thesisId'];
-const OWN_KEYS = ['claim', 'framingIds', 'headIsPublished', 'headVersionId', 'openGaps', 'provision', 'publishedVersionId', 'thesisId', 'unarguedMentions'];
+// `state` is the TENTH key, added 2026-09-20 by the researcher's ruling on A4 :1429 (R66) — the four words of ui
+// §11 :398–:399 that no field carried. The pin is updated in the commit that changes the shape (refactor plan §4
+// rule 1); the other nine are untouched, which is what this set still holds.
+const OWN_KEYS = ['claim', 'framingIds', 'headIsPublished', 'headVersionId', 'openGaps', 'provision', 'publishedVersionId', 'state', 'thesisId', 'unarguedMentions'];
 
 describe("list_theses — `scope: 'mine' | 'all'`, default mine (§7.1 :320–:322; A4 :1426 as amended)", () => {
-  it("Q1 — list_theses({}) and list_theses({ scope: 'mine' }) are the same bytes, anonymous and as AUTHOR, and the key sets are today's exactly: six on a published entry, nine on an own entry, two on the envelope", async () => {
+  it("Q1 — list_theses({}) and list_theses({ scope: 'mine' }) are the same bytes, anonymous and as AUTHOR, and the key sets are today's exactly: six on a published entry, TEN on an own entry, two on the envelope", async () => {
     seedThesis(AS_PUBLISHED);
     const anonymous = [await call('list_theses', {}, null), await call('list_theses', { scope: 'mine' }, null)];
     expect(anonymous[1]).toBe(anonymous[0]);
@@ -73,6 +76,48 @@ describe("list_theses — `scope: 'mine' | 'all'`, default mine (§7.1 :320–:3
     expect(Object.keys(envelope).sort()).toEqual(['published', 'theses']);
     expect(keySets(envelope['theses'], (o) => 'thesisId' in o)).toEqual([OWN_KEYS]);
     expect(keySets(envelope['published'], (o) => 'contentHash' in o)).toEqual([PUBLISHED_KEYS]);
+  });
+
+  // THE STATE — A4 :1429, RULED 2026-09-20 (the researcher, R66): every entry gains `state`, the SAME union
+  // `get_thesis_context` answers (A4 :1476), through `publicationState`. The page CALLS it and derives no state
+  // from `headIsPublished` and a count — which is what it would have had to do, since `versionsAhead` was never
+  // sent and a withdrawal was named by no field at all.
+  it('Q1b — every entry carries `state`, the union of A4 :1476, at BOTH scopes; a published head reads PUBLISHED_IS_HEAD', async () => {
+    seedThesis(AS_PUBLISHED);
+    const envelope = answerOf(await call('list_theses', {}, AUTHOR));
+    const entries = objectsWhere(envelope['theses'], (o) => 'thesisId' in o);
+    expect(entries.map((e) => e['state'])).toEqual([{ kind: 'PUBLISHED_IS_HEAD' }]);
+  });
+
+  it('Q1c — a draft reads DRAFT_ONLY, and a head ahead of the pin reads PUBLISHED_BEHIND with its count', async () => {
+    seedThesis();
+    expect(
+      objectsWhere(answerOf(await call('list_theses', {}, AUTHOR))['theses'], (o) => 'thesisId' in o).map((e) => e['state']),
+    ).toEqual([{ kind: 'DRAFT_ONLY' }]);
+
+    seedThesis(AS_PUBLISHED);
+    store.versions = [VERSION, { ...VERSION, id: 'version-later', createdAt: new Date(Date.UTC(2026, 8, 12, 9, 0)) }];
+    store.theses = [{ ...THESIS, publishedVersionId: VERSION.id, headVersionId: 'version-later' }];
+    expect(
+      objectsWhere(answerOf(await call('list_theses', {}, AUTHOR))['theses'], (o) => 'thesisId' in o).map((e) => e['state']),
+    ).toEqual([{ kind: 'PUBLISHED_BEHIND', versionsAhead: 1 }]);
+  });
+
+  // TWO WITHDRAWALS, AND THE ROWS ARE SEEDED OLDEST FIRST ON PURPOSE (M1, 2026-09-20). A thesis may be withdrawn,
+  // published again and withdrawn again (T6 :920), and the STATE names the one in force — the NEWEST. Seeded in
+  // stored order, a `latestOf` that returned the first row it saw would answer the OLDER moment and the OLDER
+  // reason and pass every other case in this file: one withdrawal cannot tell the two implementations apart.
+  // Both fields are asserted, because a reduce that compared the wrong field could still carry the right date.
+  it('Q1d — a WITHDRAWN thesis says so with the moment and reason of the NEWEST withdrawal, not the first row stored', async () => {
+    seedThesis();
+    store.withdrawals = [
+      { id: 'withdrawal-older', thesisId: THESIS.id, versionId: VERSION.id, reason: 'הניסוח הקדים את הראיה', researcherId: AUTHOR, createdAt: new Date(Date.UTC(2026, 8, 11, 6, 15)) },
+      { id: 'withdrawal-newer', thesisId: THESIS.id, versionId: VERSION.id, reason: 'העמוד כבר אינו מחזיק את הקטע', researcherId: AUTHOR, createdAt: new Date(Date.UTC(2026, 8, 13, 8, 30)) },
+    ];
+    const entries = objectsWhere(answerOf(await call('list_theses', {}, AUTHOR))['theses'], (o) => 'thesisId' in o);
+    expect(entries.map((e) => e['state'])).toEqual([
+      { kind: 'WITHDRAWN', at: '2026-09-13T08:30:00.000Z', reason: 'העמוד כבר אינו מחזיק את הקטע' },
+    ]);
   });
 
   refusals('list_theses', [

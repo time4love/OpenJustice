@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { getResearcherId } from '../../context/researcherContext';
-import { publicationState } from '../../lib/thesisView';
+import { publicationState, thesisState, type ThesisState } from '../../lib/thesisView';
 import { handleOf, handlesOf, publishedEntries, type PublishedEntry } from '../../services/publishedThesis';
 import { gapList, unargued, type ListScope } from '../../services/thesisPredicates';
 import { answer, refusal, type Refusal } from './thesisRefusals';
@@ -45,6 +45,17 @@ export interface ListThesesInput {
 
 interface OwnEntry {
   thesisId: string;
+  /**
+   * THE FOUR WORDS OF ui §11 :398–:399, AS ONE UNION — A4 :1429, RULED 2026-09-20 (the researcher, R66).
+   *
+   * It is the SAME union `get_thesis_context` answers (A4 :1476), from the SAME function, so the list and the
+   * working view cannot disagree about what a thesis is. Before the ruling no field carried it: `headIsPublished`
+   * covers two of the four arms, `versionsAhead` was computed by `publicationState` and never sent, and a
+   * withdrawal was named by nothing — so a page had to derive the word, which is one rule with one implementation
+   * per surface. `headIsPublished` and `publishedVersionId` STAY: they are what a caller filters on, and today's
+   * answer is not narrowed by a key being added beside them.
+   */
+  state: ThesisState;
   claim: string | null;
   provision: string | null;
   headVersionId: string | null;
@@ -80,6 +91,19 @@ export async function thesesListOf(input: ListThesesInput = {}): Promise<Publish
 
 export async function listThesesHandler(input: ListThesesInput = {}): Promise<string> {
   return answer(() => thesesListOf(input));
+}
+
+/**
+ * The LATEST of a thesis's withdrawals — a thesis may be withdrawn, published again and withdrawn again (T6 :920),
+ * and the STATE names the one in force.
+ *
+ * Read with `findMany` and reduced here rather than ordered by the database, deliberately: `thesisPredicates.history`
+ * reads the same rows the same way, so the two callers ask one question of one table in one shape, and the count is
+ * bounded by how many times a single thesis was withdrawn. `.at(0)` seeds the reduce, so an empty list is `null` and
+ * not an unguarded index — the two debt ratchets' answer (`CLAUDE.md`).
+ */
+function latestOf<T extends { createdAt: Date }>(rows: readonly T[]): T | null {
+  return rows.reduce<T | null>((latest, row) => (latest === null || row.createdAt > latest.createdAt ? row : latest), rows.at(0) ?? null);
 }
 
 /**
@@ -124,6 +148,14 @@ async function thesesOf(researcherId: string, scope: ListScope): Promise<(OwnEnt
             },
           });
     const decisions = await prisma.thesisGapDecision.findMany({ where: { thesisId: thesis.id } });
+    // The LATEST withdrawal, because a thesis may have been withdrawn more than once (T6 :920, "a thesis
+    // withdrawn and published again shows the withdrawal in its history between the two versions"). Read only
+    // when there is no pin to read instead — a published thesis's state is decided by the pin, so the query is
+    // one the common case never makes.
+    const withdrawal =
+      thesis.publishedVersionId !== null
+        ? null
+        : latestOf(await prisma.withdrawal.findMany({ where: { thesisId: thesis.id }, select: { createdAt: true, reason: true } }));
     const framings = await prisma.framing.findMany({ where: { thesisId: thesis.id }, select: { id: true } });
     const cited = headMentions.map((m) => ({ kind: m.kind, name: m.name, debate: m.debateSession }));
 
@@ -134,6 +166,7 @@ async function thesesOf(researcherId: string, scope: ListScope): Promise<(OwnEnt
       headVersionId: state.headVersionId,
       publishedVersionId: state.publishedVersionId,
       headIsPublished: state.headIsPublished,
+      state: thesisState(state, withdrawal),
       framingIds: framings.map((f) => f.id),
       unarguedMentions: unargued({ thesisId: thesis.id }, cited).length,
       openGaps: gapList(decisions, thesis.id, headMentions.map((m) => m.name)).filter((g) => g.readsAs === 'OPEN').length,

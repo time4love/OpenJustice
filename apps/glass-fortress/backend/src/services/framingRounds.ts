@@ -42,8 +42,10 @@ const isPair = (r: NamedRecord): r is { url: string; before: string; after: stri
 /** A round, as `get_framing` and the audit read it. */
 export interface Round {
   id: string;
+  /** The framing this round belongs to — the thread the transcript's builder groups it under (A4 :1476). */
+  framingId: string;
   sequence: number;
-  type: string;
+  type: 'PROPOSED' | 'ASSESSED' | 'CHOSEN';
   content: Prisma.JsonValue;
   researcherId: string;
   createdAt: Date;
@@ -55,13 +57,15 @@ export interface LoadedFraming {
   provision: string | null;
   researcherId: string;
   thesisId: string | null;
+  /** The prosecution run it was opened from, if any (A2 :1298) — the FRAMING_OPENED turn's own field. */
+  fromRunId: string | null;
   createdAt: Date;
 }
 
 export async function loadFraming(framingId: string): Promise<LoadedFraming | null> {
   return prisma.framing.findUnique({
     where: { id: framingId },
-    select: { id: true, question: true, provision: true, researcherId: true, thesisId: true, createdAt: true },
+    select: { id: true, question: true, provision: true, researcherId: true, thesisId: true, fromRunId: true, createdAt: true },
   });
 }
 

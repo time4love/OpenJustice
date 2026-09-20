@@ -6,7 +6,7 @@ jest.mock('../../src/factories/LLMFactory', () => (require('./tools') as typeof 
 
 import { AFTER, URL } from '../helpers/corpusFixture';
 import { resetDouble, store, written } from '../helpers/evidenceDouble';
-import { AUTHOR, FRAMING, OTHER_RESEARCHER, PROVISION, ROUNDS, THESIS } from './fixtures';
+import { AUTHOR, CLAIM, FRAMING, OTHER_RESEARCHER, PROVISION, ROUNDS, THESIS, VERSION } from './fixtures';
 import {
   AS_PUBLISHED,
   MISSING_FRAMING,
@@ -237,15 +237,64 @@ describe('get_framing — A4 :1458–:1459, GATED (thesis step 19)', () => {
     },
   ]);
 
-  it('answers the framing, every round in sequence, and the thesis it attaches to — to ANY researcher, writing nothing (A4 :1459; §9 :1002–:1004)', async () => {
+  // THE FRAMING THREAD'S TURNS — A4 :1459, RULED 2026-09-20 (the researcher, R66): the read answers
+  // `{ framingId, question, provision, thesisId, by: P, turns: T[] }`, the FRAMING thread's turns from the SAME
+  // builder the transcript uses; `rounds` and `researcherId` are RETIRED with the builder, as `get_debate`'s
+  // `events` were. A round's sequence and type are still every round of A2 :1302–:1311 — read now as the four
+  // TURN KINDS that carry them.
+  it('answers the framing, its thread\'s TURNS in sequence, and the thesis it attaches to — to ANY researcher, writing nothing (A4 :1459; §9 :1002–:1004)', async () => {
     seedThesis();
     const answer = answerOf(await call('get_framing', { framingId: FRAMING.id }, OTHER_RESEARCHER));
+    expect(Object.keys(answer).sort()).toEqual(['by', 'framingId', 'provision', 'question', 'thesisId', 'turns']);
     expect([FRAMING.id, THESIS.id].filter((id) => !containsDeep(answer, id))).toEqual([]);
-    // A round as A2 shapes it (:1302–:1311): its sequence and its type.
-    const rounds = objectsWhere(answer, (o) => 'sequence' in o && 'type' in o).map((o) => [o['sequence'], o['type']]);
-    expect(rounds).toEqual(ROUNDS.map((r) => [r.sequence, r.type]));
+    const turns = objectsWhere(answer['turns'], (o) => 'kind' in o);
+    expect(turns.map((t) => t['kind'])).toEqual(['FRAMING_OPENED', 'ROUND_PROPOSED', 'ROUND_ASSESSED', 'ROUND_CHOSEN']);
     expect(written).toEqual([]);
     expect(tripped).toEqual([]);
+  });
+
+  it('names its author by HANDLE and carries NO researcherId — on the framing and on every turn (A4 :1476, „never an id on the wire”)', async () => {
+    seedThesis();
+    const text = await call('get_framing', { framingId: FRAMING.id }, OTHER_RESEARCHER);
+    const answer = answerOf(text) as { by: unknown; turns: unknown[] };
+    // THE VACUITY GUARD: the answer must hold the turns whose absence would make the check hold nothing.
+    expect(answer.turns.length).toBe(4);
+    expect(text).not.toContain(AUTHOR);
+    expect(text).not.toContain('researcherId');
+    // `mine` is the CALLER's: OTHER_RESEARCHER is reading the author's framing.
+    expect(answer.by).toEqual({ handle: 'חוקר_א', mine: false });
+  });
+
+  // M7, 2026-09-20: the two facts a colleague's read can never show — `mine` TRUE, and `restatedBy` non-empty.
+  // The case above reads as OTHER_RESEARCHER, so it pins `mine: false` and can pass over a read that ignores the
+  // caller entirely; and `restatedBy` is the one field of this answer computed from rows OUTSIDE the framing, so
+  // a read that loaded no versions would answer `[]` and look correct.
+  it('read by the AUTHOR: `by.mine` is TRUE, and the CHOSEN round names the versions that restate its claim (CLAIM_FRAMED, A3 :1366)', async () => {
+    seedThesis();
+    const answer = answerOf(await call('get_framing', { framingId: FRAMING.id }, AUTHOR)) as {
+      by: unknown;
+      turns: { kind: string; body: Record<string, unknown> }[];
+    };
+    expect(answer.by).toEqual({ handle: 'חוקר_א', mine: true });
+    const chosen = answer.turns.find((t) => t.kind === 'ROUND_CHOSEN');
+    // THE VACUITY GUARD: the world must hold the CHOSEN round, or `restatedBy` below is undefined and the
+    // assertion would pass over a read that never built one.
+    expect(chosen).toBeDefined();
+    expect(chosen?.body['claim']).toBe(CLAIM);
+    expect(chosen?.body['restatedBy']).toEqual([VERSION.id]);
+  });
+
+  it('a round whose stored content is NOT an object is reported malformed: true, never as {} (A4 :1459)', async () => {
+    seedThesis();
+    store.framingRounds = [{ ...ROUNDS[0], content: 'not an object' } as unknown as (typeof ROUNDS)[number]];
+    const turns = objectsWhere(
+      (answerOf(await call('get_framing', { framingId: FRAMING.id }, AUTHOR)) as { turns: unknown }).turns,
+      (o) => 'kind' in o,
+    );
+    expect(turns.map((t) => [t['kind'], (t['body'] as { malformed: boolean }).malformed])).toEqual([
+      ['FRAMING_OPENED', undefined],
+      ['ROUND_PROPOSED', true],
+    ]);
   });
 
   codeSetEquality('get_framing');

@@ -1014,6 +1014,40 @@ export const db = {
     }),
   },
   debateEvent: {
+    // A DEBATE'S EVENTS, BY SESSION — R66, additive. The transcript builds a thesis's DEBATE turns from every
+    // session at once, so it asks this table once by `{ sessionId: { in: [...] } }` rather than nesting a
+    // select per session. The rows come from the ONE held session's own `events`, plus what this run wrote —
+    // the same read-back `debateSession.findUnique` does, and for the same stated reason: a double whose
+    // events were frozen would let a caller look right while reading the wrong turns.
+    findMany: jest.fn(
+      ask('debateEvent', 'findMany', (args?: { where?: Row }) => {
+        const session = store.session;
+        if (session === null) return Promise.resolve([]);
+        const wanted = args?.where?.['sessionId'];
+        const ids =
+          typeof wanted === 'object' && wanted !== null && Array.isArray((wanted as Row)['in'])
+            ? ((wanted as Row)['in'] as unknown[]).map(String)
+            : wanted === undefined
+              ? null
+              : [String(wanted)];
+        if (ids !== null && !ids.includes(String(session['id']))) return Promise.resolve([]);
+        const base = ((session['events'] ?? []) as Row[]).map((e, index) => ({
+          id: e['id'] ?? `event-${String(index + 1)}`,
+          sessionId: session['id'],
+          ...e,
+        }));
+        const appended = written
+          .filter((w) => w.model === 'debateEvent')
+          .map((w, index) => ({
+            id: `written-event-${String(index + 1)}`,
+            sessionId: w.data['sessionId'] ?? session['id'],
+            type: w.data['type'],
+            content: w.data['content'],
+            createdAt: new Date(),
+          }));
+        return Promise.resolve([...base, ...appended]);
+      }),
+    ),
     create: jest.fn((args: { data: Row }) => {
       record('debateEvent', 'create', args.data);
       return Promise.resolve({});

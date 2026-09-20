@@ -1,6 +1,8 @@
 import { prisma } from '../lib/prisma';
 import type { NamedRecord } from './openDebate';
 import type { BlockerCode } from '../mcp/tools/evidenceRefusals';
+import { handlesOf } from './publishedThesis';
+import { debateTurns, orderTurns, voicesOf, type Turn } from './thesisTranscript';
 
 // ---------------------------------------------------------------------------
 // ONE PROJECTION OF A DEBATE, FOR ALL FOUR TOOLS — docs/gf-evidence-flows.md A4.
@@ -16,6 +18,17 @@ import type { BlockerCode } from '../mcp/tools/evidenceRefusals';
 // stored verbatim — this is the record, not a log". The assessor's Hebrew, the
 // researcher's rationale and their responses are returned as written; nothing
 // here re-words a model's output or a researcher's.
+//
+// AND SINCE 2026-09-20 THEY ARE TURNS, NOT ROWS — evidence A4 :1123, RULED by the researcher (R66 „Q2 amend”):
+// "ONE `DebateState` for every debate tool, the shape get_debate answers at :1144 … `events` as raw rows is
+// RETIRED from every debate tool's answer (open_debate · respond_in_debate · promote_from_debate · get_debate)."
+// `turns` comes from `debateTurns`, the SAME builder the thesis transcript uses (thesis A4 :1476), so a debate
+// read from its own tool and the same debate read inside `get_thesis_context` are the same five kinds with the
+// same bodies. `record` is named here too, as A1 names it — `projectDebate` had dropped it, and a sheet cannot
+// say which record an argument is about from a fileHash.
+//
+// VERBATIM SURVIVES THE CHANGE: a RATIONALE turn's body is `{ text }` and the text is the stored content,
+// untouched; an ASSESSMENT's JSON is PARSED and a parse failure is reported as `malformed`, never smoothed.
 // ---------------------------------------------------------------------------
 
 /** A session and everything the four tools read of it, loaded once. */
@@ -40,7 +53,13 @@ export interface LoadedDebate {
   record: NamedRecord | null;
   /** The thesis's author and head — what NOT_AUTHOR and NOT_CITED are decided from. */
   thesis: { createdById: string | null; headVersionId: string | null };
-  events: { type: string; content: string; at: Date }[];
+  /** Who opened the argument — HISTORY attributes it (evidence T3 :371); the DEBATE_OPENED turn's voice. */
+  researcherId: string;
+  createdAt: Date;
+  closedAt: Date | null;
+  /** The pinned content version the citation carried — the DEBATE_OPENED turn's `pin`. */
+  pin: string | null;
+  events: { id: string; type: string; content: string; at: Date }[];
 }
 
 /** The debate as every tool returns it. */
@@ -55,7 +74,10 @@ export interface DebateState {
   blockedBy: BlockerCode[];
   promotedOverObjection: boolean;
   evidenceFileHash: string | null;
-  events: { type: string; content: string; at: Date }[];
+  /** The record this argument is about, as A1 names it — never a fileHash alone (:1144). */
+  record: NamedRecord | null;
+  /** The thread's turns, from the transcript's own builder, oldest first (:1123). */
+  turns: Turn[];
 }
 
 export async function loadDebate(sessionId: string): Promise<LoadedDebate | null> {
@@ -82,9 +104,12 @@ export async function loadDebate(sessionId: string): Promise<LoadedDebate | null
       },
       evidence: { select: { fileHash: true } },
       thesis: { select: { createdById: true, headVersionId: true } },
+      researcherId: true,
+      createdAt: true,
+      closedAt: true,
       events: {
         orderBy: { createdAt: 'asc' },
-        select: { type: true, content: true, createdAt: true },
+        select: { id: true, type: true, content: true, createdAt: true },
       },
     },
   });
@@ -103,12 +128,30 @@ export async function loadDebate(sessionId: string): Promise<LoadedDebate | null
     recordDiffId: row.recordDiffId,
     record: namedRecordOf(row),
     thesis: row.thesis,
-    events: row.events.map((e) => ({ type: e.type, content: e.content, at: e.createdAt })),
+    researcherId: row.researcherId,
+    createdAt: row.createdAt,
+    closedAt: row.closedAt,
+    // THE PIN IN ITS OWN QUERY, as the transcript reads it: the double serves no nested relation here, and a
+    // session's citation is a row of another table rather than a shape this one carries.
+    pin:
+      (
+        await prisma.thesisMention.findMany({
+          where: { debateSessionId: row.id },
+          select: { contentVersionHash: true },
+        })
+      ).at(0)?.contentVersionHash ?? null,
+    events: row.events.map((e) => ({ id: e.id, type: e.type, content: e.content, at: e.createdAt })),
   };
 }
 
-/** The record this debate argues for, by page and timestamps — never by a row id (A1). */
-function namedRecordOf(row: {
+/**
+ * The record this debate argues for, by page and timestamps — never by a row id (A1).
+ *
+ * EXPORTED 2026-09-20 (R66): the transcript builds a DEBATE_OPENED turn for every debate of a thesis, and it
+ * names the record the same way this loader does. A second spelling of "the record as A1 names it" is exactly
+ * the drift this module was written to stop.
+ */
+export function namedRecordOf(row: {
   recordSnapshot: { waybackTimestamp: string | null; trackedUrl: { url: string } } | null;
   recordDiff: {
     trackedUrl: { url: string };
@@ -137,11 +180,12 @@ function namedRecordOf(row: {
  * that computed its own would be free to say `canPromote: true` beside a tool
  * that refuses.
  */
-export function projectDebate(debate: LoadedDebate, blockedBy: BlockerCode[]): DebateState {
+export function projectDebate(debate: LoadedDebate, blockedBy: BlockerCode[], turns: Turn[]): DebateState {
   return {
     sessionId: debate.id,
     thesisId: debate.thesisId,
     fileHash: debate.recordFileHash,
+    record: debate.record,
     status: debate.status,
     hasSubstance: debate.hasSubstance,
     verdict: debate.verdict,
@@ -149,8 +193,36 @@ export function projectDebate(debate: LoadedDebate, blockedBy: BlockerCode[]): D
     blockedBy,
     promotedOverObjection: debate.promotedOverObjection,
     evidenceFileHash: debate.evidenceFileHash,
-    events: debate.events,
+    turns,
   };
+}
+
+/**
+ * THE THREAD'S TURNS, from the transcript's own builder (:1123, thesis A4 :1476).
+ *
+ * It resolves the handles itself — a debate names ONE researcher, its opener — because every tool that answers a
+ * `DebateState` must produce the same five kinds without each one learning how a voice is built.
+ */
+export async function turnsOf(debate: LoadedDebate, callerId: string | null): Promise<Turn[]> {
+  const handles = await handlesOf([debate.researcherId]);
+  const voices = voicesOf(handles, callerId, debate.thesisId);
+  return orderTurns(
+    debateTurns(
+      {
+        id: debate.id,
+        researcherId: debate.researcherId,
+        createdAt: debate.createdAt,
+        closedAt: debate.closedAt,
+        status: debate.status,
+        promotedOverObjection: debate.promotedOverObjection,
+        evidenceFileHash: debate.evidenceFileHash,
+        record: debate.record,
+        pin: debate.pin,
+        events: debate.events.map((e) => ({ id: e.id, type: e.type, content: e.content, createdAt: e.at })),
+      },
+      voices,
+    ),
+  );
 }
 
 /** The debate so far, as the assessor reads it — oldest first, verbatim (§4). */
