@@ -696,7 +696,7 @@ orphaning its second half. Found by a cold read, 2026-09-18; it pre-dates today'
 
 ### UI-8 · The read view — `/research`, the working view, the gated chronology
 
-**Contract:** §10–§15 :364–:504 (what the working view is; the three voices; §11's four regions and the eleven kinds; what
+**Contract:** §10–§15 :364–:504 (what the working view is; the three voices; §11's four regions and the eleven rows → seventeen turn kinds (RULED 2026-09-20); what
 the page never has; the states; widening; the five instruments); §27 :863–:876 (the gated door's three additions); §29
 :887–:909 (`/research`, four regions; the `mine`/`all` switch is navigation, not an act); §30; §7 :288–:303 and §7.1 (the
 routes, all UI-3's; the routes pass `all`, the page opens on `mine`); §13 :469–:477 and A2 :1150–:1152 (401 → `/login?returnTo=`;
@@ -721,7 +721,7 @@ comes from the chat, never the marking link); A3 :1157–:1171. Frontend only (c
   unargued n · open gaps n · framing attached, tap → `/research/theses/[id]`, the published ones linking the public page too;
   (3) FRAMINGS — `GET /api/research/framings`, oldest first, tap → the framing sheet; (4) THE CORPUS in numbers —
   `GET /api/research/pages`: pages surveyed, rows by outcome, stops pending as a fact, and the link to `/research/corpus`.
-  **The `mine` / `all` switch** is one control setting one parameter on two lists (§29 :775–:776): the routes answer `all` with
+  **The `mine` / `all` switch** is one control setting one parameter on two lists (§29 :907–:908, recomputed 2026-09-20 R67): the routes answer `all` with
   `mine: bool` on every entry (§7.1 :322–:325), the page opens on `mine` by keeping the entries whose `mine` is true — a view
   over a field the body carries, not a derivation — and remembers the choice in the browser only (§39). Nothing on `/research` writes.
 - **`/research/theses/[id]`** — THE WORKING VIEW (§10–§14): one read, `GET /api/research/theses/:id` (`get_thesis_context`, A4
@@ -735,7 +735,7 @@ comes from the chat, never the marking link); A3 :1157–:1171. Frontend only (c
   gap's decision in force, a CITED gap whose citation left the head reading OPEN as derived), ANALYSIS (CURRENT or STALE / NONE
   with the fingerprint; the opinion labelled, every mark beside its sentence), FRAMING (rounds in sequence; CHOSEN with whether
   HEAD restates it character for character); (4) THE STREAM — HISTORY(t) OLDEST FIRST, one row per act, tap → the sheet for
-  that kind; "jump to now" at the end. The eleven kinds and their sheets are §11's table :435–:447, nothing invented; the
+  that kind; "jump to now" at the end. The eleven rows → seventeen turn kinds (RULED 2026-09-20) and their sheets are §11's table :435–:447, nothing invented; the
   WITHDRAWAL's reason shows here and never publicly (T6 :916).
 - **Three voices, complete** (§10 :371–:391): the researcher's component and the platform's mark (UI-5), and the labelled
   container (UI-7) now wrapping every ASSESSED round, debate assessment, analysis and publication assessment with the model
@@ -745,7 +745,7 @@ comes from the chat, never the marking link); A3 :1157–:1171. Frontend only (c
 - **What the page never has** (§12): no write control — no publish, save, editor, resolve or re-run; the one actionable element
   is the COPY of a command the owed list names, whose moment the list defines; no opinion outside its label; no second read
   for a filter — "since" is `get_thesis_context`'s own parameter, used to refresh the stream on return; the history loaded
-  whole, its size at phone width MEASURED on run B's thesis from this step (§41 :954–:955), a cursor added the day a
+  whole, its size at phone width MEASURED on run B's thesis from this step (§41 :1093–:1094, recomputed 2026-09-20 R67), a cursor added the day a
   measurement says so and not before.
 - **`/research/corpus`** (§27): UI-7's PAGES LIST and CHRONOLOGY at `scope: 'all'` — **the same two components, not second
   copies**. The pages list at `all` is `list_pages`' answer: every SURVEYED page, with the NOT PUBLIC mark on the rows no
@@ -768,10 +768,10 @@ comes from the chat, never the marking link); A3 :1157–:1171. Frontend only (c
 **Files.** NEW: `app/[locale]/research/page.tsx`, `research/theses/[thesisId]/page.tsx`, `research/corpus/page.tsx`,
 `research/corpus/claims/page.tsx`; `components/research/` — the owed strip, the thesis rows (UI-6's card with the researcher
 fields), the framing rows and sheet, the corpus numbers, the working view's context line, the five state segments, the
-stream and the eleven sheets, the extraction sheets, the NOT PUBLIC mark (RULED 2026-09-20, R66 „Q7 extend”: NOT a new component — one more member of `components/thesis/PlatformMark.tsx`'s closed union, a DECLARED KEEP edit with its measured size, ui §21 :626's one-mark rule), the `mine`/`all` switch; `lib/researchFetch.ts` (the
+stream and the seventeen kinds' rows and sheets (RULED 2026-09-20), the extraction sheets, the NOT PUBLIC mark (RULED 2026-09-20, R66 „Q7 extend”: NOT a new component — one more member of `components/thesis/PlatformMark.tsx`'s closed union, a DECLARED KEEP edit with its measured size, ui §21 :626's one-mark rule), the `mine`/`all` switch; `lib/researchFetch.ts` (the
 bearer, the 401 → `returnTo`, the 403 — one wrapper, no page composes it); `types/research.ts` (the bodies of thesis A4 :1476,
-:1458, :1432, :1523, evidence A4 :1144, :1146, interaction A5 :1071, :1199, :1208, :1214 — hand-written from the appendices);
-`messages/*.json` (`research`, new); `test/fixtures/research/` (a history carrying all eleven kinds; a colleague's thesis; a
+:1458, :1432, :1523, evidence A4 :1144, :1146, interaction A5 :1071, :1199, :1208, :1214 — hand-written from the appendices); `lib/researchBody.ts` (the parsers, one per read, to the same appendix lines — RULED 2026-09-20, R67 Q-A, the `corpusBody.ts` / `thesisBody.ts` precedent);
+`messages/*.json` (`research`, new); `test/fixtures/research/` (a transcript carrying all seventeen turn kinds (RULED 2026-09-20); a colleague's thesis; a
 withdrawn thesis; a thesis with one version and nothing else; an owed list; an empty owed list; a corpus at `all` with an
 unopened page; a work-list row, rules and a rule history); the six instrument files. REWRITE: `components/corpus/*` (the scope
 prop, the NOT PUBLIC mark, the extraction sheet's mount point — the same component, no second stream). KEEP, `git diff` empty:
@@ -994,7 +994,7 @@ touch, tagged as the thesis plan's §5 tags them. **Instruments, by file** (the 
 | `opinion-labelled-on-corpus` | `opinionLabelledOnCorpus.test.tsx` | UI-7 | every `opinion` field under the label; no other model field on a public corpus page |
 | `record-page-witnesses` | `recordPageWitnesses.test.tsx` | UI-7 | the archive link composed; the chain fetch only on the press; `CHAIN_UNAVAILABLE` as a statement |
 | `filter-is-a-query` | `filterIsAQuery.test.ts` | UI-7 | no corpus page fetches a second read for a filter |
-| `every-kind-renders` | `everyKindRenders.test.tsx` | UI-8 | all eleven history kinds render a row and a sheet |
+| `every-kind-renders` | `everyKindRenders.test.tsx` | UI-8 | all seventeen turn kinds (A4 :1476, RULED 2026-09-20) render a row and a sheet |
 | `opinion-under-label` | `opinionUnderLabel.test.tsx` | UI-8 | every assessed round, debate assessment, analysis, publication assessment under the label |
 | `three-voices` | `threeVoices.test.tsx` | UI-8 | one component per voice; no opinion or verdict through the researcher's |
 | `no-write-from-research` | `noWriteFromResearch.test.ts` | UI-8 | nothing under the research pages issues a non-GET or posts a form |
@@ -1223,7 +1223,7 @@ page with the two texts side by side and the chunks marked where they stand. Heb
 approve first: the lens names, the filter chips, the six drafted sentences of page 4.
 
 **UI-8, page 1 board C and page 5.** The event stream is the centre; §11's state segments are the RIGHT-PANE TABS (התזה · ציטוטים ·
-פערים · ניתוח · מסגור · פניות לציבור); the eleven kinds render with the eight glyphs of UI-4b, the gap decision in both shapes, every
+פערים · ניתוח · מסגור · פניות לציבור); the seventeen turn kinds (RULED 2026-09-20) render with the eight glyphs of UI-4b, the gap decision in both shapes, every
 model field inside the labelled container with the model and prompt version beside the label, every verdict a mark beside its
 sentence; the owed strip above the stream. Copy to approve first: the owed line, the tab names.
 

@@ -398,7 +398,7 @@ removed by shape is made visible, never dropped.
 ```
 1  THE CONTEXT LINE   sticky — **RULED 2026-09-20 (the researcher, R66 „Q9 not sticky”): NOT sticky; the first block of the page, in flow. The reason is R60's, unchanged: a sticky title bar's precondition is a SHORT NAME (docs/gf-ui-step-5-2026-09-18.md), no thesis has one (A2 :1268, the claim is the heading), and this line carries the claim. It returns the day a thesis has a name.** The CLAIM, verbatim — the claim is the heading (A2 :1268) — · the provision ·
                       the author's handle, `mine` marked · the state: DRAFT ONLY · PUBLISHED = HEAD ·
-                      PUBLISHED ≠ HEAD (n versions since) · WITHDRAWN on <date>. Never leaves the top.
+                      PUBLISHED ≠ HEAD (n versions since) · WITHDRAWN on <date>. In flow, not sticky (the Q9 ruling above, 2026-09-20).
 2  WHAT IS OWED       first, stop-shaped (T6 :881–:882): this thesis's entries of REVIEWS — FLAGGED
                       (record, why: withdrawn with reason · content moved, old beside new), STALE_TRAJECTORY,
                       UNARGUED (the mentions), ARRIVED (later, document flows) — each with its material and
@@ -492,7 +492,7 @@ adaptive layout, compact → medium → expanded); a STICKY collapsing header fo
 
 ## 15. INSTRUMENTS FOR THE APPENDIX (named here, held there)
 
-- `every-kind-renders`: a fixture history carrying all eleven kinds of §11 renders one row each and one sheet
+- `every-kind-renders`: a fixture transcript carrying all SEVENTEEN turn kinds of A4 :1476 (the eleven rows of §11, RULED 2026-09-20) renders one row each and one sheet
   each; a kind added to A2 without a renderer fails it.
 - `opinion-under-label`: in the rendered tree, every field of an ASSESSED round, a debate assessment, an
   analysis or a publication assessment is a descendant of a container carrying rule 3's label; a decoy
@@ -1205,7 +1205,7 @@ BACKEND (the backend suite; each with a decoy)
   no-surveyed-page-anonymous      no public route lists TrackedUrl rows or answers scope 'all' without identity
   pages-facet-equals-scope        the facet equals PUBLIC_PAGE's set at public, list_pages' at all
 FRONTEND — components
-  every-kind-renders              all eleven history kinds render a row and a sheet
+  every-kind-renders              all seventeen turn kinds (A4 :1476, RULED 2026-09-20) render a row and a sheet
   opinion-under-label             every model field under rule 3's label; none outside
   three-voices                    one component per voice; no opinion or verdict through the researcher's
   diff-is-of-two-texts            the diff over two fixture texts equals the expected; two inputs only
