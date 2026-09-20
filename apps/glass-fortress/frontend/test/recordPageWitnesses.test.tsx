@@ -651,9 +651,12 @@ describe('record-page-witnesses — the records page', () => {
     const diff = await renderRecord(resolvedDiffRecord.fileHash, { status: 200, body: resolvedDiffRecord });
     if (diff.notFound) throw new Error('W-14: the DIFF record answered the one 404');
     // THE REASON IS CARRIED, so a reader (and this case) can tell WHICH of the three it was.
-    const reason = diff.container.querySelector('[data-not-evaluable]');
-    if (reason === null) throw new Error('W-14: the notEvaluable arm rendered no reason at all');
+    // THE ATTRIBUTE IS ON THE MARKS ROW ITSELF — no child span, because `.record-marks > span` is a pill
+    // and an empty pill is a visible border around nothing (W-24, found on staging).
+    const reason = diff.container.querySelector('.record-marks[data-not-evaluable]');
+    if (reason === null) throw new Error('W-14: the notEvaluable arm rendered no reason on the marks row');
     expect(reason.getAttribute('data-not-evaluable')).toBe('NOT_PROMOTED');
+    expect(reason.children).toHaveLength(0);
     // AND IT RENDERS NO WORDS AT ALL. „אינו מאומת מול העוגן" is a VERDICT — "not verified against the
     // anchor" — and this arm is the one case where the platform did not ask. Borrowing that sentence here
     // says the check ran and failed. There is no approved sentence for "not evaluable" yet, so the arm
@@ -661,8 +664,8 @@ describe('record-page-witnesses — the records page', () => {
     // at all, and a wrong approved sentence is worse than none.
     expect(reason.textContent?.trim()).toBe('');
     expect(diff.container.textContent).not.toContain(FROZEN.notVerified);
-    // IT SITS IN THE MARKS REGION, where the record's other one-word facts are.
-    expect(reason.closest('.record-marks')).not.toBeNull();
+    // IT IS THE MARKS REGION, where the record's other one-word facts are — and it draws nothing.
+    expect(reason.classList.contains('record-marks')).toBe(true);
     // AND NO VERIFIED VERDICT IS DRAWN: the platform did not check, so it says nothing about the check.
     expect(diff.container.querySelector('[data-verified]')).toBeNull();
     // The EVALUABLE arm, by contrast, does draw one — so this is a statement about the ARM, not the page.
@@ -732,5 +735,55 @@ describe('record-page-witnesses — the sheet`s link onward', () => {
     if (link === null) throw new Error('W-17: the sheet drew no link onward');
     expect(link.getAttribute('href')).toBe(`/pages/${capture.page.trackedUrlId}/captures/${capture.capture}`);
     expect(link.textContent).toBe(FROZEN.openRecord);
+  });
+});
+
+describe('record-page-witnesses — no mark is an empty capsule', () => {
+  it('W-24 NO `.record-marks > span` IS EMPTY, on all three record pages and every fixture arm', async () => {
+    // FOUND ON STAGING, 2026-09-20, and it is two rulings MEETING rather than either being wrong. M4 made
+    // the `notEvaluable` arm render NO WORDS — the attribute alone, for an instrument to read — and M8
+    // then made `.record-marks > span` a PILL: 1px border, full radius, 2px 8px padding. Together they
+    // drew an EMPTY CAPSULE: measured on the live record, an 18 × 6 px box with a visible border around no
+    // content, floating beneath „ניתן לחישוב מחדש". That reads as a rendering GLITCH, which is worse than
+    // silence — the platform meant to say nothing and showed something broken instead.
+    //
+    // THE SWEEP IS OVER EVERY ARM, not over the page that had the defect. A mark is drawn on all three
+    // record pages, and the next empty one will be somewhere else; a case pinned to the records page would
+    // have to be rewritten to catch it, which means it would not catch it.
+    const arms: { name: string; container: HTMLElement }[] = [];
+    const add = (name: string, rendered: PageRender): void => {
+      if (rendered.notFound) throw new Error(`W-24: ${name} answered the one 404, not a body`);
+      arms.push({ name, container: rendered.container });
+    };
+
+    arms.push({ name: 'capture', container: await renderCapture('he') });
+    add('diff 200', await renderPair({ status: 200, body: diffInput }));
+    add('diff 200 narrowed', await renderPair({ status: 200, body: { ...diffInput, narrowed: true } }));
+    add('diff 409', await renderPair({ status: 409 }));
+    add('record CAPTURE evaluable', await renderRecord(resolvedCaptureRecord.fileHash, { status: 200, body: resolvedCaptureRecord }));
+    add('record DIFF notEvaluable', await renderRecord(resolvedDiffRecord.fileHash, { status: 200, body: resolvedDiffRecord }));
+    add('record DIFF evaluable', await renderRecord(resolvedDiffVerifiedRecord.fileHash, { status: 200, body: resolvedDiffVerifiedRecord }));
+    setPublicBodies({});
+    add('record #doc_', await renderPage((await recordsPage()).default, { locale: 'he', fileHash: 'doc_0123456789abcdef' }, { locale: 'he' }));
+
+    // `trim()` IS NOT ENOUGH, and a decoy proved it: U+200B ZERO WIDTH SPACE is a FORMAT character and not
+    // White_Space, so `'\u200b'.trim()` returns it unchanged — a pill holding only a zero-width space
+    // reads as non-empty to `trim()` and renders as exactly the capsule this case exists to refuse. The
+    // invisible ones are stripped too.
+    const visibleText = (node: Element): string => (node.textContent ?? '').replace(/[\s\u200b-\u200d\u2060\ufeff]/g, '');
+    const empties = requireSubjects('the rendered arms', arms).flatMap(({ name, container }) =>
+      [...container.querySelectorAll('.record-marks > span')]
+        .filter((span) => visibleText(span) === '')
+        .map((span) => `${name}: <span ${span.getAttributeNames().join(' ')}>`),
+    );
+    expect(empties).toEqual([]);
+
+    // THE FLOOR: the sweep really saw marks. An arm set that rendered none would make "no empty span"
+    // true of nothing at all — and the `notEvaluable` arm in particular must be among them, since it is
+    // the one that had no words to begin with.
+    const marksSeen = arms.reduce((total, arm) => total + arm.container.querySelectorAll('.record-marks').length, 0);
+    expect(marksSeen).toBeGreaterThanOrEqual(5);
+    const notEvaluableArm = arms.find((arm) => arm.name === 'record DIFF notEvaluable');
+    expect(notEvaluableArm?.container.querySelector('[data-not-evaluable]')).not.toBeNull();
   });
 });
