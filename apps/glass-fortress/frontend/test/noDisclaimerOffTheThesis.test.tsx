@@ -3,7 +3,7 @@ jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { renderPage, setAuthState, setPathname, setPublicBodies, textNodes, type Locale, type PageRender } from './render';
+import { type Locale, type PageRender, renderPage, renderResearchDashboard, setAuthState, setPathname, setPublicBodies, textNodes } from './render';
 import { requireSubjects } from './scan';
 import { corpusStream } from './fixtures/corpus/stream';
 import { claimsAnswer } from './fixtures/corpus/claims';
@@ -101,6 +101,23 @@ describe('no-disclaimer-off-the-thesis · the rendered pages', () => {
       rows: container.querySelectorAll('[data-page-row]').length > 0,
       controlFindsBoth: DISCLAIMERS.filter((sentence) => (control.textContent ?? '').includes(sentence)).length,
     }).toEqual({ found: [], rows: true, controlFindsBoth: 2 });
+  });
+
+  it('`/research` CARRIES NO DISCLAIMER — the read view is neither a thesis page nor a call page (UI-8)', async () => {
+    // COMPLIANCE.md :92 names every thesis page and every `/call/[thesisId]` page and nothing else, and §26
+    // :820's ruling removed it from `/corpus` and `/theses` on the same reasoning: a list, a record and a
+    // researcher's own working view each carry no claim's argument. This is the first GATED page in the set.
+    const container = await renderResearchDashboard(LOCALE);
+    const shown = shownText(container);
+    const control = controlFragment();
+    expect({
+      found: DISCLAIMERS.filter((sentence) => shown.includes(sentence)),
+      // THE FLOOR: the page really drew its four regions and its rows, so "no disclaimer" is a fact about
+      // what it renders rather than about a render that produced nothing.
+      regions: container.querySelectorAll('[data-region]').length,
+      rows: container.querySelectorAll('[data-thesis-row]').length > 0,
+      controlFindsBoth: DISCLAIMERS.filter((sentence) => (control.textContent ?? '').includes(sentence)).length,
+    }).toEqual({ found: [], regions: 4, rows: true, controlFindsBoth: 2 });
   });
 
   it('THE CLAIMS VIEW CARRIES NO DISCLAIMER — a corpus view is neither a thesis page nor a call page', async () => {

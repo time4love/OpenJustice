@@ -1,6 +1,14 @@
 import { useTranslations } from 'next-intl';
 
-/** Every mark the platform may put beside what it judges — the body's fields, never a verdict the page computed. */
+/**
+ * Every mark the platform may put beside what it judges — the body's fields, never a verdict the page computed.
+ *
+ * NINE → FOURTEEN, RULED 2026-09-20 (the researcher's freeze, "2 marks"; plan :771, ui §21 :626's one-mark
+ * rule). `notPublic` is the read view's mark on a page no published thesis has opened (§27 :866), and the four
+ * verdict words are the PLATFORM's own on a closed debate and a publication attempt — which is the same
+ * sentence §21 :626 already ruled for NOT PUBLIC, read on them. A second mark component for either would be
+ * the second spelling that clause exists to prevent.
+ */
 export type MarkKind =
   | 'verified'
   | 'flagged'
@@ -10,7 +18,12 @@ export type MarkKind =
   | 'publishedOverObjection'
   | 'trajectoryCurrent'
   | 'trajectoryStale'
-  | 'trajectoryUnresolved';
+  | 'trajectoryUnresolved'
+  | 'notPublic'
+  | 'promoted'
+  | 'abandoned'
+  | 'refused'
+  | 'published';
 
 /**
  * THE PLATFORM'S VOICE — docs/gf-ui-flows.md §16 :517–:521, §21 :626–:627. A mark beside the thing it judges,

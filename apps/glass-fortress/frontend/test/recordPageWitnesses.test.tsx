@@ -13,9 +13,9 @@ import { fireEvent, screen } from '@testing-library/react';
 import { DiffRuns } from '@/components/record/DiffRuns';
 import { archiveUrl, rawArchiveUrl } from '@/lib/archiveUrl';
 import { apiCallsMade, globalFetchDouble, renderClaimsWithSheet, renderPage, setPublicBodies, type Locale, type PageRender } from './render';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { FRONTEND, requireSubjects, SRC, sourceFiles } from './scan';
+import { FRONTEND, jsxTagsIn, requireSubjects, SRC, sourceFiles } from './scan';
 import { renderWithIntl, textNodes } from './render';
 import { captureRead } from './fixtures/corpus/capture';
 import { diffInput } from './fixtures/corpus/diffInput';
@@ -427,6 +427,15 @@ describe('record-page-witnesses — the reading region', () => {
    */
   const OWED = ['src/app/[locale]/theses/[id]/versions/[v]/page.tsx'] as const;
 
+  /**
+   * THE READ VIEW'S PAGES, NAMED (UI-8). They are not caught by the READ_COMPONENTS detector — their reads
+   * live in a CLIENT body below a thin server shell, because the bearer is in `window.localStorage` and a
+   * Server Component cannot read it — and a detector that cannot see them would let the opt-in be dropped
+   * from the one set of pages this step adds. So they are a named subject with their own floor, exactly as
+   * the record pages are.
+   */
+  const RESEARCH_PAGES = ['src/app/[locale]/research/page.tsx'] as const;
+
   /** The pages whose EVERY return is a read — this chunk's three, asserted per branch. */
   const RECORD_PAGES = [
     'src/app/[locale]/pages/[trackedUrlId]/captures/[capture]/page.tsx',
@@ -471,17 +480,26 @@ describe('record-page-witnesses — the reading region', () => {
       [...source.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\}|\{'([^']*)'\})/g)].filter((match) =>
         (match[1] ?? match[2] ?? match[3] ?? '').split(/\s+/).includes('reading'),
       ).length;
-    const returns = (source: string): number => [...source.matchAll(/<main\b[^>]*>/g)].length;
+    // A PER-RETURN COUNT READS NODES, NOT TEXT — the fifth detector defect of this case, and it was found by
+    // the case itself when the read view's page arrived: that page's docblock EXPLAINS the `<main>` it
+    // renders, and a `/<main\b[^>]*>/g` count over the FILE read the explanation as two more returns, so a
+    // page that opts in correctly read as under-opted-in. That regex counter is GONE rather than left beside
+    // its replacement: a superseded reader kept in the file is a reader a later hand may call again. The
+    // file-wide count below (branch (b)) stays text-based on purpose —
+    // `/theses/[id]` carries its opt-in on the `<article>` INSIDE its main, which a `main`-only node count
+    // cannot see and which that page is right about.
+    const mainTags = (file: string) => jsxTagsIn(join(FRONTEND, file)).filter((tag) => tag.tag === 'main');
+    const optedInMains = (file: string): number =>
+      mainTags(file).filter((tag) => (tag.attributes.className ?? '').split(/\s+/).includes('reading')).length;
 
     // (a) THE RECORD PAGES, PER RETURN. Every branch of each is a read — the 409 state and the `#doc_`
     // sentence are records with something owed, not notices — so each must carry the opt-in.
     let branches = 0;
     const underOptedIn = requireSubjects('the record pages', RECORD_PAGES).filter((file) => {
-      const source = readFileSync(join(FRONTEND, file), 'utf8');
-      const mains = returns(source);
+      const mains = mainTags(file).length;
       if (mains === 0) throw new Error(`W-21: ${file} renders a read and declares no <main>`);
       branches += mains;
-      return readingCount(source) < mains;
+      return optedInMains(file) < mains;
     });
     expect(underOptedIn).toEqual([]);
     // THE FLOOR: the five record-page branches were really counted (1 + 2 + 2).
@@ -495,6 +513,19 @@ describe('record-page-witnesses — the reading region', () => {
     for (const page of requireSubjects('the record pages', RECORD_PAGES)) {
       expect(reads).toContain(page);
     }
+
+    // (c) THE READ VIEW'S PAGES, PER RETURN. Named rather than detected, and asserted to EXIST first — a
+    // path that stopped resolving would otherwise read as a page with nothing to check.
+    let researchBranches = 0;
+    const researchMissing = requireSubjects('the read view`s pages', RESEARCH_PAGES).filter((file) => {
+      if (!existsSync(join(FRONTEND, file))) throw new Error(`W-21: ${file} does not exist`);
+      const mains = mainTags(file).length;
+      if (mains === 0) throw new Error(`W-21: ${file} renders a read and declares no <main>`);
+      researchBranches += mains;
+      return optedInMains(file) < mains;
+    });
+    expect(researchMissing).toEqual([]);
+    expect(researchBranches).toBe(1);
   });
 });
 
