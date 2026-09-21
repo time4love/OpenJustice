@@ -35,12 +35,28 @@ const SHARED = [
   'src/components/corpus/PageCard.tsx',
   'src/components/corpus/CorpusContextLine.tsx',
   'src/components/corpus/RecordSheet.tsx',
+  // THE URL'S ONE ELEMENT (chunk 6, ruled 2026-09-21). Four components spelled the same `<bdi>` and §24
+  // :763's header would have been a fifth; both doors must reach the one module that replaced them.
+  'src/components/corpus/PageUrl.tsx',
 ] as const;
 
-const SHARED_CLAIMS = ['src/components/corpus/Claims.tsx', 'src/components/corpus/CorpusContextLine.tsx'] as const;
+const SHARED_CLAIMS = ['src/components/corpus/Claims.tsx', 'src/components/corpus/CorpusContextLine.tsx', 'src/components/corpus/PageUrl.tsx'] as const;
 
 /** Every element the stream and its rows own — the things a SECOND stream would have to draw too. */
-const ONE_EMITTER = ['data-stream', 'data-pages-list', 'data-capture-row', 'data-diff-card', 'data-record-sheet', 'data-claims', 'data-claim-sheet'] as const;
+const ONE_EMITTER = [
+  'data-stream',
+  'data-pages-list',
+  'data-capture-row',
+  'data-diff-card',
+  'data-record-sheet',
+  'data-claims',
+  'data-claim-sheet',
+  // A PAGE'S URL IS ONE ELEMENT, and this is the half that holds it. The import closure above says both doors
+  // REACH `PageUrl`; it does not say nobody also kept a `<bdi dir="ltr">{displayUrl(url)}</bdi>` of their own,
+  // which is exactly the state chunk 6 found — four of them, in the four files listed in SHARED. Counting the
+  // EMITTERS of `data-page-url` across the whole of `src/` is what makes a fifth spelling impossible to hide.
+  'data-page-url',
+] as const;
 
 function closureOf(page: string): string[] {
   return importClosureOf(join(FRONTEND, page)).map((module) => relative(FRONTEND, module));
@@ -102,6 +118,7 @@ describe('one-stream-two-doors', () => {
       'data-record-sheet': ['src/components/corpus/RecordSheet.tsx'],
       'data-claims': ['src/components/corpus/Claims.tsx'],
       'data-claim-sheet': ['src/components/corpus/Claims.tsx'],
+      'data-page-url': ['src/components/corpus/PageUrl.tsx'],
     });
   });
 

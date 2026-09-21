@@ -106,9 +106,21 @@ export interface PageShape {
 
 /** One row of the `pages` FACET (§28 :751–:753) — the pages list's only legal source at `public`. */
 export interface PagesFacetRow extends CorpusPage {
-  /** The first and last snapshot dates in scope — an INTERVAL, which is how a page is shown (§4 :169). */
-  first: string;
-  last: string;
+  /**
+   * The first and last snapshot dates in scope — an INTERVAL, which is how a page is shown (§4 :169).
+   *
+   * BOTH ARE NULLABLE AND ALWAYS WERE ON THE WIRE (`corpusReads.ts` :1070–:1071, :1307 `held.at(0) ?? null`).
+   * This type required `string` and `corpusBody`'s parser called `text()` on them, which THROWS — so ONE
+   * surveyed page with no captures yet would have taken region 0 of the gated door down, and it parses every
+   * surveyed page. That state is one survey away: `walk/tools/surveyWaybackCaptures.ts` :149 creates the
+   * `TrackedUrl` and its work-list rows, and a LATER step acquires the captures.
+   *
+   * THE BACKEND DOES NOT MOVE (ruled 2026-09-21). `null` is the true statement about a page with no captures;
+   * a `''` or a stand-in date would be a lie this side could not detect. What draws from them asks
+   * `lib/pageInterval.ts` first, and a row with no interval says the url and its record count and stops.
+   */
+  first: string | null;
+  last: string | null;
   /** How many records the scope holds for this page. */
   entries: number;
   /**

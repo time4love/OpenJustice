@@ -6,10 +6,11 @@ import { CopyableCode } from '@/components/CopyableCode';
 import { LabelledOpinion } from '@/components/opinion/LabelledOpinion';
 import { PlatformMark } from '@/components/thesis/PlatformMark';
 import { DeclareTabs, type PaneTab } from '@/components/shell/RightPane';
-import { displayUrl, formatCaptureDate } from '@/lib/format';
+import { formatCaptureDate } from '@/lib/format';
 import { partitionBySignificance } from '@/lib/corpusSignificance';
+import { PageUrl } from './PageUrl';
 import { recordIdOf, useOpenRecord, useRecordTab } from './RecordSheet';
-import type { CaptureEntry, CorpusEntry, DiffEntry, PageShape } from '@/types/corpus';
+import type { CaptureEntry, CorpusEntry, DiffEntry } from '@/types/corpus';
 
 /**
  * §27's EXTRACTION SHEET, AS A SLOT THIS COMPONENT DOES NOT FILL — and the direction of that dependency is
@@ -41,6 +42,13 @@ export interface ExtractionSlot {
 // a state, and the classifier's opinion inside `LabelledOpinion`. The weights are not decoration: a reader
 // scanning a page's history looks for the events, and the ticks between them are what give the events dates.
 //
+// A ROW NAMES ITS PAGE ONLY WHEN THE VIEW SPANS PAGES (§24 :763 as amended 2026-09-21). On a single-page view
+// the card above already names the page, so every row repeating the same url is a redundancy — measured on
+// the real corona body, FORTY-THREE repetitions of one string. `spansPages` is the VIEW's fact and is passed
+// in rather than derived from the entries: a cross-page stream whose window happens to return rows of one
+// page still spans pages, and it carries NO card, so a row that dropped the label on that evidence would
+// leave the reader with no page named anywhere. The page in force is what the door knows and the rows do not.
+//
 // THE THREE COMPONENTS SHARE A FILE deliberately. The two row weights are the two halves of THIS list,
 // neither is rendered anywhere else, and a reader judging whether a row is drawn right needs both in front of
 // them. When UI-8 or a record page renders one alone, it moves out with its own name.
@@ -56,15 +64,6 @@ export interface ExtractionSlot {
 // not. Everything else here is computed from the body.
 // ---------------------------------------------------------------------------
 
-/** The page a row belongs to, shown as §4 :167–:178 requires: the domain and path, never the `trackedUrlId`. */
-function PageLabel({ url }: { url: string }) {
-  return (
-    <bdi dir="ltr" data-page-label className="break-all text-xs text-ink-muted">
-      {displayUrl(url)}
-    </bdi>
-  );
-}
-
 /**
  * A CAPTURE — the thin row. Its date is FORMATTED, never printed: the body carries a 14-digit wayback
  * timestamp and §4 :168 bars exactly that from being read aloud. `formatCaptureDate` is CALLED, the same
@@ -74,7 +73,7 @@ function PageLabel({ url }: { url: string }) {
  * THE COPY CARRIES THE CITATION TOKEN and is labelled by what it is FOR (§4 :172), which is why the hash it
  * copies is never drawn as text beside it.
  */
-function CaptureRow({ entry, onOpen, extraction }: { entry: CaptureEntry; onOpen: (entry: CaptureEntry) => void; extraction?: ExtractionSlot }) {
+function CaptureRow({ entry, onOpen, extraction, spansPages }: { entry: CaptureEntry; onOpen: (entry: CaptureEntry) => void; extraction?: ExtractionSlot; spansPages: boolean }) {
   const t = useTranslations('corpus');
   const locale = useLocale();
   return (
@@ -83,7 +82,7 @@ function CaptureRow({ entry, onOpen, extraction }: { entry: CaptureEntry; onOpen
           not open a record. It is a sibling button rather than a nested one, because a control inside a
           control is the nesting `valid-nesting` refuses and a browser resolves by guessing. */}
       <button type="button" data-open-record={recordIdOf(entry)} onClick={() => { onOpen(entry); }} className="text-start">
-      <PageLabel url={entry.page.url} />
+      {spansPages ? <PageUrl url={entry.page.url} weight="aside" /> : null}
       <span className="flex flex-wrap items-baseline gap-2 text-sm text-ink">
         <bdi dir="ltr">{formatCaptureDate(entry.capture, locale)}</bdi>
         <span data-anchor-mark className="text-xs text-ink-muted">
@@ -126,7 +125,7 @@ function CaptureRow({ entry, onOpen, extraction }: { entry: CaptureEntry; onOpen
  *
  * THE OPINION IS INSIDE `LabelledOpinion` OR IT IS NOT RENDERED (§10 :384, "Never outside one").
  */
-function DiffCard({ entry, onOpen }: { entry: DiffEntry; onOpen: (entry: DiffEntry) => void }) {
+function DiffCard({ entry, onOpen, spansPages }: { entry: DiffEntry; onOpen: (entry: DiffEntry) => void; spansPages: boolean }) {
   const t = useTranslations('corpus');
   const locale = useLocale();
   const removed = entry.current?.chunks.filter((one) => one.side === 'REMOVED').length ?? 0;
@@ -134,7 +133,7 @@ function DiffCard({ entry, onOpen }: { entry: DiffEntry; onOpen: (entry: DiffEnt
   return (
     <li data-entry="DIFF" data-diff-card className="flex flex-col gap-2 rounded border border-line bg-surface p-3">
       <button type="button" data-open-record={recordIdOf(entry)} onClick={() => { onOpen(entry); }} className="flex flex-col gap-2 text-start">
-      <PageLabel url={entry.page.url} />
+      {spansPages ? <PageUrl url={entry.page.url} weight="aside" /> : null}
       {/* THE INTERVAL USES THE CATALOGUE'S OWN `interval` STRING, which the pages list already draws — one
           approved spelling of "from one date to another", not a second. An arrow between the two dates was
           written first and `no-emoji` caught it: that instrument bars an arrow under `src/` precisely so a
@@ -172,19 +171,23 @@ function DiffCard({ entry, onOpen }: { entry: DiffEntry; onOpen: (entry: DiffEnt
  * line that says how many, with the tap that reveals them. They land together, because hiding without
  * announcing is the half §24 forbids.
  *
- * WHICH NUMBER THE LINE STATES, AND THE TWO VIEWS SAY DIFFERENT THINGS (§24 :755, ruled 2026-09-21).
+ * THE NUMBER IS THE WINDOW'S, ON BOTH VIEWS — REVERTED 2026-09-21, the same day the page's figure landed, and
+ * the two grounds are worth keeping because the second is not about scope at all.
  *
- *   · ON A SINGLE-PAGE VIEW the number is THE PAGE'S: the sum of `count` over the shape's diff bins that did
- *     not pass the gate. The shape is the facet's, computed before the filter and before the cursor's slice,
- *     so it is the same source region 3's strip is drawn from and the two regions cannot disagree.
- *   · ACROSS PAGES there is no page and no shape, so it stays the WINDOW'S — which is all this view knows.
+ *   (1) THE LINE IS A CONTROL FOR AUDITABILITY (§24 :684: "a hidden row that announces itself can be audited;
+ *       one that does not, cannot"). A line naming thirteen whose tap reveals five breaks the promise it
+ *       exists to make. PAGE-LEVEL suppression is already visible where §24 puts it — the dimmed bars of
+ *       ruling (g) on region 3's strip. Two elements, two scopes, each honest about its own.
+ *   (2) THE PAGE FIGURE IS WRONG BY CONSTRUCTION. `bin.passed` is ANY (`corpusReads.ts` :1123) and the sum ran
+ *       over bins where `!passed`, so A BIN HOLDING ONE FLAGGED AND ONE HIDDEN DIFF CONTRIBUTES ZERO. The real
+ *       corpus has 24 diffs in 24 DISTINCT bins, so nothing collides today and the figure was right BY LUCK.
+ *       An honest page count needs a per-bin `hidden` the facet does not carry — so the seam was not a copy
+ *       problem that could be closed by saying both figures; the page's own figure was never trustworthy.
  *
- * THE SEAM THIS LEAVES IS STATED RATHER THAN HIDDEN: the tap reveals the WINDOW'S hidden rows, so on a page
- * whose records do not fit one window the line can name more than the tap shows. The control is therefore
- * drawn only while the window really hides something — a line offering nothing to reveal would be worse than
- * either number — and closing the seam properly means saying both figures, which is copy and not code.
+ * `hidden.length` IS THE WINDOW'S BY DEFINITION — it is exactly what the tap reveals — so the line and the
+ * control state one number and the component needs no second source to reconcile.
  */
-export function Stream({ entries, shape, extraction }: { entries: readonly CorpusEntry[]; shape: PageShape | null; extraction?: ExtractionSlot }) {
+export function Stream({ entries, spansPages, extraction }: { entries: readonly CorpusEntry[]; spansPages: boolean; extraction?: ExtractionSlot }) {
   const t = useTranslations('corpus');
   const [revealed, setRevealed] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -197,8 +200,6 @@ export function Stream({ entries, shape, extraction }: { entries: readonly Corpu
     openRecord(recordIdOf(entry));
   };
   const { shown, hidden } = partitionBySignificance(entries);
-  // THE PAGE'S OWN HIDDEN COUNT WHERE THERE IS A PAGE, the window's where there is not — see the header.
-  const hiddenCount = shape === null ? hidden.length : shape.diffs.filter((bin) => !bin.passed).reduce((total, bin) => total + bin.count, 0);
   if (entries.length === 0) return <p data-stream-empty className="text-sm text-ink-muted">{t('emptyFiltered')}</p>;
   const drawn = revealed ? [...shown, ...hidden] : shown;
   return (
@@ -215,9 +216,9 @@ export function Stream({ entries, shape, extraction }: { entries: readonly Corpu
       <ul data-stream className="flex flex-col gap-2">
         {drawn.map((entry) =>
           entry.kind === 'CAPTURE' ? (
-            <CaptureRow key={`c-${entry.capture}-${entry.page.trackedUrlId}`} entry={entry} onOpen={open} extraction={extraction} />
+            <CaptureRow key={`c-${entry.capture}-${entry.page.trackedUrlId}`} entry={entry} onOpen={open} extraction={extraction} spansPages={spansPages} />
           ) : (
-            <DiffCard key={`d-${entry.before}-${entry.after}-${entry.page.trackedUrlId}`} entry={entry} onOpen={open} />
+            <DiffCard key={`d-${entry.before}-${entry.after}-${entry.page.trackedUrlId}`} entry={entry} onOpen={open} spansPages={spansPages} />
           ),
         )}
       </ul>
@@ -230,7 +231,7 @@ export function Stream({ entries, shape, extraction }: { entries: readonly Corpu
           }}
           className="self-start text-xs text-ink-muted underline"
         >
-          {t('hiddenCount', { count: hiddenCount })}
+          {t('hiddenCount', { count: hidden.length })}
         </button>
       )}
     </>

@@ -6,6 +6,7 @@ import { CopyableCode } from '@/components/CopyableCode';
 import { PlatformMark } from '@/components/thesis/PlatformMark';
 import { DeclareTabs } from '@/components/shell/RightPane';
 import { displayUrl, formatCaptureDate } from '@/lib/format';
+import { PageUrl } from './PageUrl';
 import { useOpenRecord } from './RecordSheet';
 import type { TrajectoryCapture, TrajectoryEntry } from '@/types/corpus';
 
@@ -34,6 +35,17 @@ import type { TrajectoryCapture, TrajectoryEntry } from '@/types/corpus';
 //
 // NO CURRENCY MARK AND NO CITED MARK (§25 :795–:806): both are properties of a (thesis, trajectory) pair and
 // have no meaning on a row this read computes without any thesis.
+//
+// THE PAGE IS NAMED ONCE, ABOVE THE ROWS (§25 :790 and §24 :763, both amended 2026-09-21). This view NEVER
+// spans pages — `page` is required and both doors `notFound()` without it — so the subject was absent where
+// it belonged and repeated on every one of the real body's twenty-six rows. It is drawn from the body's own
+// `page.url`, which is the only place this read states it, and it is `PageUrl`'s fifth caller rather than a
+// fifth spelling of the same `<bdi>`.
+//
+// THE HOLE IS DRAWN, NOT PAPERED OVER. `list_trajectories` carries `page.url` on ENTRIES ONLY, so a window
+// narrowed to nothing has no url anywhere in the body and there is nothing to name the page with. The header
+// is then NOT DRAWN — an empty one would be a header saying nothing, and a stand-in would be a url the read
+// did not send. The envelope is owed a top-level `page`; that amendment is FILED and is not this component's.
 // ---------------------------------------------------------------------------
 
 /** A row's stable identity — the same string the tap sets and the tab declares. Never rendered. */
@@ -48,15 +60,6 @@ export function flipsOf(captures: readonly TrajectoryCapture[]): { before: Traje
     if (index === 0 || previous === undefined || previous.present === capture.present) return [];
     return [{ before: previous, after: capture }];
   });
-}
-
-/** The page a row belongs to, shown as §4 :167–:178 requires: the domain and path, never the `trackedUrlId`. */
-function PageLabel({ url }: { url: string }) {
-  return (
-    <bdi dir="ltr" data-page-label className="break-all text-xs text-ink-muted">
-      {displayUrl(url)}
-    </bdi>
-  );
 }
 
 /**
@@ -108,7 +111,7 @@ function RunStrip({ entry }: { entry: TrajectoryEntry }) {
   );
 }
 
-/** One row: the claim's first words, the page, the strip, the two facts, and the group's count if it is one. */
+/** One row: the claim's first words, the strip, the two facts, and the group's count if it is one. */
 function ClaimRow({ entry, onOpen }: { entry: TrajectoryEntry; onOpen: (entry: TrajectoryEntry) => void }) {
   const t = useTranslations('corpus.claims');
   const sheet = useTranslations('theses.sheet');
@@ -128,7 +131,10 @@ function ClaimRow({ entry, onOpen }: { entry: TrajectoryEntry; onOpen: (entry: T
         <span dir="auto" className="record-captured">
           {first?.claimText ?? ''}
         </span>
-        <PageLabel url={entry.page.url} />
+        {/* THE PAGE'S LABEL IS NOT HERE — §24 :763 as amended 2026-09-21: a row names its page only when the
+            view SPANS pages, and this view never does (`page` is REQUIRED, §25 :783, and both doors 404
+            without one). It named one page twenty-six times on the real body while the view still could not
+            say what it was about. It is drawn ONCE, above the rows, by `Claims` below. */}
         <RunStrip entry={entry} />
         <span className="flex flex-wrap items-baseline gap-2 text-xs text-ink-muted">
           {/* THE THESIS PAGE'S OWN PLURAL, CALLED: the trajectory pane states this exact fact, and a second
@@ -267,6 +273,7 @@ export function Claims({ entries, emptiness }: { entries: readonly TrajectoryEnt
   const corpus = useTranslations('corpus');
   const [openId, setOpenId] = useState<string | null>(null);
   const openRecord = useOpenRecord();
+  const subject = entries.at(0);
   const open = (entry: TrajectoryEntry): void => {
     setOpenId(claimIdOf(entry));
     openRecord(claimIdOf(entry));
@@ -281,6 +288,12 @@ export function Claims({ entries, emptiness }: { entries: readonly TrajectoryEnt
   return (
     <>
       <ClaimSheetTab entries={entries} openId={openId} />
+      {/* THE PAGE THIS VIEW IS ABOUT. Every entry of an answered read carries the SAME page — `page` is
+          required — so the first row's is the body's own statement of it and not a choice among several.
+          `entries.at(0)` is `TrajectoryEntry | undefined` unconditionally, so the guard is real under both
+          debt ratchets; and the early return above means the undefined arm is reached only if a future read
+          answered rows without a page, where drawing nothing is still the right answer. */}
+      {subject === undefined ? null : <PageUrl url={subject.page.url} weight="subject" />}
       <ul data-claims className="flex flex-col gap-2">
         {entries.map((entry) => (
           <ClaimRow key={claimIdOf(entry)} entry={entry} onOpen={open} />

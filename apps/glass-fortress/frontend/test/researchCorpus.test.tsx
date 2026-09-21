@@ -81,12 +81,22 @@ function textSetOf(element: Element): string[] {
     .filter((text) => text !== '');
 }
 
-function rowFor(container: HTMLElement, selector: string, url: string): Element {
+/**
+ * THE ROW THAT SAYS `words` — and for a CLAIM row those words are no longer the url.
+ *
+ * §24 :763 as amended 2026-09-21 takes the page's label off a row of a view that cannot span pages, and the
+ * claims view never can. A claim row is therefore identified by the CLAIM it carries, which is the thing the
+ * row is actually about; a page row is still identified by its url, which is the thing THAT row is about.
+ */
+function rowFor(container: HTMLElement, selector: string, words: string): Element {
   const rows = [...container.querySelectorAll(selector)];
-  const found = rows.find((row) => (row.textContent ?? '').includes(url));
-  if (found === undefined) throw new Error(`no ${selector} for ${url} — found ${String(rows.length)} rows`);
+  const found = rows.find((row) => (row.textContent ?? '').includes(words));
+  if (found === undefined) throw new Error(`no ${selector} saying ${words} — found ${String(rows.length)} rows`);
   return found;
 }
+
+/** The two claim rows of `claimsAtAll`, named by their own sentences — the opened page's and the closed one's. */
+const CLAIM_OF = { open: 'הטענה שעזבה את העמוד הפתוח', closed: 'הטענה שעזבה את העמוד הסגור' } as const;
 
 describe('the gated corpus door — /research/corpus', () => {
   it('CO-1 THE FLOOR, READ OFF THE PARSE: the fixture carries a page that is NOT public, with BOTH row weights on it', () => {
@@ -452,6 +462,65 @@ describe('the gated corpus door — /research/corpus', () => {
     });
   });
 
+  it('CO-22 A SURVEYED PAGE WITH NO CAPTURES DRAWS ON THIS DOOR TOO — and this is the door that would have fallen', async () => {
+    // THE GATED DOOR IS WHERE THIS BITES, and that is why it gets its own arm rather than the public one's by
+    // inheritance. §27 renders the SAME list at `all`, over EVERY SURVEYED page — so a page whose captures
+    // have not been acquired yet is a row this door draws and the public one never sees (`public` is false
+    // until a published thesis opens it). The facet sends `first: null` for it
+    // (`backend/src/services/corpusReads.ts` :1307), the parser used to call `text()` on that, and ONE such
+    // row took region 0 of this door down entirely.
+    //
+    // IT IS ONE SURVEY AWAY: `surveyWaybackCaptures.ts` :149 creates the `TrackedUrl` and its work-list rows,
+    // and a LATER step acquires the captures. Every newly surveyed url sits in this state until it runs.
+    const fresh = {
+      ...corpusAtAll,
+      pages: [
+        ...corpusAtAll.pages,
+        { trackedUrlId: 'surveyed-empty', url: 'https://example.gov/fresh/', public: false, first: null, last: null, entries: 0, shape: null },
+      ],
+    };
+    // THE JOIN TO `list_pages` IS TOTAL AND LOUD (§27 :873, and `joinPageFacts` throws by name), so the
+    // surveyed page must exist in BOTH reads — which is exactly the state a real survey produces: the row is
+    // created by `surveyWaybackCaptures.ts` :149 and both reads see it from that moment.
+    const freshFacts = [
+      ...pagesFixture,
+      {
+        trackedUrlId: 'surveyed-empty',
+        url: 'https://example.gov/fresh/',
+        public: false,
+        title: null,
+        surveyedAt: '2026-01-04T09:00:00.000Z',
+        total: 0,
+        outcomes: { UNFETCHED: 0, UNSERVABLE: 0, IDENTICAL: 0, DUPLICATE: 0, ACQUIRED: 0, PENDING_JUDGEMENT: 0, SKIPPED: 0 },
+        stopPending: false,
+      },
+    ];
+    const gated = await renderResearchCorpus(LOCALE, {
+      answers: {
+        '/api/research/corpus': { status: 200, body: fresh },
+        '/api/research/pages': { status: 200, body: freshFacts },
+      },
+    });
+    const row = rowFor(gated, '[data-page-row]', 'example.gov/fresh');
+    expect({
+      // THE DOOR STOOD UP — the whole defect. A throwing parser rendered no list at all, so every count here
+      // was zero and nothing below could be reached.
+      rows: gated.querySelectorAll('[data-page-row]').length,
+      // THE ROW'S WHOLE TEXT, BY VALUE: the url and „0 רשומות", and NO interval. No new string — the
+      // catalogue's own `corpus.records` — and no stand-in date, which would be a day this page never held.
+      said: textSetOf(row),
+      // AND §27's MARK IS STILL ON IT: a surveyed page is exactly a page no published thesis has opened, so
+      // the row that this chunk keeps alive is the row that most needs the mark.
+      notPublic: row.querySelectorAll('[data-mark="notPublic"]').length,
+      // THE CONTROL, in the same render: the rows that DO hold captures still draw their interval, so the
+      // absence above is this row's answer and not a component that stopped drawing dates.
+      withInterval: [...gated.querySelectorAll('[data-page-row]')].filter((one) => (one.textContent ?? '').includes('23.12.2021')).length,
+      // §27's OWN FACTS on the row, from `list_pages`: a surveyed page with nothing acquired says „0 שורות".
+      // They are pinned here because the SET is the assertion — a word added beside the count would otherwise
+      // pass unread, which is R65's M4.
+    }).toEqual({ rows: 3, said: ['לא פתוח לציבור', 'example.gov/fresh/', '0 רשומות', '0 שורות'], notPublic: 1, withInterval: 1 });
+  });
+
   it('CO-18 BOARD ט·ב — the single-page HEADER, on BOTH doors: the way back, then the card, then the filters', async () => {
     // THE ORDER IS THE RULING (§24 :752): the page card is the FIRST element of a single-page view, above the
     // filters — a header that says the view is ONE page's — with the one way back above it. Pinned as the
@@ -619,6 +688,22 @@ describe('the gated claims lens — /research/corpus/claims', () => {
     expect(rendered.notFound).toBe(true);
   });
 
+  it('CO-23 THE CLAIMS VIEW NAMES ITS PAGE ONCE ON THIS DOOR TOO, and no row repeats it (§25 :790, 2026-09-21)', async () => {
+    // ONE COMPONENT, TWO DOORS. The header is drawn inside `Claims` and not in either page shell, which is
+    // why `/research/corpus/claims/page.tsx` and `ResearchClaims.tsx` were not touched to get it: a header
+    // spelled in each shell would be one rule with two implementations, and neither shell has the url anyway
+    // — `list_trajectories` carries it on the ENTRIES. This arm pins the gated door by VALUE all the same,
+    // because §31's closure case says the doors REACH one module and not what that module then draws here.
+    const gated = await renderResearchClaims(LOCALE);
+    const urls = [...gated.querySelectorAll('[data-page-url]')];
+    expect({
+      named: urls.length,
+      insideARow: gated.querySelectorAll('[data-claim-row] [data-page-url]').length,
+      // THE FLOOR: there are rows to have repeated it on.
+      rows: gated.querySelectorAll('[data-claim-row]').length,
+    }).toEqual({ named: 1, insideARow: 0, rows: 2 });
+  });
+
   it('CO-15 THE CLOSED PAGE`S RECORD WORDS ARE TEXT, NOT ANCHORS — and an opened page`s are anchors', async () => {
     const gated = await renderResearchClaims(LOCALE);
     const sheet = gated.querySelector('[data-claim-sheet]');
@@ -630,14 +715,14 @@ describe('the gated claims lens — /research/corpus/claims', () => {
       diffLinks: sheet.querySelectorAll('[data-diff-link]').length,
       diffText: sheet.querySelectorAll('[data-diff-link-closed]').length,
       rows: gated.querySelectorAll('[data-claim-row]').length,
-      closedRowMark: rowFor(gated, '[data-claim-row]', 'example.gov/two').querySelectorAll('[data-mark="notPublic"]').length,
-      openRowMark: rowFor(gated, '[data-claim-row]', 'example.gov/one').querySelectorAll('[data-mark="notPublic"]').length,
+      closedRowMark: rowFor(gated, '[data-claim-row]', CLAIM_OF.closed).querySelectorAll('[data-mark="notPublic"]').length,
+      openRowMark: rowFor(gated, '[data-claim-row]', CLAIM_OF.open).querySelectorAll('[data-mark="notPublic"]').length,
     }).toEqual({ captureLinks: 2, captureText: 0, diffLinks: 1, diffText: 0, rows: 2, closedRowMark: 1, openRowMark: 0 });
   });
 
   it('CO-16 THE CLOSED ROW`S OWN SHEET draws its capture and diff words as TEXT, with no anchor at all', async () => {
     const gated = await renderResearchClaims(LOCALE);
-    const closedRow = rowFor(gated, '[data-claim-row]', 'example.gov/two');
+    const closedRow = rowFor(gated, '[data-claim-row]', CLAIM_OF.closed);
     const tap = closedRow.querySelector('[data-open-claim]');
     if (tap === null) throw new Error('the closed claim row drew no control to open');
     const { act } = await import('react');

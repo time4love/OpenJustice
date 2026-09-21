@@ -143,32 +143,63 @@ describe("cursor-is-the-read's", () => {
     });
   });
 
-  it('„N מוסתרים" IS THE PAGE`S FIGURE ON A SINGLE-PAGE VIEW, and the WINDOW`S where there is no page', async () => {
-    // THE SAME RULE ONE REGION DOWN (§24 :755): region 4's count line was computed from the window and reads
-    // as the page's — "honest only while a page fits one". With a page in force the figure is the shape's:
-    // the sum of `count` over the diff bins that did not pass the gate.
+  it('„N מוסתרים" IS THE WINDOW`S FIGURE ON A SINGLE-PAGE VIEW TOO — reverted 2026-09-21, and the page`s figure is the rival', async () => {
+    // THE LINE IS A CONTROL, AND ITS NUMBER IS WHAT THE TAP REVEALS (§24 :684: "a hidden row that announces
+    // itself can be audited; one that does not, cannot"). For one day this line read the PAGE's figure from
+    // the facet's shape while the tap went on revealing the WINDOW's rows — a line naming three whose tap
+    // shows two. That is the promise the element exists to make, broken by the element itself.
     //
-    // THE FIXTURE MAKES THE TWO DISAGREE ON PURPOSE. The page hides THREE changes and this window holds only
-    // TWO of them, so a line reading `hidden.length` says 2 and a line reading the shape says 3 — and no
-    // arithmetic accident joins them.
+    // AND THE PAGE FIGURE WAS WRONG BY CONSTRUCTION, which is the ground that closed it. `bin.passed` is ANY
+    // (`corpusReads.ts` :1123) and the sum ran over bins where `!passed`, so A BIN HOLDING ONE FLAGGED AND
+    // ONE HIDDEN DIFF CONTRIBUTES ZERO. The real corpus has 24 diffs in 24 distinct bins, so nothing collides
+    // today and the number was right BY LUCK. Page-level suppression stays visible where §24 puts it: the
+    // dimmed bars of ruling (g) on region 3's strip, which the case above holds.
+    //
+    // THE FIXTURE STILL MAKES THE TWO DISAGREE, and that is what keeps this an assertion: the page hides
+    // THREE and this window holds TWO of them, so the rival value is present and named below.
     const container = await render({ page: PAGE }, withCursor);
     const shape = withCursor.pages.at(0)?.shape;
     if (shape === undefined || shape === null) throw new Error('the page-named fixture carries no shape');
     const announced = Number((container.querySelector('[data-hidden-count]')?.textContent ?? '').replace(/\D/gu, '') || 0);
     expect({
       announced,
-      pageHides: shape.diffs.filter((bin) => !bin.passed).reduce((n, bin) => n + bin.count, 0),
-      // THE NUMBER THE OLD SPELLING GAVE, stated so the assertion is against a rival value and not a vacuum.
+      // THE WINDOW'S OWN GATED ROWS, counted here from the body so the number is grounded and not copied.
       windowHides: withCursor.entries.filter((entry) => entry.kind === 'DIFF' && entry.opinion !== null && !entry.opinion.legallySignificant && entry.opinion.categories.length === 0).length,
-      // AND THE TAP STILL REVEALS THE WINDOW'S, which is the seam this ruling leaves and which the component
-      // states in words: the control exists only while the window really hides something.
-      hiddenRowsBefore: container.querySelectorAll('[data-entry]').length,
-    }).toEqual({ announced: 3, pageHides: 3, windowHides: 2, hiddenRowsBefore: 4 });
+      // THE RIVAL, STATED: the figure the reverted spelling gave. The assertion is against a value that
+      // exists and differs, never against a vacuum.
+      pageHides: shape.diffs.filter((bin) => !bin.passed).reduce((n, bin) => n + bin.count, 0),
+      // AND THE TAP REVEALS EXACTLY WHAT THE LINE NAMED — the control's whole point, and the seam's end.
+      rowsBefore: container.querySelectorAll('[data-entry]').length,
+    }).toEqual({ announced: 2, windowHides: 2, pageHides: 3, rowsBefore: 4 });
   });
 
-  it('ACROSS PAGES THE LINE IS THE WINDOW`S — there is no page, so there is no shape to read', async () => {
-    // The other half, and without it "the line is the page's" would be a rule with one example. A stream
-    // reached by a KIND chip names no page: §28 sends no shape, so the only figure the view has is its own.
+  it('THE TAP REVEALS AS MANY ROWS AS THE LINE NAMED — the half that made the page`s figure a broken promise', async () => {
+    // THE CASE THE SEAM COULD NOT PASS. With the page's figure the line said THREE and this tap added TWO;
+    // with the window's the two numbers are one number, and that is the property „announces itself" means.
+    const { act } = await import('react');
+    const { fireEvent } = await import('@testing-library/react');
+    const container = await render({ page: PAGE }, withCursor);
+    const before = container.querySelectorAll('[data-entry]').length;
+    const control = container.querySelector('[data-hidden-count]');
+    if (control === null) throw new Error('the gate hid rows and drew no control to reveal them');
+    const announced = Number((control.textContent ?? '').replace(/\D/gu, '') || 0);
+    await act(async () => {
+      fireEvent.click(control);
+      await Promise.resolve();
+    });
+    const after = container.querySelectorAll('[data-entry]').length;
+    expect({
+      announced,
+      revealed: after - before,
+      // A FLOOR ON BOTH: a line naming zero and a tap adding zero would satisfy the equality above.
+      nonZero: announced > 0 && after > before,
+    }).toEqual({ announced: 2, revealed: 2, nonZero: true });
+  });
+
+  it('ACROSS PAGES THE LINE IS THE WINDOW`S TOO — the same number at the other scope', async () => {
+    // KEPT THROUGH THE REVERT, and its reason changed with it. It used to be the OTHER half of a two-scope
+    // rule; it is now the second example of a one-scope one, and it is worth keeping because a future seat
+    // reintroducing a shape-derived figure would have to defeat this arm as well as the one above.
     const { corpusStream } = await import('./fixtures/corpus/stream');
     const container = await render({ kind: 'DIFF' }, corpusStream);
     const announced = Number((container.querySelector('[data-hidden-count]')?.textContent ?? '').replace(/\D/gu, '') || 0);
