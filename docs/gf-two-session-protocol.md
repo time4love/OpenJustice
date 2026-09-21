@@ -75,6 +75,47 @@ spends the researcher's ruling on something already ruled.
 This is what "a whole read is necessary, not sufficient" means in practice. The output field catches
 the reading that never happened. Only the re-ask catches the reading that happened and went unused.
 
+## The APPROVED BOARDS go in the reading list, with their path
+
+**Ruled by the researcher 2026-09-21, on R70.** A step whose pages have approved boards carries
+them in EVERY prompt's reading list — the file path and the board letters. A prompt that names no
+board, and does not say that none exists for the step, is INCOMPLETE, and `check-handoff.py` fails it.
+
+**The boards live IN GIT, under `docs/boards/`, as a DATED file** (`gf-ui-boards-YYYY-MM-DD.html`),
+indexed from `docs/README.md` like every other document — ruled the same day, after the first version
+of this rule sent seats to a copy in `handoffs/`, which is outside the repository and therefore has no
+history at all. **An update is a NEW dated file**; the previous one takes its superseded banner and its
+index line moves, exactly as `CLAUDE.md`'s CHECKPOINT rule already requires of every stale document.
+
+**The file holds the approved CURRENT image and nothing else.** No cancelled option, no before-state.
+That became possible only once the boards were in git: while they sat outside it, removing a board was
+permanent, so obsolete ones were kept beside approved ones and the file became a place where a seat
+could grade against the wrong image. It is why `docs/boards/boards.py` — the generator, which travels
+with the file because a 100 KB generated page is unreadable in a diff and its generator is not — emits
+the current boards only, and says so in its own docstring.
+
+**What went wrong.** R70's review prompt named boards ד2 · ג2 · ג3 exactly once, inside the
+definition of a MEDIUM finding — *"a region, order, width or token differing from the DESIGN or the
+APPROVED BOARD"* — and in no reading list. `R68-boards/` appeared in that prompt only as the
+directory holding `copy_check.py` and `keep_sweep.py`, so the path read as a toolbox and the image
+inside it was never opened. The chunk-7a DEV prompt did not mention the boards at all. The REVIEW
+seat therefore treated "which regions the working view's centre has" as an unruled SILENCE, consumed
+an advisory session on it, and put the question to the researcher — who had settled it on board ד2
+five days earlier. The DEV seat, equally unpointed, reported the centre "blocked" without citing it.
+
+**Why it is its own rule and not covered by the others.** The reading field catches a reading that
+never happened; the re-ask catches a reading that happened and left a question standing; the
+appendix rule catches a ruling grounded in prose. None of them reaches this: the board was neither
+unread nor misread — it was NAMED, as a standard to grade against, by a prompt that never said to
+open it. **A grading standard no seat is told to OPEN is not a standard.** It is also the most
+expensive class of the four, because its failure mode is asking the researcher to decide something
+they already decided, which spends the one resource the protocol exists to protect.
+
+**A board is prior to a design's prose about the same page.** A shape ON an approved board is
+DECIDED and is never re-asked. A shape not on one is a question. Where a board and a design's
+enumeration disagree, the board is what was approved and the disagreement is a finding — which is
+why it must be read BEFORE a question is formed, not after one is answered.
+
 ## A ruling is grounded in an APPENDIX or a PLAN STEP, never in a narrative document
 
 **Ruled by the researcher 2026-09-10, on the rulings audit** (`docs/gf-rulings-audit-2026-09-10.md`).
