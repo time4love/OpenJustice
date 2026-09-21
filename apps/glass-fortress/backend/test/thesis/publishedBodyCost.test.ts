@@ -194,3 +194,120 @@ describe('the public thesis body costs the same whatever it cites', () => {
     expect({ one, two, grew: two - one }).toEqual({ one, two: one, grew: 0 });
   });
 });
+
+// ---------------------------------------------------------------------------
+// AND THE SAME PROPERTY ON THE GATED READ — docs/gf-thesis-flows.md A4 :1476 as amended 2026-09-21.
+//
+// `get_thesis_context` now resolves HEAD's and PUBLISHED's citations through the same resolver the public page
+// uses. The property must be held HERE TOO and not assumed from the public page's: the gated read asks for TWO
+// versions, and the obvious way to serve two is to call a single-version resolver twice — which passes every
+// shape case in `reads.test.ts` and pays eight reads twice over, on the researcher's own page. A per-mention
+// `citationRefsOf` loop would pass those cases too, at one query per citation.
+//
+// THE CITATIONS ARE VARIED ON PUBLISHED, AND THE HEAD IS HELD AT ONE, FOR A MEASURED REASON. The gated body
+// has a SECOND per-citation cost that is not the resolution's and predates it: `criticMaterial.ts` :60–:62
+// resolves HEAD's cited records ONE AT A TIME (`resolveRecordByName` in a loop), and each call makes the four
+// reads `recordsByName` makes — `trackedUrl.findMany`, `urlSnapshot.findMany`, `urlVersionDiff.findMany`,
+// `evidence.findMany`. Measured on the code of 2026-09-21 BEFORE this chunk: a head citing two records cost 34
+// delegate calls and one citing six cost 50, four per citation, and the same 16 appears after. Varying the
+// citations on PUBLISHED holds that arm constant, so what these cases measure is the RESOLUTION and nothing
+// else. The N+1 itself is reported, not fixed here: it is the analysis arm's, shared with `run_analysis`'s
+// refusal, and rewriting it is not this chunk.
+//
+// THE COUNT IS `delegateCalls()` for the reason the block above states: `asked` is blind to the delegates the
+// citation path reaches through `recordsByName`, and an instrument blind to them would go green over a fix
+// that removed only what it could see.
+// ---------------------------------------------------------------------------
+describe('the gated working-view body costs the same whatever it cites', () => {
+  /** The head, one version past the published one — so the read resolves TWO version ids, as a working view does. */
+  const HEAD_VERSION = 'version-head';
+
+  /**
+   * PUBLISHED at VERSION citing `citations` records; HEAD one version on, citing exactly ONE — so the analysis
+   * arm's per-citation cost is the same in every world and the count varies with the RESOLUTION alone.
+   */
+  function seedGated(count: number): void {
+    seedPublishedCiting(count);
+    const published = store.mentions;
+    store.versions = [...store.versions, { ...VERSION, id: HEAD_VERSION, contentHash: 'content-hash-head' }];
+    store.thesis = store.thesis === null ? null : { ...store.thesis, headVersionId: HEAD_VERSION };
+    store.theses = store.theses.map((t) => ({ ...t, headVersionId: HEAD_VERSION }));
+    const one = citations(1).at(0);
+    if (one === undefined) throw new Error('seedGated: the mixed list is empty');
+    store.mentions = [...published, mentionRow({ ...MENTION, id: 'head-mention-0', versionId: HEAD_VERSION, name: one.name, contentVersionHash: one.pin }, false)];
+  }
+
+  /** The COMPLETE number of delegate calls `thesisContextOf` makes on that world. */
+  async function gatedCallsFor(count: number): Promise<number> {
+    seedGated(count);
+    const { thesisContextOf } = await import('../../src/mcp/tools/getThesisContext');
+    const before = delegateCalls();
+    await thesisContextOf({ thesisId: THESIS.id });
+    return delegateCalls() - before;
+  }
+
+  it('G0 — the COUNTER SEES SOMETHING: a gated body that reads a thesis, two versions, their mentions and six records is not free', async () => {
+    // THE VACUITY GUARD ON A COUNT (the `requireSubjects` shape, for a number): a counter blinded to zero
+    // satisfies every no-growth case below at once. Ten is a floor the fixed reads alone pass — the thesis,
+    // its decisions, its framings, its versions, its withdrawals, the handles, the two version rows, the
+    // mentions, the four citation plurals, the analysis and the transcript.
+    expect(await gatedCallsFor(6)).toBeGreaterThan(10);
+  });
+
+  it('G1 — the count does not grow with the number of citations RESOLVED: six on the published version cost what two do (one query per KIND, never one per mention)', async () => {
+    const two = await gatedCallsFor(2);
+    const six = await gatedCallsFor(6);
+    expect({ two, six, grew: six - two }).toEqual({ two, six: two, grew: 0 });
+  });
+
+  it('G2 — a record cited TWICE is read ONCE: twelve citations of the same six records cost what six do', async () => {
+    const six = await gatedCallsFor(6);
+    const twelve = await gatedCallsFor(12);
+    expect({ six, twelve, grew: twelve - six }).toEqual({ six, twelve: six, grew: 0 });
+  });
+
+  it('G3 — HEAD and PUBLISHED are ONE resolution and not two: a head that has moved past the published version costs exactly what a head that IS it costs', async () => {
+    // The same six citations, once with the head AT the published version — one id to resolve — and once with
+    // the head moved on, citing the same six: two ids. A resolver called once per version doubles the four
+    // citation plurals between these two worlds; one pass over both ids does not. Every case above holds the
+    // head at one citation, where two calls and one differ by too little to see.
+    //
+    // ZERO IS THE MEASURED DELTA AND NOT AN APPROXIMATION. The read already asks for its head and its
+    // published version separately — when they are the same id it reads that row twice — so the second
+    // version adds no row read either, and the union of two versions' citations costs what one version's
+    // does. Any positive number here is a resolver called per version.
+    seedPublishedCiting(6);
+    const { thesisContextOf } = await import('../../src/mcp/tools/getThesisContext');
+    let before = delegateCalls();
+    const atHead = await thesisContextOf({ thesisId: THESIS.id });
+    const one = delegateCalls() - before;
+
+    seedPublishedCiting(6);
+    const published = store.mentions;
+    store.versions = [...store.versions, { ...VERSION, id: HEAD_VERSION, contentHash: 'content-hash-head' }];
+    store.thesis = store.thesis === null ? null : { ...store.thesis, headVersionId: HEAD_VERSION };
+    store.theses = store.theses.map((t) => ({ ...t, headVersionId: HEAD_VERSION }));
+    store.mentions = [
+      ...published,
+      ...citations(6).map((cited, index) =>
+        mentionRow({ ...MENTION, id: `head-mention-${String(index)}`, versionId: HEAD_VERSION, name: cited.name, contentVersionHash: cited.pin }, false),
+      ),
+    ];
+    before = delegateCalls();
+    const moved = await thesisContextOf({ thesisId: THESIS.id });
+    const two = delegateCalls() - before;
+
+    // THE VACUITY GUARD: the second world really holds two DIFFERENT versions, each with its six citations
+    // resolved — without it a body answering `head: null` would cost less and pass by doing nothing. The first
+    // world really holds one, so the two worlds are not the same world twice.
+    const resolved = (body: typeof moved): string => {
+      if (!('head' in body) || body.head === null || body.published === null) return 'missing';
+      return `${body.head.versionId === body.published.versionId ? 'same' : 'two'}:${String(body.head.mentions.length)}:${String(body.published.mentions.length)}`;
+    };
+    expect({ first: resolved(atHead), second: resolved(moved), grew: two - one }).toEqual({
+      first: 'same:6:6',
+      second: 'two:6:6',
+      grew: 0,
+    });
+  });
+});

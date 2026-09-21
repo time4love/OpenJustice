@@ -1,7 +1,7 @@
 import type { ThesisGapDecision } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { changeSpans } from './claimTrajectory';
-import { pairName, resolveRecordByName, type ResolvedRecord } from './corpusReads';
+import { pairName, recordsByName, type ResolvedRecord } from './corpusReads';
 import { passagesCiting } from './debatePassage';
 import type { ContentVersionProvenance, RecordContent } from './evidencePredicates';
 import { currentContentOf } from './framingRounds';
@@ -56,17 +56,29 @@ export async function loadHead(thesisId: string, headVersionId: string): Promise
   }
   const mentions = await prisma.thesisMention.findMany({ where: { versionId: headVersionId }, select: { kind: true, name: true } });
 
-  const records: LoadedHead['records'] = [];
-  for (const mention of mentions) {
-    if (mention.kind !== 'EVIDENCE') continue;
-    const record = await resolveRecordByName(mention.name);
-    // A LOUD GUARD (R48 D2): the version write resolved this name when it pinned it, and nothing is deleted after the
-    // rebuild — a citation whose record the corpus no longer holds is a malformed state, not an answer.
+  // ONE RESOLUTION FOR EVERY NAME, NOT ONE PER NAME — and the difference is not a micro-optimisation.
+  //
+  // `resolveRecordByName(x)` IS `recordsByName([x])` (`corpusReads.ts` :511–:512): the singular delegates to
+  // the plural, and the plural WALKS THE WHOLE CORPUS — evidence rows, every tracked page, then that page
+  // set's captures and diffs. Calling it once per mention therefore repeated that walk once per citation.
+  //
+  // MEASURED 2026-09-21 on run B's thesis (three EVIDENCE citations), in the gated read's waterfall: the
+  // four-query walk `Evidence -> TrackedUrl -> UrlSnapshot/UrlVersionDiff` ran THREE TIMES, back to back,
+  // at ~3 s each — about nine seconds of a thirty-two second read, and growing with every citation added.
+  // This is the N+1 the batched form was written for; the loop simply never used it.
+  const evidenceNames = mentions.filter((mention) => mention.kind === 'EVIDENCE').map((mention) => mention.name);
+  const resolved = await recordsByName(evidenceNames);
+  const records: LoadedHead['records'] = evidenceNames.map((name) => {
+    const record = resolved.get(name) ?? null;
+    // A LOUD GUARD (R48 D2), UNCHANGED: the version write resolved this name when it pinned it, and nothing is
+    // deleted after the rebuild — a citation whose record the corpus no longer holds is a malformed state, not
+    // an answer. `recordsByName` answers an entry for every name asked for, so a null here means the same
+    // thing the singular call meant, and it is raised on the same name in the same order.
     if (record === null) {
-      throw new Error(`criticMaterial: head ${headVersionId} cites #ev_${mention.name}, which no record of the corpus resolves.`);
+      throw new Error(`criticMaterial: head ${headVersionId} cites #ev_${name}, which no record of the corpus resolves.`);
     }
-    records.push({ name: mention.name, record });
-  }
+    return { name, record };
+  });
 
   const decisions = await prisma.thesisGapDecision.findMany({ where: { thesisId } });
   return {

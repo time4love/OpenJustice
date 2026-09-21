@@ -4,7 +4,7 @@ import type { ChunkSide } from '../lib/diffChunking';
 import { chunksOf, heldTextKey, heldTextsFor, pairName, recordsByName, type ResolvedRecord } from './corpusReads';
 import { argued, EVER_PUBLISHED, flaggedFor, verifiedFor, type FlagReport, type VerifiedReport } from './evidencePredicates';
 import type { PublicationMaterial } from './publicationAssessor';
-import { decisionsAtPublication, gapList, theCall, theRequests, trajectoryCurrent } from './thesisPredicates';
+import { decisionsAtPublication, gapList, theCall, theRequests, trajectoryCurrent, type CitedMention } from './thesisPredicates';
 import { resolveTrajectoryCitations } from './trajectoryCitation';
 import { refusal, type Refusal } from '../mcp/tools/thesisRefusals';
 
@@ -155,7 +155,7 @@ interface CitationRef {
   pin: string | null;
 }
 
-interface EvidenceCitation {
+export interface EvidenceCitation {
   kind: 'EVIDENCE';
   name: string;
   pin: string | null;
@@ -174,7 +174,7 @@ interface EvidenceCitation {
   overObjection: boolean;
 }
 
-type TrajectoryCitation =
+export type TrajectoryCitation =
   | { kind: 'TRAJECTORY'; name: string; resolves: true; claimText: string; url: string; transitions: number; current: boolean }
   | { kind: 'TRAJECTORY'; name: string; resolves: false };
 
@@ -211,21 +211,31 @@ interface VersionBody {
 
 /** What every public read of one thesis starts from: the thesis, its ever-published versions, its PUBLISHED attempts, its withdrawals. */
 async function publicRecordOf(thesisId: string) {
-  const thesis = await prisma.thesis.findUnique({
-    where: { id: thesisId },
-    select: { id: true, provision: true, createdById: true, publishedVersionId: true, publishedAt: true, publicInterestStatement: true },
-  });
+  // FOUR READS, ONE WAIT. Every one of them keys on `thesisId` — the PARAMETER — so not one needs another's
+  // answer, and awaiting them in turn cost the SUM of four round trips for no reason. Measured 2026-09-21 on
+  // run B: 1291 + 559 + 599 + 520 ms in a strict chain, where the wall should be ~1291.
+  //
+  // THE EARLY RETURNS MOVE BELOW, and they are unchanged in meaning: a thesis that does not exist and a
+  // thesis with no ever-published version both still answer `null`. What changes is that the three cheap
+  // reads are already in flight when we find out — which costs nothing, because a thesis with no versions is
+  // not the case this page is built for.
+  const [thesis, versions, attempts, withdrawals] = await Promise.all([
+    prisma.thesis.findUnique({
+      where: { id: thesisId },
+      select: { id: true, provision: true, createdById: true, publishedVersionId: true, publishedAt: true, publicInterestStatement: true },
+    }),
+    prisma.thesisVersion.findMany({
+      where: { thesisId, ...EVER_PUBLISHED },
+      select: { id: true, text: true, claim: true, contentHash: true },
+    }),
+    prisma.publicationAttempt.findMany({
+      where: { thesisId, outcome: 'PUBLISHED' },
+      select: { versionId: true, rationale: true, verdict: true, createdAt: true },
+    }),
+    prisma.withdrawal.findMany({ where: { thesisId }, select: { versionId: true, createdAt: true } }),
+  ]);
   if (thesis === null) return null;
-  const versions = await prisma.thesisVersion.findMany({
-    where: { thesisId, ...EVER_PUBLISHED },
-    select: { id: true, text: true, claim: true, contentHash: true },
-  });
   if (versions.length === 0) return null;
-  const attempts = await prisma.publicationAttempt.findMany({
-    where: { thesisId, outcome: 'PUBLISHED' },
-    select: { versionId: true, rationale: true, verdict: true, createdAt: true },
-  });
-  const withdrawals = await prisma.withdrawal.findMany({ where: { thesisId }, select: { versionId: true, createdAt: true } });
   // SORTED IN CODE, oldest first (E10 not needed): the double's append-only tables take no `orderBy`, and one sort here
   // is the order every body below reads.
   const byTime = <R extends { createdAt: Date }>(rows: R[]): R[] => [...rows].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
@@ -273,6 +283,132 @@ async function citationRefsOf(versionId: string): Promise<CitationRef[]> {
   return (await citationRefsByVersion([versionId])).get(versionId) ?? [];
 }
 
+/** One version's RESOLVED citations, and the rows UNARGUED reads — both off the one read of its mentions. */
+export interface VersionCitations {
+  citations: (EvidenceCitation | TrajectoryCitation)[];
+  /**
+   * The same mentions as `thesisPredicates.CitedMention`, for UNARGUED(v).
+   *
+   * It rides this answer rather than being read again: `unargued` is CALLED and never re-derived (A3 :1371),
+   * and its input is a projection of the very rows resolved here — a second `thesisMention.findMany` for them
+   * would be one more query per version for rows already in hand.
+   */
+  cited: CitedMention[];
+}
+
+/** What `citationsByVersion` answers: each version's citations, and the cited pages of the whole set. */
+export interface ResolvedCitations {
+  byVersion: Map<string, VersionCitations>;
+  /**
+   * Every cited page of every version asked for, DEDUPLICATED BY URL — thesis A4 :1476's union.
+   *
+   * The gated read asks for HEAD and PUBLISHED together and gets their union for free, which is what that
+   * clause requires: the working view's centre draws HEAD's text with PUBLISHED one toggle away, and BOTH
+   * texts' chips resolve `pageId` from this ONE list (`ThesisText.tsx` :49, by URL), so a list covering one
+   * version loses every link on the toggle. A caller asking for one version gets that version's pages.
+   */
+  pages: { trackedUrlId: string; url: string }[];
+}
+
+/**
+ * THE ONE RESOLVER OF A VERSION'S CITATIONS — the public page's and the working view's alike (A4 :1476).
+ *
+ * It was inline in `pageOf` and SINGLE-VERSION, and the gated read needs the same resolution for HEAD and for
+ * PUBLISHED. Writing a second one there would be this repository's own named defect shape — one rule, two
+ * implementations — so it is lifted here and takes a SET of version ids.
+ *
+ * THE SET IS WHY THIS IS NOT A LOOP. Every plural below is asked ONCE for every version's names together, so
+ * the number of queries does not grow with the number of citations NOR with the number of versions: two
+ * versions citing twelve records cost what one citing two does. Calling a single-version resolver twice would
+ * have doubled eight reads for an answer one pass gives.
+ *
+ * `thesisId` is ARGUED's, not the versions' — a debate argues for a record on a thesis (A3 :1373).
+ */
+export async function citationsByVersion(thesisId: string, versionIds: readonly string[]): Promise<ResolvedCitations> {
+  const wanted = [...new Set(versionIds)];
+  // An entry for every id asked for, so a version that cites nothing is an empty list and never a missing key.
+  const byVersion = new Map<string, VersionCitations>(wanted.map((id) => [id, { citations: [], cited: [] }]));
+  // url → trackedUrlId, one entry per cited page.
+  const pages = new Map<string, string>();
+  if (wanted.length === 0) return { byVersion, pages: [] };
+
+  const mentions = await prisma.thesisMention.findMany({
+    where: { versionId: { in: wanted } },
+    select: {
+      id: true,
+      versionId: true,
+      kind: true,
+      name: true,
+      contentVersionHash: true,
+      debateSession: { select: { status: true, recordFileHash: true, thesisId: true, promotedOverObjection: true } },
+    },
+  });
+  const trajectoryIds = mentions.filter((m) => m.kind === 'TRAJECTORY').map((m) => m.name);
+  const { resolved } = await resolveTrajectoryCitations(trajectoryIds);
+
+  // ONE PASS FOR THE WHOLE SET, and every one of these is a PLURAL THE PREDICATE'S OWN MODULE EXPORTS — never
+  // a fold written here. Evidence A7 :1302–:1303 gives each predicate one importable symbol and A6 :1219
+  // forbids a caller re-deriving it; a batching helper in this file would be a second spelling of VERIFIED and
+  // FLAGGED, which is what the one-symbol scan refuses. The trajectory half above has always been plural —
+  // this makes the evidence half the shape its neighbour already had, ten lines away in the same loop.
+  const evidenceMentions = mentions.filter((m) => m.kind !== 'TRAJECTORY');
+  const names = evidenceMentions.map((m) => m.name);
+  const records = await recordsByName(names);
+  const reports = await verifiedFor(names);
+  const flags = await flaggedFor(evidenceMentions.map((m) => m.id));
+  const held = await heldTextsFor(
+    evidenceMentions.flatMap((mention) => {
+      const record = records.get(mention.name);
+      // Only a CAPTURE citation names a held text; a DIFF's content is its stored chunks.
+      if (record?.diff !== null || mention.contentVersionHash === null) return [];
+      return [{ snapshotId: captureOf(record).id, textHash: mention.contentVersionHash }];
+    }),
+  );
+
+  for (const mention of mentions) {
+    const entry = byVersion.get(mention.versionId);
+    if (entry === undefined) {
+      // A LOUD GUARD, never a silent skip: the query filters on `wanted`, so a row naming anything else means
+      // the filter is defective — and a citation quietly dropped here is a citation the centre draws as
+      // `unresolved` with nothing to say why (`CLAUDE.md`, the `requireSnapshotIdentity` pattern).
+      throw new Error(`publishedThesis: mention ${mention.id} names version ${mention.versionId}, which was not asked for.`);
+    }
+    entry.cited.push({ kind: mention.kind, name: mention.name, debate: mention.debateSession });
+    if (mention.kind === 'TRAJECTORY') {
+      const t = resolved.find((r) => r.id === mention.name);
+      entry.citations.push(
+        t === undefined
+          ? { kind: 'TRAJECTORY', name: mention.name, resolves: false }
+          : { kind: 'TRAJECTORY', name: mention.name, resolves: true, claimText: t.claimText, url: t.url, transitions: t.transitions, current: trajectoryCurrent(t.currency) },
+      );
+      continue;
+    }
+    const record = records.get(mention.name) ?? null;
+    if (record === null) {
+      throw new Error(`publishedThesis: version ${mention.versionId} cites #ev_${mention.name}, which no record of the corpus resolves.`);
+    }
+    pages.set(record.page.url, record.page.id);
+    entry.citations.push(evidenceCitation(thesisId, mention, record, reports, flags, held));
+  }
+
+  return { byVersion, pages: [...pages].map(([url, trackedUrlId]) => ({ trackedUrlId, url })) };
+}
+
+/**
+ * The entry `citationsByVersion` promises for every id it was asked for — LOUD, never an empty list silently.
+ *
+ * A version resolved to no citations and a version the resolver never saw are different facts, and `?? []`
+ * reports the second as the first: the centre would draw a text whose every chip is `unresolved` and say
+ * nothing about why. Both callers reach the map through this.
+ */
+export function requireCitations(resolved: ResolvedCitations, versionId: string): VersionCitations {
+  const entry = resolved.byVersion.get(versionId);
+  if (entry === undefined) {
+    throw new Error(`publishedThesis: no citations resolved for version ${versionId}, which citationsByVersion was asked for.`);
+  }
+  return entry;
+}
+
 /**
  * Route 2's body (sketch §e4), decided in order: no thesis or nothing ever published → null (404, one answer for both) ·
  * the pin null with a withdrawal on record → the notice · published → the page.
@@ -299,62 +435,29 @@ async function pageOf(thesisId: string): Promise<ThesisPage | WithdrawnNotice | 
     throw new Error(`publishedThesis: thesis ${thesis.id} is pinned at ${pin} with no PUBLISHED attempt of it — a malformed thesis.`);
   }
 
-  const mentions = await prisma.thesisMention.findMany({
-    where: { versionId: pin },
-    select: {
-      id: true,
-      kind: true,
-      name: true,
-      contentVersionHash: true,
-      debateSession: { select: { status: true, recordFileHash: true, thesisId: true, promotedOverObjection: true } },
-    },
-  });
-  const citations: (EvidenceCitation | TrajectoryCitation)[] = [];
-  // url → trackedUrlId, one entry per cited page.
-  const pages = new Map<string, string>();
-  const trajectoryIds = mentions.filter((m) => m.kind === 'TRAJECTORY').map((m) => m.name);
-  const { resolved } = await resolveTrajectoryCitations(trajectoryIds);
-
-  // ONE PASS FOR THE WHOLE SET, and every one of these is a PLURAL THE PREDICATE'S OWN MODULE EXPORTS — never
-  // a fold written here. Evidence A7 :1302–:1303 gives each predicate one importable symbol and A6 :1219
-  // forbids a caller re-deriving it; a batching helper in this file would be a second spelling of VERIFIED and
-  // FLAGGED, which is what the one-symbol scan refuses. The trajectory half above has always been plural —
-  // this makes the evidence half the shape its neighbour already had, ten lines away in the same loop.
-  const evidenceMentions = mentions.filter((m) => m.kind !== 'TRAJECTORY');
-  const names = evidenceMentions.map((m) => m.name);
-  const records = await recordsByName(names);
-  const reports = await verifiedFor(names);
-  const flags = await flaggedFor(evidenceMentions.map((m) => m.id));
-  const held = await heldTextsFor(
-    evidenceMentions.flatMap((mention) => {
-      const record = records.get(mention.name);
-      // Only a CAPTURE citation names a held text; a DIFF's content is its stored chunks.
-      if (record?.diff !== null || mention.contentVersionHash === null) return [];
-      return [{ snapshotId: captureOf(record).id, textHash: mention.contentVersionHash }];
-    }),
-  );
-
-  for (const mention of mentions) {
-    if (mention.kind === 'TRAJECTORY') {
-      const t = resolved.find((r) => r.id === mention.name);
-      citations.push(
-        t === undefined
-          ? { kind: 'TRAJECTORY', name: mention.name, resolves: false }
-          : { kind: 'TRAJECTORY', name: mention.name, resolves: true, claimText: t.claimText, url: t.url, transitions: t.transitions, current: trajectoryCurrent(t.currency) },
-      );
-      continue;
-    }
-    const record = records.get(mention.name) ?? null;
-    if (record === null) {
-      throw new Error(`publishedThesis: published version ${pin} cites #ev_${mention.name}, which no record of the corpus resolves.`);
-    }
-    pages.set(record.page.url, record.page.id);
-    citations.push(evidenceCitation(thesis.id, mention, record, reports, flags, held));
-  }
-
-  const handles = await handlesOf([thesis.createdById]);
-  const analyses = await prisma.thesisAnalysis.findMany({ where: { versionId: pin }, select: { id: true } });
-  const { call, requests } = await publishedAppeals(thesis.id, pin);
+  // FIVE INDEPENDENT READS, AWAITED TOGETHER — and the reason is measured, not stylistic.
+  //
+  // `publicRecordOf` above must land first: every line below needs `thesis` and `pin`. NOTHING below needs
+  // anything else below it. Awaited one after another they cost the SUM of their round trips; awaited
+  // together they cost the SLOWEST.
+  //
+  // MEASURED 2026-09-21 on run B's thesis, before this change: 20 delegate calls, 16,246 ms of database
+  // time inside a 16,258 ms wall — an overlap of TWELVE MILLISECONDS, which is to say none at all. The page
+  // spent its whole life waiting for one query at a time. Deployed beside the database the same shape is
+  // ~2 s; from a laptop one region away it is 16–54 s, and Next's proxy cuts the socket long before it ends.
+  //
+  // THE LATENCY IS NOT THE DEFECT — the SEQUENCE is. A read whose wall is the sum of its parts is fast only
+  // where round trips are free, and it fails the moment they are not. `historyOf` joins them: it needs
+  // `versions`, `attempts` and `withdrawals`, all of which `publicRecordOf` already returned.
+  const [resolvedCitations, handles, analyses, appeals, history] = await Promise.all([
+    // THE ONE RESOLVER, over this page's one version — the same call the gated read makes over two.
+    citationsByVersion(thesis.id, [pin]),
+    handlesOf([thesis.createdById]),
+    prisma.thesisAnalysis.findMany({ where: { versionId: pin }, select: { id: true } }),
+    publishedAppeals(thesis.id, pin),
+    historyOf(versions, attempts, withdrawals),
+  ]);
+  const { call, requests } = appeals;
 
   return {
     thesisId: thesis.id,
@@ -363,13 +466,13 @@ async function pageOf(thesisId: string): Promise<ThesisPage | WithdrawnNotice | 
     provision: thesis.provision,
     provisionTitle: provisionTitleOf(thesis.provision),
     version: { versionId: pin, text: version.text, contentHash: version.contentHash, publishedAt: thesis.publishedAt, author: handleOf(handles, thesis.createdById, thesis.id) },
-    citations,
+    citations: requireCitations(resolvedCitations, pin).citations,
     appeals: { call, requests, intake: INTAKE },
     rationale: attempt.rationale,
     overObjection: attempt.verdict === 'DISPUTES',
     analysisRun: analyses.length > 0,
-    history: await historyOf(versions, attempts, withdrawals),
-    pages: [...pages].map(([url, trackedUrlId]) => ({ trackedUrlId, url })),
+    history,
+    pages: resolvedCitations.pages,
   };
 }
 

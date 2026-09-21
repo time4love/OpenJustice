@@ -5,10 +5,15 @@ import { headFingerprint } from '../../services/criticMaterial';
 import { currentAnalysis, gapList, history, unargued, type GapEntry } from '../../services/thesisPredicates';
 import { getResearcherId } from '../../context/researcherContext';
 import { publicationState, thesisState, type ThesisState } from '../../lib/thesisView';
-import { handlesOf } from '../../services/publishedThesis';
+import {
+  citationsByVersion,
+  handlesOf,
+  requireCitations,
+  type EvidenceCitation,
+  type ResolvedCitations,
+  type TrajectoryCitation,
+} from '../../services/publishedThesis';
 import { voicesOf, type ModelVoice, type Researcher, type Turn, type Voices } from '../../services/thesisTranscript';
-import { argued } from '../../services/evidencePredicates';
-import { resolveTrajectoryCitations, type TrajectoryCurrency } from '../../services/trajectoryCitation';
 import { answer, refusal, type Refusal } from './thesisRefusals';
 
 // ---------------------------------------------------------------------------
@@ -46,16 +51,25 @@ export interface GetThesisContextInput {
   since?: string;
 }
 
-interface ResolvedMention {
-  kind: 'EVIDENCE' | 'TRAJECTORY';
-  name: string;
-  pin: string | null;
-  argued: boolean;
-  /** TRAJECTORY only — whether the cited pass still exists (A3 TRAJECTORIES_RESOLVE), said, never omitted. */
-  resolves?: boolean;
-  /** TRAJECTORY only, when it resolves — the cited pass's standing against the newest one, through the one resolver. */
-  currency?: TrajectoryCurrency;
-}
+/**
+ * A citation of HEAD or PUBLISHED, RESOLVED — THE ONE CITATION SHAPE, public and gated (A4 :1476 as amended
+ * 2026-09-21; T5 :811–:818 lists what a resolved citation carries).
+ *
+ * IT USED TO BE `{ kind, name, pin, argued }`, and that was wrong rather than merely narrow. ui §11 :410 (the
+ * chip: "the record by page and date, the pin by its date, ARGUED or UNARGUED") and :413–:415 (the CITATIONS
+ * tab: the record, the pin, ARGUED with "over objection" as a fact, FLAGGED) have required the record since
+ * they were written, and the working view's centre is the PUBLIC thesis column CALLED — whose
+ * `EvidenceCitation` requires `record`, `content`, `verified`, `flag` and `overObjection`. The old envelope
+ * was read off these interfaces at R66 and so recorded the CODE's narrower sense of "resolved": an envelope
+ * read off an implementation states what is SERVED, never what is OWED.
+ *
+ * THE TRAJECTORY ARM IS EXACTLY THE PUBLIC ONE plus the two fields every mention carries. `currency` LEFT THE
+ * WIRE the same day: it had been written onto the `resolves: false` arm, where a property of a trajectory that
+ * RESOLVED cannot exist, and no reader consumes a mention's currency. It remains this read's internal signal —
+ * `citationsByVersion` decides `resolves` by whether the one resolver returned the pass at all, and `current`
+ * from its currency — and stops there.
+ */
+type ResolvedMention = EvidenceCitation | (TrajectoryCitation & { pin: null; argued: false });
 
 interface VersionView {
   versionId: string;
@@ -110,6 +124,18 @@ interface ThesisContext {
   analysis: AnalysisState;
   framings: { framingId: string; question: string; provision: string | null; by: Researcher; createdAt: Date }[];
   history: Turn[];
+  /**
+   * The CITED pages — the UNION of HEAD's and PUBLISHED's, deduplicated by url (A4 :1476, ruled 2026-09-21).
+   *
+   * It is owed for the citation CHIP's link onward and for nothing else: `ThesisText.tsx` :49 resolves each
+   * chip's `pageId` by matching `citation.record.url` against this list, and the centre draws PUBLISHED one
+   * toggle away (ui plan :739 (iii)), so a list covering one version loses every link on the toggle. A page
+   * named here that the version on screen does not cite is harmless, because the lookup is BY URL.
+   *
+   * IT IS NOT §17's THE PAGES REGION, which the working view's centre does not draw — board ד2 has no such
+   * region. The gated door must not take a second read for a fact its own read can carry (ui §6.1 :241).
+   */
+  pages: { trackedUrlId: string; url: string }[];
 }
 
 /** THE ONE FUNCTION behind the tool and `GET /api/research/theses/:id` (UI-3). */
@@ -131,19 +157,24 @@ export async function thesisContextOf(input: GetThesisContextInput): Promise<The
     return refusal('NO_THESIS', `No thesis ${input.thesisId}. list_theses names the theses you can read.`);
   }
 
-  const decisions = await prisma.thesisGapDecision.findMany({ where: { thesisId: thesis.id } });
-  const framings = await prisma.framing.findMany({
-    where: { thesisId: thesis.id },
-    select: { id: true, question: true, provision: true, researcherId: true, createdAt: true },
-  });
-  const versions = await prisma.thesisVersion.findMany({
-    where: { thesisId: thesis.id },
-    select: { id: true, createdById: true, createdAt: true },
-  });
-  const withdrawals = await prisma.withdrawal.findMany({
-    where: { thesisId: thesis.id },
-    select: { createdAt: true, reason: true },
-  });
+  // FOUR READS, ONE WAIT — every one keyed on `thesis.id` and none reading another's answer. The same shape
+  // `publicRecordOf` carries, and for the same measured reason: awaited in turn they cost the SUM of four
+  // round trips (2026-09-21, run B: ~2 s of a 32 s read) where the wall should be the slowest of them.
+  const [decisions, framings, versions, withdrawals] = await Promise.all([
+    prisma.thesisGapDecision.findMany({ where: { thesisId: thesis.id } }),
+    prisma.framing.findMany({
+      where: { thesisId: thesis.id },
+      select: { id: true, question: true, provision: true, researcherId: true, createdAt: true },
+    }),
+    prisma.thesisVersion.findMany({
+      where: { thesisId: thesis.id },
+      select: { id: true, createdById: true, createdAt: true },
+    }),
+    prisma.withdrawal.findMany({
+      where: { thesisId: thesis.id },
+      select: { createdAt: true, reason: true },
+    }),
+  ]);
 
   // EVERY RESEARCHER THIS ANSWER NAMES, in one query, resolved to a handle. `by: P` replaces `createdById` and
   // `researcherId` on every arm of this read (A4 :1476: "a researcher — NEVER an id on the wire"), because
@@ -157,9 +188,17 @@ export async function thesisContextOf(input: GetThesisContextInput): Promise<The
   const caller = getResearcherId();
   const voices = voicesOf(handles, caller, thesis.id);
 
-  const head = thesis.headVersionId === null ? null : await versionView(thesis.id, thesis.headVersionId, voices);
+  // BOTH VERSIONS THROUGH THE ONE RESOLVER, IN ONE CALL (A4 :1476). `citationsByVersion` asks each of its
+  // plurals once for the whole set, so the cost of this read does not grow with the number of citations NOR
+  // with the second version; and its `pages` over these two ids IS the union the envelope owes. Calling a
+  // single-version resolver twice would have paid eight reads twice over for the same answer.
+  const cited = await citationsByVersion(
+    thesis.id,
+    [thesis.headVersionId, thesis.publishedVersionId].filter((id): id is string => id !== null),
+  );
+  const head = thesis.headVersionId === null ? null : await versionView(thesis.id, thesis.headVersionId, voices, cited);
   const published =
-    thesis.publishedVersionId === null ? null : await versionView(thesis.id, thesis.publishedVersionId, voices);
+    thesis.publishedVersionId === null ? null : await versionView(thesis.id, thesis.publishedVersionId, voices, cited);
 
   const analysed = head === null ? null : await analysisOf(thesis.id, head.view.versionId, voices);
   const analysis = analysed?.state ?? ({ state: 'NONE' } as const);
@@ -212,6 +251,7 @@ export async function thesisContextOf(input: GetThesisContextInput): Promise<The
       callerId: caller,
       currentFingerprint: analysed?.fingerprint ?? null,
     }),
+    pages: cited.pages,
   };
 }
 
@@ -269,11 +309,21 @@ function latestOf<T extends { createdAt: Date }>(rows: readonly T[]): T | null {
   return rows.reduce<T | null>((latest, row) => (latest === null || row.createdAt > latest.createdAt ? row : latest), rows.at(0) ?? null);
 }
 
-/** One version with its mentions resolved — and the mentions as UNARGUED reads them. */
+/**
+ * One version with its citations RESOLVED — and the mentions as UNARGUED reads them.
+ *
+ * NEITHER IS RE-DERIVED HERE. The citations come from `citationsByVersion`, the one resolver the public page
+ * uses, so the gated body and the public body cannot disagree about what a citation says; `cited` rides the
+ * same answer, so UNARGUED is still CALLED over rows this read paid for once.
+ *
+ * A TRAJECTORY citation gains `pin: null, argued: false` — the two fields every mention of A4 :1476 carries,
+ * and the only difference between the gated arm and the public `TrajectoryCitation`.
+ */
 async function versionView(
   thesisId: string,
   versionId: string,
   voices: Voices,
+  cited: ResolvedCitations,
 ): Promise<{ view: VersionView; cited: Parameters<typeof unargued>[1] }> {
   const version = await prisma.thesisVersion.findUnique({
     where: { id: versionId },
@@ -282,31 +332,10 @@ async function versionView(
   if (version === null) {
     throw new Error(`get_thesis_context: thesis ${thesisId} points at version ${versionId}, which does not exist.`);
   }
-  const rows = await prisma.thesisMention.findMany({
-    where: { versionId },
-    select: {
-      kind: true,
-      name: true,
-      contentVersionHash: true,
-      debateSession: { select: { status: true, recordFileHash: true, thesisId: true } },
-    },
-  });
-  const trajectoryIds = rows.filter((m) => m.kind === 'TRAJECTORY').map((m) => m.name);
-  const { resolved } = await resolveTrajectoryCitations(trajectoryIds);
-
-  const cited = rows.map((m) => ({ kind: m.kind, name: m.name, debate: m.debateSession }));
-  const mentions = rows.map((m): ResolvedMention => {
-    if (m.kind === 'TRAJECTORY') {
-      const currency = resolved.find((t) => t.id === m.name)?.currency;
-      return { kind: m.kind, name: m.name, pin: null, argued: false, ...(currency === undefined ? { resolves: false } : { resolves: true, currency }) };
-    }
-    return {
-      kind: m.kind,
-      name: m.name,
-      pin: m.contentVersionHash,
-      argued: argued({ name: m.name, thesisId, debate: m.debateSession }),
-    };
-  });
+  const resolved = requireCitations(cited, versionId);
+  const mentions = resolved.citations.map((citation): ResolvedMention =>
+    citation.kind === 'TRAJECTORY' ? { ...citation, pin: null, argued: false } : citation,
+  );
 
   return {
     view: {
@@ -318,6 +347,6 @@ async function versionView(
       createdAt: version.createdAt,
       mentions,
     },
-    cited,
+    cited: resolved.cited,
   };
 }
