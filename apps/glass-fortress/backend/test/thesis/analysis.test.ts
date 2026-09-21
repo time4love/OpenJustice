@@ -108,7 +108,11 @@ describe('run_analysis — T4 :580–:584, A4 :1481–:1486, WRITE and paid (the
       as: AUTHOR,
       seed: () => {
         seedThesis();
-        seedCorpus({ derived: false });
+        // `superseded`: the head CITES this pair, so a version exists for its pin to name and only CURRENT is
+        // undefined (evidence :1027–:1029; E3 :501). `derived: false` would seed a head citing a pair the walk
+        // never derived — a world T2 :414 refuses to create — and this case passed over it for months only
+        // because no path here resolved the pin.
+        seedCorpus({ superseded: true });
       },
       input: ask,
     },
@@ -239,7 +243,9 @@ describe('draft_foia_request — T4 :663–:666, A4 :1496–:1499, GATED and pai
       as: AUTHOR,
       seed: () => {
         seedGapped();
-        seedCorpus({ derived: false });
+        // `superseded`, for the reason the run_analysis case above states: the drafter reaches a pair the head
+        // CITES, so its version is stored and its pin names it; only CURRENT is undefined.
+        seedCorpus({ superseded: true });
       },
       input: ask,
     },

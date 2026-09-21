@@ -106,7 +106,12 @@ describe("get_thesis_context — the analysis arm: CURRENT, STALE, AWAITING_DERI
 
   it('a cited diff the walk owes a version is AWAITING_DERIVATION, naming it — never NONE', async () => {
     seedThesis();
-    seedCorpus({ derived: false });
+    // `superseded`, NOT `derived: false`, and the difference is what the head CITES. This world's head pins
+    // CURRENT_VERSION, and a pin names a version the store holds (evidence :200–:204, :501) — a head citing a
+    // pair with NO version at all cannot exist, because T2 :414 refuses that write. The world is
+    // AWAITING_DERIVATION because the re-walk moved the endpoint's TEXT, which is what makes CURRENT
+    // undefined (evidence :1027–:1029), while every stored version stays where the citation left it.
+    seedCorpus({ superseded: true });
     expect(await analysisState()).toEqual({ state: 'AWAITING_DERIVATION', name: DIFF_NAME });
   });
 });

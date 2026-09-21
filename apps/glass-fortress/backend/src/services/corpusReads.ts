@@ -553,8 +553,10 @@ export async function recordsByName(fileHashes: readonly string[]): Promise<Map<
   const pages = await prisma.trackedUrl.findMany({ select: { id: true, url: true } });
   const searchable = pages.length === 0 ? [] : pages;
   const ids = searchable.map((page) => page.id);
-  const captures = await capturesByPage(ids);
-  const diffs = await diffsByPage(ids);
+  // SIBLINGS, NOT A SEQUENCE: both key on `ids` and neither reads the other's answer. Measured 2026-09-21,
+  // they ran one after the other inside an eleven-call chain that was the whole critical path of the public
+  // thesis read.
+  const [captures, diffs] = await Promise.all([capturesByPage(ids), diffsByPage(ids)]);
 
   for (const name of wanted) {
     // The promoted name's own page first, then the rest — the order the singular read had, preserved because
