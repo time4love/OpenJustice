@@ -4,6 +4,7 @@ import type { ChunkSide } from '../lib/diffChunking';
 import { prisma } from '../lib/prisma';
 import { recordId, isWaybackTimestamp, type RecordId } from '../lib/evidenceIdentity';
 import { phrasePresent } from '../lib/htmlText';
+import { flaggedByClassifier } from '../lib/investigativeCategories';
 import type { ComputeResult, ChangeSpan, TrajectoryGroup } from './claimTrajectory';
 import { CLASSIFICATION_KEYS } from './recordDiff';
 import {
@@ -989,11 +990,160 @@ export interface EntryPage {
 /** One entry of the corpus: a capture row or a diff row (A4 :1081–:1090), its kind, and its page. */
 export type CorpusEntry = (({ kind: 'CAPTURE' } & CaptureEntry) | ({ kind: 'DIFF' } & DiffEntry)) & { page: EntryPage };
 
+// ---------------------------------------------------------------------------
+// ONE PAGE'S SHAPE OVER TIME — docs/gf-ui-flows.md §24 region 3, RULED
+// 2026-09-21 (the researcher): the time strip's source is the `pages` facet's
+// own `shape`, NEVER the entries the view renders.
+//
+// WHAT IT FIXES, MEASURED ON THE REAL CORPUS. The card's text line was already
+// the facet's while its strip was drawn from the FILTERED, cursor-windowed
+// array, so one element contradicted itself: `?page=<corona>` drew „43 רשומות"
+// over 16 dots and 16 bars, `&kind=CAPTURE` the same line over 16 dots and NO
+// bars, `&kind=DIFF&cited=1` the same line over an empty strip. Ruling (g)
+// already forbids narrowing the strip by the significance gate; a FILTER is that
+// mistake one level up and a WINDOW is it a second time.
+//
+// IT COSTS NOTHING, WHICH IS WHY THIS IS THE MECHANISM AND NOT A SECOND READ.
+// `loadCorpus`' loop already holds that page's captures and diffs when it builds
+// the facet row, so the bins are folded out of rows that are in memory: no new
+// query, no new route, no migration, and the MCP surface does not move because a
+// field is not a tool. Three alternatives were considered and rejected — a
+// second unfiltered read, client-side filtering (which duplicates `corpusOf`'s
+// predicate across the workspace boundary and does not compose with paging), and
+// a shape endpoint of its own.
+//
+// DAYS, AND NEVER GEOMETRY. No pixels: the 5px merge threshold and the viewBox
+// width are the COMPONENT's and this module must not learn them. No midpoint: "a
+// diff sits at its interval's midpoint" is ruling (b), a DRAWING rule that lives
+// in the frontend's `timeStrip.ts` and nowhere else — the bin carries `before`
+// and `after` and the component halves them. No sum where (e) says max.
+//
+// IT IS BOUNDED BY DAYS AND NOT BY RECORDS, which is the whole point: worst case
+// two bins per day of the page's span, CONSTANT in the number of records, so the
+// strip stops depending on `CORPUS_READ_LIMIT`.
+// ---------------------------------------------------------------------------
+
+/**
+ * The captures of one day, merged — `day` is `YYYYMMDD`.
+ *
+ * THE UNIT IS THE DAY AND THE CONSUMER IS WHY: `timeStrip.dayOf` reads exactly
+ * the first eight characters of the 14-digit wayback timestamp and discards the
+ * rest, because a day is the strip's unit. Emitting the instant would be
+ * emitting precision the instrument throws away.
+ */
+export interface CaptureBin {
+  day: string;
+  count: number;
+  /** ANY capture under the bin carries its own `evidence` — ruling (e)'s ring, and (c): the capture's own, never a diff touching it. */
+  cited: boolean;
+}
+
+/** The diffs of one `(before-day, after-day)` pair, merged — both `YYYYMMDD`. */
+export interface DiffBin {
+  before: string;
+  after: string;
+  count: number;
+  /**
+   * THE BIN'S MAXIMUM CHUNK COUNT, NEVER THEIR SUM (ruling (e)), and the reason
+   * is measured: May's three diffs are 50, 52 and 52, and summing gives 154
+   * against the page's largest real change of 125 — so the tallest mark on the
+   * strip would correspond to nothing that happened. A diff still awaiting
+   * derivation counts 0 and is still a bin.
+   */
+  chunks: number;
+  /**
+   * ANY diff under the bin passed the significance gate (ruling (e)'s tone
+   * rule). Dimming a mark that contains a flagged change would hide the flagged
+   * one behind its quiet neighbours, which is the suppression (g) refuses.
+   */
+  passed: boolean;
+}
+
+/** One page's whole shape over time, in days: what region 3's strip is drawn from. */
+export interface PageShape {
+  captures: CaptureBin[];
+  diffs: DiffBin[];
+}
+
 /** The `pages` facet (§28 :750): every page of the SCOPE, its held span and its entry count, never the call's filters. */
 export interface PageFacet extends EntryPage {
   first: string | null;
   last: string | null;
   entries: number;
+  /**
+   * The page's whole shape over time — PRESENT ONLY ON THE PAGE THE READ NAMES,
+   * and `null` on every other row.
+   *
+   * THAT IS THE CONTRACT AND NOT AN OPTIMISATION. Region 0 — the pages list at
+   * `/corpus` and `/research/corpus` with no parameter — draws NO strip: §24
+   * :695–:701 is "one row per page url — the url, the interval, the record count
+   * — and NOTHING else. NO time strip on a row", because a strip is ONE page's
+   * shape and therefore reads as a heading. So a read that names no page must
+   * not grow by one byte.
+   */
+  shape: PageShape | null;
+}
+
+/** A 14-digit wayback timestamp as the day it fell on — the first eight characters, which is the strip's unit. */
+function dayOf(timestamp: string): string {
+  return timestamp.slice(0, 8);
+}
+
+/**
+ * ONE PAGE'S SHAPE, folded out of the rows the read has already composed.
+ *
+ * It bins the ENTRY ROWS and never the database rows, so `chunks`, `evidence`
+ * and `opinion` are read here exactly as the read publishes them — a shape
+ * computed from the raw columns would be a second reading of the same three
+ * registers, free to drift from the one the stream shows.
+ *
+ * Bins come out in day order, which is `byCodeUnit` over `YYYYMMDD`: fixed-width
+ * digits, so string order IS chronological order and no date is parsed.
+ */
+export function shapeOf(captures: readonly CaptureEntry[], diffs: readonly DiffEntry[]): PageShape {
+  const captureBins = new Map<string, CaptureBin>();
+  for (const capture of captures) {
+    const day = dayOf(capture.capture);
+    const bin = captureBins.get(day) ?? { day, count: 0, cited: false };
+    bin.count += 1;
+    bin.cited = bin.cited || capture.evidence !== null;
+    captureBins.set(day, bin);
+  }
+
+  const diffBins = new Map<string, DiffBin>();
+  for (const diff of diffs) {
+    const before = dayOf(diff.before);
+    const after = dayOf(diff.after);
+    const key = `${before}-${after}`;
+    const bin = diffBins.get(key) ?? { before, after, count: 0, chunks: 0, passed: false };
+    bin.count += 1;
+    bin.chunks = Math.max(bin.chunks, chunkCountOf(diff));
+    // THE GATE IS CALLED, NEVER RE-SPELLED, and `deriveSignificance` is NOT the gate: its null arm is what keeps
+    // an AWAITING DERIVATION pair full-toned, and this page has one.
+    bin.passed = bin.passed || flaggedByClassifier({ kind: 'DIFF', opinion: diff.opinion });
+    diffBins.set(key, bin);
+  }
+
+  return {
+    captures: [...captureBins.values()].sort((a, b) => byCodeUnit(a.day, b.day)),
+    diffs: [...diffBins.values()].sort((a, b) => byCodeUnit(a.before, b.before) || byCodeUnit(a.after, b.after)),
+  };
+}
+
+/**
+ * How many chunks a diff row carries — 0 while it awaits derivation, which is a
+ * STATE and not an error (§24 region 4), and 0 for a version whose `chunks` is
+ * not a list.
+ *
+ * It does NOT call `chunksOf`, and the difference is deliberate: `chunksOf`
+ * THROWS on a malformed stored version, which is right where the content is
+ * about to be published and wrong here, where a whole page's shape would be lost
+ * to one bad row. It counts without reading a chunk's fields, so there is no
+ * second spelling of what a chunk IS.
+ */
+function chunkCountOf(diff: DiffEntry): number {
+  const chunks = diff.current?.chunks;
+  return Array.isArray(chunks) ? chunks.length : 0;
 }
 
 /** A diff's instant on the chronology is its `after` — the capture at which the page is seen to have moved. */
@@ -1119,8 +1269,16 @@ export function pageAfter<T, K extends Record<string, string>>(
  * THE ONE LOADER of the corpus across pages: per page the captures, the diffs and the stored anchor verdicts, ONE
  * linkage query over every name, the rows composed by `captureRow` / `diffRow` — the per-page read's own — and the
  * facet computed from the same rows (§28: "a facet on the one read, not a second read"). Entries in the total order.
+ *
+ * `named` IS THE PAGE THE CALL NAMED, or null, and it decides ONE thing: which facet row carries a `shape` (§24
+ * region 3, ruled 2026-09-21). It is a parameter rather than something inferred here because the loader is given a
+ * SET of pages and cannot tell a scope of one from a call that named one — and region 0 draws no strip, so the
+ * difference has to be stated by the caller that knows it.
  */
-export async function loadCorpus(pages: readonly ScopedPage[]): Promise<{ entries: CorpusEntry[]; pages: PageFacet[] }> {
+export async function loadCorpus(
+  pages: readonly ScopedPage[],
+  named: string | null,
+): Promise<{ entries: CorpusEntry[]; pages: PageFacet[] }> {
   const loaded: { page: ScopedPage; captures: TimelineCapture[]; diffs: TimelineDiff[]; attribution: Map<string, StoredAttribution> }[] = [];
   const names: string[] = [];
   for (const page of pages) {
@@ -1137,10 +1295,22 @@ export async function loadCorpus(pages: readonly ScopedPage[]): Promise<{ entrie
   for (const { page, captures, diffs, attribution } of loaded) {
     const entryPage: EntryPage = { trackedUrlId: page.id, url: page.url, public: page.public };
     const acquired = captures.map((c) => c.capture);
-    for (const capture of captures) entries.push({ kind: 'CAPTURE', ...captureRow(page, capture, attribution, linkage), page: entryPage });
-    for (const diff of diffs) entries.push({ kind: 'DIFF', ...diffRow(page, diff, acquired, linkage), page: entryPage });
+    // COMPOSED ONCE AND READ TWICE — the entries the stream returns and the shape the facet carries are the SAME
+    // rows, so the strip can never disagree with the records under it about a chunk count, a citation or an opinion.
+    const captureRows = captures.map((capture) => captureRow(page, capture, attribution, linkage));
+    const diffRows = diffs.map((diff) => diffRow(page, diff, acquired, linkage));
+    for (const row of captureRows) entries.push({ kind: 'CAPTURE', ...row, page: entryPage });
+    for (const row of diffRows) entries.push({ kind: 'DIFF', ...row, page: entryPage });
     const held = [...acquired].sort(byCodeUnit);
-    facet.push({ ...entryPage, first: held.at(0) ?? null, last: held.at(-1) ?? null, entries: captures.length + diffs.length });
+    facet.push({
+      ...entryPage,
+      first: held.at(0) ?? null,
+      last: held.at(-1) ?? null,
+      entries: captures.length + diffs.length,
+      // The shape rides these rows, which are loaded BEFORE any filter and BEFORE the cursor's slice — that is the
+      // whole fix. `null` on every other row: region 0 draws no strip and must not pay for one.
+      shape: page.id === named ? shapeOf(captureRows, diffRows) : null,
+    });
   }
   return { entries: entries.sort(compareEntries), pages: facet };
 }

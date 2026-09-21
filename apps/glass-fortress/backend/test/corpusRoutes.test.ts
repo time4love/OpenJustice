@@ -106,6 +106,32 @@ describe('GET /api/corpus — list_corpus at scope public (§6 :207–:208; §6.
     expect([hidden.status, hidden.text, nothing.status, nothing.text]).toEqual([404, NOT_FOUND, 404, NOT_FOUND]);
   });
 
+  it('C2b GET /api/corpus carries the facet\'s `shape` on the NAMED page alone — the bare list gets none, and a filtered single-page view gets the page\'s own (§24 region 3, ruled 2026-09-21)', async () => {
+    // THE DOOR IS THE ROUTE, not the tool: region 3's card is drawn from what `/api/corpus` answers, so the
+    // contract has to hold HERE or the page card goes on contradicting itself with the tool green.
+    const bare = await get('/api/corpus');
+    const rows = bare.body['pages'] as { trackedUrlId: string; shape: unknown }[];
+    expect(rows.length > 0 && rows.every((p) => p.shape === null)).toBe(true);
+
+    const named = await get(`/api/corpus?page=${PAGE.id}`);
+    const namedRows = named.body['pages'] as { trackedUrlId: string; shape: unknown }[];
+    expect(namedRows.map((p) => [p.trackedUrlId, p.shape === null])).toEqual([[PAGE.id, false]]);
+
+    // AND IT IS THE PAGE'S SHAPE AND NOT THE VIEW'S: every chip the route accepts answers the same bytes.
+    const shape = JSON.stringify(namedRows[0]?.shape);
+    // `cited=true` and NOT `cited=1`: the URL the reader sees carries `1` and the READ takes a boolean, and the
+    // frontend's `corpusQuery.ts` is where that one translation lives. A chip this route refuses would make the
+    // loop below assert nothing, which is why the status is asserted beside the bytes.
+    for (const chip of ['kind=CAPTURE', 'kind=DIFF', 'cited=true', 'limit=1', 'since=2021-01-01']) {
+      const filtered = await get(`/api/corpus?page=${PAGE.id}&${chip}`);
+      const row = (filtered.body['pages'] as { shape: unknown }[] | undefined)?.[0];
+      expect([chip, filtered.status, JSON.stringify(row?.shape)]).toEqual([chip, 200, shape]);
+    }
+    // …and the chips really narrow the rows, so the equality above is not equality of two empties.
+    const entriesFor = async (query: string): Promise<number> => ((await get(`/api/corpus?page=${PAGE.id}${query}`)).body['entries'] as unknown[]).length;
+    expect(await entriesFor('') > await entriesFor('&kind=DIFF')).toBe(true);
+  });
+
   it('C3 GET /api/corpus?since=2021-06-30&until=2021-01-01 is 400 INVALID_RANGE, the tool\'s refusal verbatim', async () => {
     const tool = await listCorpusHandler({ scope: 'public', since: '2021-06-30', until: '2021-01-01' });
     expect(codeOf(tool)).toBe('INVALID_RANGE');
