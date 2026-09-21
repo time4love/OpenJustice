@@ -163,9 +163,11 @@ export function ResearchCorpus({ query }: { query: Record<string, string | strin
                     strip is the facet row's own `shape` (§24 :755), never this view's entries. */}
                 {card === undefined ? null : <PageCard page={card} scope="all" />}
                 <CorpusContextLine filters={filters} count={answer.entries.length} scope="all" />
-                {/* And „N מוסתרים" reads that same shape, so region 3 and region 4 cannot disagree about how
-                    much of this page the classifier did not flag. */}
-                <Stream entries={answer.entries} shape={card?.shape ?? null} extraction={extraction} />
+                {/* A ROW NAMES ITS PAGE ONLY WHEN THE VIEW SPANS PAGES (§24 :763, amended 2026-09-21) — the
+                    FILTER's fact, not the card's, exactly as on the public door.
+                    „N מוסתרים" IS THE WINDOW'S FIGURE on both views (reverted 2026-09-21; the grounds are in
+                    the Stream's own header), so no shape crosses this boundary any more. */}
+                <Stream entries={answer.entries} spansPages={filters.page === undefined} extraction={extraction} />
                 {answer.nextCursor === null ? null : (
                   <Link data-load-newer href={onward(answer.nextCursor)} className="self-start text-xs text-ink-muted underline">
                     {t('loadNewer')}

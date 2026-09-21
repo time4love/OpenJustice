@@ -372,8 +372,10 @@ describe('corpus-stream', () => {
       stripIsInIt: withPage.querySelectorAll('[data-time-strip]').length,
       kindFilterDoesNot: withoutPage.querySelectorAll('[data-page-card]').length,
       citedLensDoesNot: cited.querySelectorAll('[data-page-card]').length,
-      // The card names the page the way §4 requires and never by its id.
-      showsUrlNotId: (withPage.querySelector('[data-page-card-url]')?.textContent ?? '').includes('example.gov'),
+      // The card names the page the way §4 requires and never by its id. IT IS `PageUrl`'s ELEMENT as of
+      // chunk 6 (`data-page-url`, one emitter under `src/`), located by the card that contains it — WHICH url
+      // a reader is looking at is said by the ancestor, never by a third name for the element itself.
+      showsUrlNotId: (withPage.querySelector('[data-page-card] [data-page-url]')?.textContent ?? '').includes('example.gov'),
       noIdInCard: !(withPage.querySelector('[data-page-card]')?.textContent ?? '').includes('page-one'),
     }).toEqual({
       pageFilterDrawsIt: 1,
@@ -382,6 +384,57 @@ describe('corpus-stream', () => {
       citedLensDoesNot: 0,
       showsUrlNotId: true,
       noIdInCard: true,
+    });
+  });
+
+  it('A ROW NAMES ITS PAGE ONLY WHEN THE VIEW SPANS PAGES (§24 :763 as amended 2026-09-21) — three arms', async () => {
+    // THE RETIRED CLAUSE said "a page label tap adds the PAGE filter" and was never built; board ט·ב made it
+    // contradictory, because a page is CHOSEN in region 0 and NAMED by region 3. What replaced it is the rule
+    // this case holds. MEASURED on the real corona body: 43 rows repeating one url under a card that already
+    // said it.
+    //
+    // THREE ARMS, BECAUSE ONE SATISFIES BOTH DEFECTS. A row that never names its page passes the single-page
+    // arm alone, and leaves a reader of `?cited=1` — which carries NO card — with no page named anywhere.
+    //
+    // AND A THIRD ARM, ADDED AFTER A DECOY PASSED THE FIRST TWO (2026-09-21). `spansPages` derived from the
+    // ENTRIES — `new Set(entries.map((e) => e.page.trackedUrlId)).size > 1` — satisfied both arms above,
+    // because this fixture's cross-page window happens to hold two pages and the single-page one holds one.
+    // The rule is about the VIEW and not about what a window happened to return: a cross-page view carries NO
+    // card (ruling (a)), so a window of it that returns rows of one page would name that page NOWHERE.
+    const single = await renderStream({ page: 'page-one' }, corpusAtPageOne);
+    const across = await renderStream({ kind: 'DIFF' });
+    const narrow = await renderStream({ cited: '1' }, { ...corpusStream, entries: corpusStream.entries.filter((entry) => entry.page.trackedUrlId === 'page-one') });
+    const urlsIn = (container: HTMLElement, selector: string) => [...container.querySelectorAll(selector)].map((one) => one.textContent ?? '');
+    const rowUrls = (container: HTMLElement) => urlsIn(container, '[data-capture-row] [data-page-url], [data-diff-card] [data-page-url]');
+    expect({
+      // (a) A SINGLE-PAGE VIEW: the card names the page ONCE and no row repeats it.
+      singleRows: single.querySelectorAll('[data-entry]').length,
+      singleRowUrls: rowUrls(single).length,
+      singleCardUrls: urlsIn(single, '[data-page-card] [data-page-url]'),
+      // (b) ACROSS PAGES: there is no card, so EVERY row names its own page — and the rows really do belong
+      // to more than one page, which is the floor that makes „spans pages" a fact about this body and not a
+      // word. A count alone would be satisfied by five rows of one page.
+      acrossRows: across.querySelectorAll('[data-entry]').length,
+      acrossRowUrls: rowUrls(across).length,
+      acrossDistinct: [...new Set(rowUrls(across))].sort(),
+      acrossCards: across.querySelectorAll('[data-page-card]').length,
+      // (c) A CROSS-PAGE VIEW WHOSE WINDOW HOLDS ONE PAGE still names it on every row — there is no card.
+      narrowRows: narrow.querySelectorAll('[data-entry]').length,
+      narrowRowUrls: rowUrls(narrow).length,
+      narrowDistinct: [...new Set(rowUrls(narrow))],
+      narrowCards: narrow.querySelectorAll('[data-page-card]').length,
+    }).toEqual({
+      singleRows: 4,
+      singleRowUrls: 0,
+      singleCardUrls: ['example.gov/one/'],
+      acrossRows: 5,
+      acrossRowUrls: 5,
+      acrossDistinct: ['example.gov/one/', 'example.gov/two/'],
+      acrossCards: 0,
+      narrowRows: 4,
+      narrowRowUrls: 4,
+      narrowDistinct: ['example.gov/one/'],
+      narrowCards: 0,
     });
   });
 
@@ -440,6 +493,37 @@ describe('corpus-stream', () => {
       someRinged: PAGE.dots.some(([, ringed]) => ringed === 'true'),
       somePlain: PAGE.dots.some(([, ringed]) => ringed === null),
     }).toEqual({ wholeWindow: 6, capturesWindow: 2, diffsWindow: 4, emptyWindow: 0, someDim: true, someFull: true, someRinged: true, somePlain: true });
+  });
+
+  it('THE CARD OF A PAGE WITH NO CAPTURES DRAWS NO INTERVAL AND NO STRIP — and its `shape` is NOT null', async () => {
+    // THE TRAP, AND IT IS WHY THIS IS A SEPARATE CASE FROM THE ONE BELOW. `corpusReads.ts` :1312 gives the
+    // page a read NAMES a shape WHATEVER it holds — `shape: page.id === named ? shapeOf(…) : null` — so a
+    // surveyed page with nothing acquired arrives as `{ captures: [], diffs: [] }` and NOT as `null`. A card
+    // that guarded its strip on the shape alone would therefore have drawn a bare axis between two dates that
+    // do not exist, which is the "silent half" region 3's own rule refuses. THE INTERVAL IS THE GUARD.
+    const empty = {
+      ...corpusAtPageOne,
+      entries: [],
+      pages: [{ trackedUrlId: 'page-one', url: 'https://example.gov/one/', public: true, first: null, last: null, entries: 0, shape: { captures: [], diffs: [] } }],
+    };
+    const container = await renderStream({ page: 'page-one' }, empty);
+    const card = container.querySelector('[data-page-card]');
+    if (card === null) throw new Error('the card is drawn from the facet row, and the row is present');
+    expect({
+      // THE CARD IS STILL DRAWN — the page is named, so the view still says what it is about.
+      url: card.querySelector('[data-page-url]')?.textContent,
+      // AND IT SAYS ONLY WHAT IT KNOWS: the count, and no interval.
+      said: textNodes(card).map((node) => node.data.trim()).filter((text) => text !== ''),
+      // NO STRIP, AND THE SHAPE IS NOT WHAT DECIDED IT — stated here so the case cannot be satisfied by a
+      // body whose `shape` was null after all, which is the reading this case exists to refuse.
+      strips: container.querySelectorAll('[data-time-strip]').length,
+      shapeIsNull: empty.pages.at(0)?.shape === null,
+    }).toEqual({
+      url: 'example.gov/one/',
+      said: ['example.gov/one/', '0 רשומות', 'הטענות בדף הזה'],
+      strips: 0,
+      shapeIsNull: false,
+    });
   });
 
   it('A FACET ROW WITH NO `shape` DRAWS NO STRIP — a loud absence, never a half-drawn one', async () => {

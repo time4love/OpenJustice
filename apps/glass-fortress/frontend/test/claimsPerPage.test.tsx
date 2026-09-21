@@ -194,7 +194,7 @@ describe('claims-per-page', () => {
     }
   });
 
-  it('CP-6 A ROW SAYS EXACTLY FIVE THINGS AT MOST, and nothing else reaches a reader', async () => {
+  it('CP-6 A ROW SAYS EXACTLY FOUR THINGS AT MOST, and nothing else reaches a reader', async () => {
     const container = containerOf(await render({ page: 'page-one' }));
     const rows = requireSubjects('claim rows', [...container.querySelectorAll('[data-claim-row]')]);
 
@@ -205,7 +205,8 @@ describe('claims-per-page', () => {
     const said = rows.map((row) => textNodes(row).map((node) => node.data).filter((text) => text.trim() !== ''));
     const expected = claimsAnswer.entries.map((entry) => [
       entry.claims[0]?.claimText ?? '',
-      displayUrl(entry.page.url),
+      // THE PAGE'S URL WAS HERE AND IS GONE — §24 :763 as amended 2026-09-21, the rule CP-14 below holds: a
+      // row names its page only when the view SPANS pages, and this one never does. The row says FOUR things.
       // `theses.sheet.transitions`, CALLED on this row and rendered — every row of the set flips at least
       // twice (MIN_TRANSITIONS is 2), so the plural's `other` branch is the one that draws here.
       `${String(entry.transitions)} מעברים`,
@@ -310,6 +311,50 @@ describe('claims-per-page', () => {
       sentence: container.querySelector('[data-claims-empty]')?.textContent,
       rows: container.querySelectorAll('[data-claim-row]').length,
     }).toEqual({ sentence: FROZEN.empty, rows: 0 });
+  });
+
+  it('CP-14 THE PAGE IS NAMED ONCE, ABOVE THE ROWS, AND NO ROW REPEATS IT (§25 :790, §24 :763, 2026-09-21)', async () => {
+    // THE DEFECT THIS CLOSES, MEASURED ON THE LIVE PAGE: the `<h1>` is the generic „טענות הדף", no element
+    // named the page at all, and `Claims.tsx` drew the url on every one of 26 rows. The subject was ABSENT
+    // where it belonged and REPEATED where it does not — and this view can never span pages, because `page`
+    // is required and both doors `notFound()` without one (§25 :783, CP-2).
+    const container = containerOf(await render({ page: 'page-one' }));
+    const urls = [...container.querySelectorAll('[data-page-url]')];
+    const rows = requireSubjects('claim rows', [...container.querySelectorAll('[data-claim-row]')]);
+    expect({
+      // ONCE, and the words are the url as §4 :167–:178 shows a page — the domain and the path, no id.
+      named: urls.map((one) => one.textContent),
+      // AND NOT INSIDE A ROW. The count above would be satisfied by a single-row body, so this says WHERE.
+      insideARow: container.querySelectorAll('[data-claim-row] [data-page-url]').length,
+      // THE FLOOR: there are rows to have repeated it on, so „once" is a real number and not an empty page
+      // agreeing with itself — the vacuity this repository names as its own.
+      rows: rows.length,
+      // AND IT IS ABOVE THEM: the header precedes the list in document order, which is what „above" means.
+      beforeTheRows: urls.at(0) !== undefined && rows.at(0) !== undefined
+        ? (urls.at(0) as Element).compareDocumentPosition(rows.at(0) as Element) === Node.DOCUMENT_POSITION_FOLLOWING
+        : false,
+    }).toEqual({ named: [displayUrl('https://example.gov/one/')], insideARow: 0, rows: 5, beforeTheRows: true });
+  });
+
+  it('CP-15 A WINDOW NARROWED TO NOTHING DRAWS NO HEADER — the hole is drawn, not papered over', async () => {
+    // `list_trajectories` carries `page.url` on ENTRIES ONLY (§6.1 :248; §25 :790 files the amendment the
+    // envelope is owed). So a window with nothing in it has no url anywhere in the body, and the header
+    // cannot be drawn from the read. IT IS THEN NOT DRAWN: an empty header would be a header saying nothing,
+    // and a stand-in url would be a page the read never named — exactly where a reader most needs the truth.
+    const filtered = containerOf(await render({ page: 'page-one', since: '2023-01-01' }, {
+      '/api/corpus/claims?page=page-one&since=2023-01-01': { status: 200, body: { entries: [], undetected: [], nextCursor: null } },
+    }));
+    // THE CONTROL, IN THE SAME CASE: the very same door WITH rows draws exactly one, so the zero below is
+    // this body's own answer and not a selector that finds nothing anywhere.
+    const answered = containerOf(await render({ page: 'page-one' }));
+    expect({
+      narrowed: filtered.querySelectorAll('[data-page-url]').length,
+      control: answered.querySelectorAll('[data-page-url]').length,
+      // AND THE VIEW STILL SAYS WHICH EMPTY IT IS — the header's absence removes no sentence.
+      sentence: filtered.querySelector('[data-stream-empty]')?.textContent,
+      // AND THE WAY BACK TO REGION 0 IS STILL THERE, which is how a reader leaves a window with nothing in it.
+      back: filtered.querySelectorAll('[data-all-pages]').length,
+    }).toEqual({ narrowed: 0, control: 1, sentence: he.corpus.emptyFiltered, back: 1 });
   });
 
   it('CP-12 EMPTY HAS TWO SENTENCES AND THEY SAY DIFFERENT THINGS — nothing was tracked, against nothing in this range', async () => {

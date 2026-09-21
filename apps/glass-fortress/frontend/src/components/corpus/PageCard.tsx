@@ -1,8 +1,10 @@
 import { useLocale, useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { displayUrl, formatCaptureDate } from '@/lib/format';
+import { formatCaptureDate } from '@/lib/format';
 import { claimsPath } from '@/lib/corpusQuery';
+import { heldInterval } from '@/lib/pageInterval';
 import { MAX_BAR_PX, monthsOf, stripOf } from '@/lib/timeStrip';
+import { PageUrl } from './PageUrl';
 import type { CorpusScope, PagesFacetRow } from '@/types/corpus';
 
 // ---------------------------------------------------------------------------
@@ -25,7 +27,10 @@ import type { CorpusScope, PagesFacetRow } from '@/types/corpus';
 //
 // A ROW WHOSE `shape` IS NULL DRAWS NO STRIP AT ALL — not an empty axis and not the months alone. `null` is
 // a read that named no page (§28), and a strip with nothing on it reads as "this page never changed", which
-// is a claim about the corpus. A loud absence, never a silent half.
+// is a claim about the corpus. A loud absence, never a silent half. SO DOES A ROW WITH NO INTERVAL, and it is
+// a SECOND condition rather than the same one: the read gives the page it NAMES a shape whatever that page
+// holds, so a surveyed page with no captures arrives with empty bins and two null endpoints, and an axis
+// drawn between them would be drawn between dates that do not exist (chunk 6, `lib/pageInterval.ts`).
 //
 // THE STRIP IS AN SVG IN THE PURE MODULE'S OWN UNITS. Its `viewBox` is 319 wide — the drawable width measured
 // at 375px — and it scales to whatever the card actually gets, so the marks keep their relative positions at
@@ -47,22 +52,33 @@ const VIEW_H = BASELINE + 14;
 export function PageCard({ page, scope }: { page: PagesFacetRow; scope: CorpusScope }) {
   const t = useTranslations('corpus');
   const locale = useLocale();
+  // THE PAGE'S HELD INTERVAL, ASKED ONCE — the pages list asks the same question through the same function.
+  // A PAGE WITH NO CAPTURES IS NOT A PAGE WITH NO SHAPE, and that distinction is the whole of chunk 6's item
+  // (4) here: `corpusReads.ts` :1312 gives the NAMED page a shape whatever it holds, so `shapeOf([], [])`
+  // arrives as `{ captures: [], diffs: [] }` and NOT as `null`. Guarding the strip on the shape alone would
+  // therefore have drawn a bare axis between two dates that do not exist. The interval is the guard.
+  const interval = heldInterval(page);
   // ONE NULLABLE VALUE FOR THE WHOLE DRAWING, so the absence is decided once. Two conditions — a null strip
   // and an empty month list — would be two places to get "no shape" right, and the second one would be the
   // one that drew a bare axis under a page that has no shape to show.
   const drawn =
-    page.shape === null ? null : { ...stripOf(page.shape, page.first, page.last, VIEW_W), months: monthsOf(page.first, page.last, VIEW_W) };
+    page.shape === null || interval === null
+      ? null
+      : { ...stripOf(page.shape, interval.first, interval.last, VIEW_W), months: monthsOf(interval.first, interval.last, VIEW_W), interval };
 
   return (
     <section data-page-card className="flex flex-col gap-2 rounded border border-line bg-surface p-3">
-      {/* The heading names the page the way §4 requires — the domain and path, never the `trackedUrlId` — and
-          the url is LTR inside a Hebrew document, so it is isolated. */}
-      <bdi dir="ltr" data-page-card-url className="break-all text-sm text-ink">
-        {displayUrl(page.url)}
-      </bdi>
+      {/* The heading names the page the way §4 requires — the domain and path, never the `trackedUrlId`.
+          `PageUrl`, CALLED: it owns the isolation and the break for every url on the corpus. */}
+      <PageUrl url={page.url} weight="subject" />
       <span className="text-xs text-ink-muted">
-        <bdi dir="ltr">{t('interval', { first: formatCaptureDate(page.first, locale), last: formatCaptureDate(page.last, locale) })}</bdi>
-        {' · '}
+        {/* NO INTERVAL WHERE THE PAGE HOLDS NO CAPTURES — the pages list's own rule, one region up. */}
+        {interval === null ? null : (
+          <>
+            <bdi dir="ltr">{t('interval', { first: formatCaptureDate(interval.first, locale), last: formatCaptureDate(interval.last, locale) })}</bdi>
+            {' · '}
+          </>
+        )}
         {t('records', { count: page.entries })}
       </span>
 
@@ -82,7 +98,7 @@ export function PageCard({ page, scope }: { page: PagesFacetRow; scope: CorpusSc
           role="img"
           // The strip is a PICTURE OF THE INTERVAL the line above states in words, so a screen reader is given
           // that sentence rather than a mark-by-mark reading it cannot act on.
-          aria-label={t('interval', { first: formatCaptureDate(page.first, locale), last: formatCaptureDate(page.last, locale) })}
+          aria-label={t('interval', { first: formatCaptureDate(drawn.interval.first, locale), last: formatCaptureDate(drawn.interval.last, locale) })}
         >
           {/* THE MONTHS FIRST, underneath everything: they are the scale, and without them a 71px void says
               nothing while the same void between two named months says eighty-four days. */}

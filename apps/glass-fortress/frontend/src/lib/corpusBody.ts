@@ -60,6 +60,17 @@ const flag = (value: unknown, at: string): boolean => (typeof value === 'boolean
 const count = (value: unknown, at: string): number => (typeof value === 'number' && Number.isFinite(value) ? value : fail(at, 'a number', value));
 const list = (value: unknown, at: string): unknown[] => (Array.isArray(value) ? value : fail(at, 'an array', value));
 
+/**
+ * A FIELD WHOSE `null` IS A VALUE, WHILE A MISSING KEY IS A FAILURE — `maybeText`'s stricter twin.
+ *
+ * `maybeText` reads an ABSENT key as `null`, which is right for a field the body may omit. It is wrong for
+ * the facet's `first` and `last`: the read always sends both keys and sends `null` in them to say the page
+ * holds no captures (§28; `corpusReads.ts` :1307). Read through `maybeText`, a body that had DROPPED the
+ * field would silently become "this page has no interval" — a region gone, looking exactly like the honest
+ * absence. This is `pageShape`'s own rule below, applied to a scalar.
+ */
+const textOrNull = (value: unknown, at: string): string | null => (value === null ? null : text(value, at));
+
 /** One day's captures (§24 :755) — `day` is `YYYYMMDD`, and `count` is CAPTURES, which a merged mark sums. */
 const captureBin = (value: unknown, at: string): CaptureBin => {
   const row = object(value, at);
@@ -110,8 +121,8 @@ function pagesFacetRow(value: unknown, at: string): PagesFacetRow {
     trackedUrlId: text(row.trackedUrlId, `${at}.trackedUrlId`),
     url: text(row.url, `${at}.url`),
     public: flag(row.public, `${at}.public`),
-    first: text(row.first, `${at}.first`),
-    last: text(row.last, `${at}.last`),
+    first: textOrNull(row.first, `${at}.first`),
+    last: textOrNull(row.last, `${at}.last`),
     entries: count(row.entries, `${at}.entries`),
     shape: pageShape(row, at),
   };

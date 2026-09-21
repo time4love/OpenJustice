@@ -152,10 +152,13 @@ export default async function CorpusPage({ params, searchParams }: PageParams) {
             cannot hand the card a window even by accident, which is what it used to do. */}
         {card === undefined ? null : <PageCard page={card} scope="public" />}
         <CorpusContextLine filters={query.filters} count={answer.entries.length} scope="public" />
-        {/* THE HIDDEN-COUNT LINE READS THE SAME SHAPE THE STRIP DOES, for the same reason: on a single-page
-            view „N מוסתרים" is the PAGE's figure and not this window's. With no page there is no shape and
-            the line stays the window's, which is all a cross-page stream knows. */}
-        <Stream entries={answer.entries} shape={card?.shape ?? null} />
+        {/* A ROW NAMES ITS PAGE ONLY WHEN THE VIEW SPANS PAGES (§24 :763, amended 2026-09-21), and the view
+            spans pages exactly when no `page` is in force — which is the FILTER's fact and not the card's.
+            The card can be absent while a page is named (a page this scope cannot see), and on that view the
+            rows must still not repeat a url the reader already asked for.
+            „N מוסתרים" IS THE WINDOW'S FIGURE on both views (reverted 2026-09-21; the Stream's own header
+            carries the two grounds), so no shape crosses this boundary any more. */}
+        <Stream entries={answer.entries} spansPages={query.filters.page === undefined} />
         {/* „טען חדשים יותר" — §24 region 4's forward control, and the ONE the read can serve. MEASURED on the
             running backend: the window is OLDEST FIRST (23.12.2021 → 17.3.2022 at `limit=10`) and the cursor
             advances toward NEWER, so forward is „newer" and this control belongs at the FOOT of the stream.

@@ -84,6 +84,24 @@ describe('corpus-body', () => {
     expect(requireSubjects('the parsed facet', parseCorpusPages({ entries: [], pages: [WHOLE], nextCursor: null })).at(0)?.shape).toBeNull();
   });
 
+  it('`first` AND `last` ARE NULL WHERE A PAGE HOLDS NO CAPTURES — and a MISSING key still throws', () => {
+    // THE WIRE HAS ALWAYS SENT `string | null` (`backend/src/services/corpusReads.ts` :1070–:1071, and :1307
+    // sets them from `held.at(0) ?? null`). This side required `string` and called `text()`, which THROWS —
+    // so ONE surveyed page with no captures yet took region 0 of the GATED door down, because that door
+    // parses every surveyed page. It is one survey away and not a corner: `surveyWaybackCaptures.ts` :149
+    // creates the `TrackedUrl` and its work-list rows, and a LATER step acquires the captures.
+    const empty = { ...WHOLE, first: null, last: null, entries: 0 };
+    expect(requireSubjects('the parsed facet', parseCorpusPages({ entries: [], pages: [empty], nextCursor: null }))).toEqual([empty]);
+    // AND THE TWO FACTS STAY DIFFERENT, exactly as `shape`'s case holds one region up: `null` is the read
+    // SAYING the page holds nothing, while an ABSENT key is a body that drifted. Read through a helper that
+    // took `undefined` for `null` too, a body that had DROPPED the field would silently become "this page has
+    // no interval" — the honest absence and the drift drawn identically, which is the silent half.
+    expect(() => parseCorpusPages({ entries: [], pages: [without('first')], nextCursor: null })).toThrow('pages[0].first expected a string');
+    expect(() => parseCorpusPages({ entries: [], pages: [without('last')], nextCursor: null })).toThrow('pages[0].last expected a string');
+    // THE CONTROL: a non-string that is not null is still a drift, so the acceptance above is of `null` alone.
+    expect(() => parseCorpusPages({ entries: [], pages: [{ ...WHOLE, first: 20211223211940 }], nextCursor: null })).toThrow('pages[0].first expected a string');
+  });
+
   it('A MISSING `public` THROWS AND NAMES THE FIELD — it never defaults to `true`, which would publish a surveyed page', () => {
     // The reviewer's plant, one way. At UI-8's `all` scope this is the §9.5 leak through the parser.
     expect(() => parseCorpusPages({ entries: [], pages: [without('public')], nextCursor: null })).toThrow('pages[0].public expected a boolean');
