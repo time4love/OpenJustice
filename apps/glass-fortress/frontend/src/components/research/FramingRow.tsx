@@ -38,7 +38,20 @@ export function FramingRow({ row }: { row: Row }) {
           {t(`latest.${row.latest.type}`)}
         </span>
       )}
-      {row.thesisId === null ? <span className="text-xs text-ink-muted">{t('noThesis')}</span> : null}
+      {/* TWO DIFFERENT ABSENCES, AND BOARD ב SEPARATES THEM (approved 2026-09-21). A framing with NO ROUND has
+          not failed to produce a thesis — it has not been worked on at all, and „עדיין לא הוליד תזה" says
+          something about it that is not true. It is drawn MUTED with its own word — `text-ink-muted`, the one
+          muted token `globals.css` :21 defines, italic for the difference, never a new colour; `noThesis` stays for a
+          framing that HAS rounds and still attaches to nothing, which is the fact §12 :1163 asks be shown. */}
+      {row.rounds === 0 ? (
+        <span data-framing-no-round className="text-xs italic text-ink-muted">
+          {t('openedNoRound')}
+        </span>
+      ) : row.thesisId === null ? (
+        <span data-framing-no-thesis className="text-xs text-ink-muted">
+          {t('noThesis')}
+        </span>
+      ) : null}
       {row.claim === null ? null : (
         <>
           <span className="text-xs text-ink-muted">{t('chosenClaim')}</span>

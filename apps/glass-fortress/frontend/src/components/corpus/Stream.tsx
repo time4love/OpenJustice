@@ -1,13 +1,33 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { CopyableCode } from '@/components/CopyableCode';
 import { LabelledOpinion } from '@/components/opinion/LabelledOpinion';
+import { PlatformMark } from '@/components/thesis/PlatformMark';
+import { DeclareTabs, type PaneTab } from '@/components/shell/RightPane';
 import { displayUrl, formatCaptureDate } from '@/lib/format';
 import { partitionBySignificance } from '@/lib/corpusSignificance';
-import { RecordSheetTab, recordIdOf, useOpenRecord } from './RecordSheet';
-import type { CaptureEntry, CorpusEntry, DiffEntry } from '@/types/corpus';
+import { recordIdOf, useOpenRecord, useRecordTab } from './RecordSheet';
+import type { CaptureEntry, CorpusEntry, DiffEntry, PageShape } from '@/types/corpus';
+
+/**
+ * §27's EXTRACTION SHEET, AS A SLOT THIS COMPONENT DOES NOT FILL — and the direction of that dependency is
+ * the point.
+ *
+ * The three reads behind the sheet are `/api/research/*`: they answer a bearer and nothing else. If this
+ * file imported them, `/corpus` — a public, anonymous page — would carry the gated reader in its bundle and
+ * in every scan's import closure, and `one-stream-two-doors` would be holding that two doors share a
+ * component which knows about one of them. So the GATED PAGE supplies the sheet and this component places
+ * it: `tabs` join the page's ONE declaration, `control` is the research tree's own words on a capture row.
+ * At `public` the slot is absent and there is nothing to place.
+ */
+export interface ExtractionSlot {
+  /** The sheets this page has open, contributed to the one declaration below. */
+  tabs: readonly PaneTab[];
+  /** The control a capture row draws to open the sheet, rendered by whoever owns the copy for it. */
+  control: (entry: CaptureEntry) => ReactNode;
+}
 
 // ---------------------------------------------------------------------------
 // THE CHRONOLOGY — docs/gf-ui-flows.md §24 region 4 and :660–:666 (the two weights of row); evidence A4
@@ -54,7 +74,7 @@ function PageLabel({ url }: { url: string }) {
  * THE COPY CARRIES THE CITATION TOKEN and is labelled by what it is FOR (§4 :172), which is why the hash it
  * copies is never drawn as text beside it.
  */
-function CaptureRow({ entry, onOpen }: { entry: CaptureEntry; onOpen: (entry: CaptureEntry) => void }) {
+function CaptureRow({ entry, onOpen, extraction }: { entry: CaptureEntry; onOpen: (entry: CaptureEntry) => void; extraction?: ExtractionSlot }) {
   const t = useTranslations('corpus');
   const locale = useLocale();
   return (
@@ -80,8 +100,19 @@ function CaptureRow({ entry, onOpen }: { entry: CaptureEntry; onOpen: (entry: Ca
         {entry.evidence === null ? null : <span data-cited-mark className="text-xs text-ink-muted">{t('cited')}</span>}
         </span>
       </button>
+      {/* THE NOT PUBLIC MARK (§27 :866) — the row of a page no published thesis has opened, so a researcher
+          knows what a reader cannot see. It is the BODY's own `page.public` (§28 :882, the field UI-2 added to
+          the facet "so the gated door can mark a row of a page not yet opened without a second read"), never
+          a verdict this page computed, and it is `PlatformMark`'s own member rather than a second mark
+          component (§21 :626). At `public` the read returns only opened pages, so it draws on neither door
+          by accident. It sits OUTSIDE the row's button: a mark inside the tap is the nesting `valid-nesting`
+          refuses, and it is not part of what the tap does. */}
       <span className="flex flex-wrap items-baseline gap-2">
+        {entry.page.public ? null : <PlatformMark kind="notPublic" />}
         <CopyableCode value={`#ev_${entry.fileHash}`} label={t('copyToken')} />
+        {/* §27's THIRD ADDITION, on a CAPTURE row and nowhere else — "THE EXTRACTION SHEET, from any capture
+            row". A SIBLING of the tap, like the COPY beside it, for the same reason. */}
+        {extraction?.control(entry)}
       </span>
     </li>
   );
@@ -121,6 +152,10 @@ function DiffCard({ entry, onOpen }: { entry: DiffEntry; onOpen: (entry: DiffEnt
         {entry.narrowed ? <span data-narrowed-mark>{t('narrowed')}</span> : null}
       </span>
       </button>
+      {/* A DIFF BELONGS TO A PAGE EXACTLY AS A CAPTURE DOES, and §27 :866 says "rows", not "capture rows":
+          both weights are rows of the one stream and a diff of an unopened page is as invisible to a reader
+          as a capture of it. Marking only the thin rows would leave half the stream unexplained. */}
+      {entry.page.public ? null : <PlatformMark kind="notPublic" />}
       {/* THE OPINION IS OUTSIDE THE TAP, because „קרא עוד" is a control of its own and a control inside a
           control is the nesting `valid-nesting` refuses. */}
       {entry.opinion === null ? null : <LabelledOpinion opinion={entry.opinion} />}
@@ -134,31 +169,53 @@ function DiffCard({ entry, onOpen }: { entry: DiffEntry; onOpen: (entry: DiffEnt
  * second answer to a question the body has already answered.
  *
  * THE GATE'S TWO HALVES ARE ONE ELEMENT. `partitionBySignificance` decides what is hidden and this draws the
- * line that says how many, with the tap that reveals them. They are computed in one pass from one list, so
- * the count can never disagree with what it describes; and they land together, because hiding without
+ * line that says how many, with the tap that reveals them. They land together, because hiding without
  * announcing is the half §24 forbids.
+ *
+ * WHICH NUMBER THE LINE STATES, AND THE TWO VIEWS SAY DIFFERENT THINGS (§24 :755, ruled 2026-09-21).
+ *
+ *   · ON A SINGLE-PAGE VIEW the number is THE PAGE'S: the sum of `count` over the shape's diff bins that did
+ *     not pass the gate. The shape is the facet's, computed before the filter and before the cursor's slice,
+ *     so it is the same source region 3's strip is drawn from and the two regions cannot disagree.
+ *   · ACROSS PAGES there is no page and no shape, so it stays the WINDOW'S — which is all this view knows.
+ *
+ * THE SEAM THIS LEAVES IS STATED RATHER THAN HIDDEN: the tap reveals the WINDOW'S hidden rows, so on a page
+ * whose records do not fit one window the line can name more than the tap shows. The control is therefore
+ * drawn only while the window really hides something — a line offering nothing to reveal would be worse than
+ * either number — and closing the seam properly means saying both figures, which is copy and not code.
  */
-export function Stream({ entries }: { entries: readonly CorpusEntry[] }) {
+export function Stream({ entries, shape, extraction }: { entries: readonly CorpusEntry[]; shape: PageShape | null; extraction?: ExtractionSlot }) {
   const t = useTranslations('corpus');
   const [revealed, setRevealed] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const openRecord = useOpenRecord();
+  // THE HOOK IS CALLED BEFORE THE EMPTY RETURN BELOW — an early return above a hook is the rule React has
+  // no way to recover from, and the empty stream is a real state of this page.
+  const recordTab = useRecordTab(entries, openId);
   const open = (entry: CorpusEntry): void => {
     setOpenId(recordIdOf(entry));
     openRecord(recordIdOf(entry));
   };
   const { shown, hidden } = partitionBySignificance(entries);
+  // THE PAGE'S OWN HIDDEN COUNT WHERE THERE IS A PAGE, the window's where there is not — see the header.
+  const hiddenCount = shape === null ? hidden.length : shape.diffs.filter((bin) => !bin.passed).reduce((total, bin) => total + bin.count, 0);
   if (entries.length === 0) return <p data-stream-empty className="text-sm text-ink-muted">{t('emptyFiltered')}</p>;
   const drawn = revealed ? [...shown, ...hidden] : shown;
   return (
     <>
-      {/* The pane's declaration follows the list's own state: what is open is a reader's choice, so it is
-          client state and never a URL parameter — a record opened is not a filtered view. */}
-      <RecordSheetTab entries={entries} openId={openId} />
+      {/* ONE DECLARATION FOR THE WHOLE PAGE (§11 :452–:454, "a sheet may open one further sheet"). The
+          registry is REPLACED by each `DeclareTabs` — `RightPane.tsx` :44–:46, :66–:72 — so a second declarer
+          beside this one would erase whatever the first put there, and on `/research/corpus` the record sheet
+          and §27's three nested sheets are open at the same moment. The record's tab is built as a VALUE by
+          `useRecordTab` and the extraction slot contributes its own; this places them in the order a reader
+          opened them.
+          What is open is a reader's choice, so it is client state and never a URL parameter — a record opened
+          is not a filtered view. */}
+      <DeclareTabs tabs={[...(recordTab === null ? [] : [recordTab]), ...(extraction?.tabs ?? [])]} />
       <ul data-stream className="flex flex-col gap-2">
         {drawn.map((entry) =>
           entry.kind === 'CAPTURE' ? (
-            <CaptureRow key={`c-${entry.capture}-${entry.page.trackedUrlId}`} entry={entry} onOpen={open} />
+            <CaptureRow key={`c-${entry.capture}-${entry.page.trackedUrlId}`} entry={entry} onOpen={open} extraction={extraction} />
           ) : (
             <DiffCard key={`d-${entry.before}-${entry.after}-${entry.page.trackedUrlId}`} entry={entry} onOpen={open} />
           ),
@@ -173,7 +230,7 @@ export function Stream({ entries }: { entries: readonly CorpusEntry[] }) {
           }}
           className="self-start text-xs text-ink-muted underline"
         >
-          {t('hiddenCount', { count: hidden.length })}
+          {t('hiddenCount', { count: hiddenCount })}
         </button>
       )}
     </>

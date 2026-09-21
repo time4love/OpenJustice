@@ -2014,7 +2014,9 @@
       "captureAbsent": "אינה שם",
       "leftIn": "השינוי שבו הוסרה",
       "returnedIn": "השינוי שבו חזרה"
-    }
+    },
+    "filtersLabel": "סינון",
+    "allPages": "כל העמודים"
   },
   "opinion": {
     "label": "ניתוח AI — אינו מהווה קביעה שיפוטית"
@@ -2144,14 +2146,16 @@
         "PROPOSED": "הסבב האחרון: הצעה",
         "ASSESSED": "הסבב האחרון: הערכה",
         "CHOSEN": "הסבב האחרון: נבחר"
-      }
+      },
+      "openedNoRound": "נפתח בלי סבב"
     },
     "corpus": {
-      "heading": "הארכיון במספרים",
       "open": "הארכיון של החוקרים",
       "surveyed": "{count, plural, one {דף אחד נסקר} other {# דפים נסקרו}}",
       "rows": "{count, plural, one {שורה אחת} other {# שורות}}",
-      "stopsPending": "{count, plural, one {עצירה אחת ממתינה} other {# עצירות ממתינות}}"
+      "stopsPending": "{count, plural, one {עצירה אחת ממתינה} other {# עצירות ממתינות}}",
+      "acquired": "{count, plural, one {צילום אחד נרכש} other {# צילומים נרכשו}}",
+      "unfetched": "{count, plural, one {שורה אחת לא נשלפה} other {# לא נשלפו}}"
     },
     "outcome": {
       "UNFETCHED": "לא נשלף",

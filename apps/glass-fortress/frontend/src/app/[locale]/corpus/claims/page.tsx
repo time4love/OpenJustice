@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { readPublic } from '@/lib/api';
 import { parseClaims } from '@/lib/corpusBody';
-import { queryOf, readCorpusFilters, readCursor, writeClaimsQuery, writeCorpusQuery } from '@/lib/corpusQuery';
+import { corpusPath, queryOf, readCorpusFilters, readCursor, writeClaimsQuery, writeCorpusQuery } from '@/lib/corpusQuery';
 import { Claims } from '@/components/corpus/Claims';
 import { CorpusContextLine } from '@/components/corpus/CorpusContextLine';
 import { Link } from '@/i18n/navigation';
@@ -86,8 +86,13 @@ export default async function ClaimsPage({ params, searchParams }: PageParams) {
   return (
     <main className="page-column reading flex flex-col gap-3 py-4">
       <h1 className="text-lg text-ink">{t('title')}</h1>
-      {/* The facet is EMPTY because this read has none; the line draws the page chip from the filters. */}
-      <CorpusContextLine filters={carried} count={answer.entries.length} pages={[]} view="claims" />
+        {/* BOARD ט·ב: THE ONE WAY BACK, above the header — `corpus.allPages` returns to region 0, which is
+            where a page is chosen. It replaces the PAGE chip's removal: a chip per page put the whole corpus
+            in a scrolling row in front of one page's records. */}
+      <Link data-all-pages href={corpusPath('public')} className="self-start text-xs text-ink-muted underline">
+        {corpus('allPages')}
+      </Link>
+      <CorpusContextLine filters={carried} count={answer.entries.length} scope="public" view="claims" />
       {/* WHICH EMPTY THE VIEW MAY CLAIM. Only a read that ANSWERED, with no date chip narrowing it, has the
           standing to say "nothing was tracked on this page"; a 400 answered nothing, and a window with
           nothing in it says nothing about the page outside that window. */}

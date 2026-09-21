@@ -5,7 +5,7 @@ import { apiCallsMade, renderPage, setAuthState, setPathname, setPublicBodies, t
 import { ID_SHAPES, requireSubjects } from './scan';
 import { readCorpusFilters, readCorpusQuery, toReadParameters, writeCorpusQuery, writeReadQuery } from '../src/lib/corpusQuery';
 import { flaggedByClassifier, partitionBySignificance } from '../src/lib/corpusSignificance';
-import { corpusStream } from './fixtures/corpus/stream';
+import { corpusAtPageOne, corpusStream } from './fixtures/corpus/stream';
 
 // ---------------------------------------------------------------------------
 // corpus-stream — docs/gf-ui-flows.md §24 regions 1, 2, 4 and 5 (:748–:767) and :660–:666 (the two weights);
@@ -151,21 +151,40 @@ describe('corpus-stream', () => {
     const carried = hrefs.map((raw) => {
       const held = readCorpusFilters(new URLSearchParams(raw.split('?').at(1) ?? ''));
       // Every chip that is not the KIND chip must still carry `kind`, and every chip that is not the CITED
-      // chip must still carry `cited`; the two chips that DO own those parameters are the ones that remove them.
+      // chip must still carry `cited`; the chips that DO own those parameters are the ones that remove them.
       return { raw, keepsKind: held.kind === 'DIFF', keepsCited: held.cited === true };
     });
+    // THE WHOLE SET, BY VALUE, AND THE WORDS AS LITERALS (R63: a case that reads the catalogue drifts WITH
+    // it, so approved copy is pinned rather than looked up). Written first as three booleans, one of which was true by
+    // construction and therefore asserted nothing — the vacuity this repository names as its own. The pairs
+    // below say the same thing and cannot be satisfied by an expression that happens to short-circuit.
     expect({
-      chips: hrefs.length,
-      // The PAGE chips own neither parameter, so they must keep both — that is the whole property.
-      pageChipsKeepBoth: carried.slice(0, 2).every((one) => one.keepsKind && one.keepsCited),
-      // And the owning chips still remove their own: the two operations are the same one, with the field dropped.
+      // THREE CHIPS, NOT FIVE (board ט·ב, 2026-09-21): the PAGE PICKER is gone — a chip per page put the
+      // whole corpus in a scrolling row, and a page is chosen in region 0.
+      pairs: [...container.querySelectorAll('[data-chip]')].map((chip) => [chip.textContent, chip.getAttribute('href')]),
+      // And the two operations are still one: a chip that OWNS a parameter removes it, and every other chip
+      // carries it forward.
       someChipRemovesKind: carried.some((one) => !one.keepsKind),
       someChipRemovesCited: carried.some((one) => !one.keepsCited),
-    }).toEqual({ chips: 5, pageChipsKeepBoth: true, someChipRemovesKind: true, someChipRemovesCited: true });
+    }).toEqual({
+      pairs: [
+        // CAPTURE owns neither: it sets its own kind and CARRIES `cited`.
+        ['צילומים', '/he/corpus?kind=CAPTURE&cited=1'],
+        // DIFF is the kind in force, so pressing it REMOVES `kind` — and keeps `cited`.
+        ['שינויים', '/he/corpus?cited=1'],
+        // CITED is in force, so pressing it removes `cited` — and keeps `kind`.
+        ['מצוטטות', '/he/corpus?kind=DIFF'],
+      ],
+      someChipRemovesKind: true,
+      someChipRemovesCited: true,
+    });
   });
 
   it('EVERY CHIP IS A QUERY PARAMETER, AND THE ROUND TRIP IS AN IDENTITY — `lib/corpusQuery.ts` is CALLED, never re-spelled', async () => {
-    const container = await renderStream({ page: 'page-one' });
+    // A FILTER IS IN FORCE, and it has to be: since board ט·ב removed the page picker, `?page=` alone draws
+    // three chips of which NONE is active — so this case read as "no chip marks itself" and would have been
+    // satisfied by a page that never marks one. `cited=1` gives it a chip to find.
+    const container = await renderStream({ page: 'page-one', cited: '1' }, corpusAtPageOne);
     const chips = [...container.querySelectorAll('[data-chip]')];
     const hrefs = chips.map((chip) => chip.getAttribute('href') ?? '');
     // THE IDENTITY: every chip's own query, read back through the pure module and written out again, is the
@@ -181,8 +200,65 @@ describe('corpus-stream', () => {
       // The ACTIVE chip is the one the URL carries, and pressing it again REMOVES it — which is how §24's
       // region 5 shows "the filters … for removal".
       activeChips: container.querySelectorAll('[data-chip-active]').length,
-      removesOnSecondPress: hrefs.some((raw) => raw === '/he/corpus'),
-    }).toEqual({ chips: true, everyChipIsAQuery: true, roundTripsAreIdentities: true, activeChips: 1, removesOnSecondPress: true });
+      // Pressing the ACTIVE chip again removes ITS parameter and keeps the page, which is what a single-page
+      // view's filter row is for: the page is the subject and only the row filters come and go.
+      removesOnSecondPress: hrefs.some((raw) => raw === '/he/corpus?page=page-one'),
+      // AND THE PAGE ITSELF IS REMOVED BY THE ONE LINK, not by a chip (board ט·ב): back to region 0, where a
+      // page is chosen. A query on it would land on the stream, which is not region 0.
+      allPages: container.querySelector('[data-all-pages]')?.getAttribute('href'),
+      pageIsNotAChip: [...container.querySelectorAll('[data-chip]')].every((chip) => !(chip.textContent ?? '').includes('דף')),
+    }).toEqual({
+      chips: true,
+      everyChipIsAQuery: true,
+      roundTripsAreIdentities: true,
+      activeChips: 1,
+      removesOnSecondPress: true,
+      allPages: '/he/corpus',
+      pageIsNotAChip: true,
+    });
+  });
+
+  it('AN ACTIVE CHIP LOOKS ACTIVE — a VISIBLE difference, and the lens control`s own token (§24 :717)', async () => {
+    // F2. `Chip`'s `className` was byte-identical whether `active` was true or false, and the only thing that
+    // moved was `data-chip-active` — a TEST HOOK that three cases read and that no reader can see. §24 :717
+    // calls this row "the ACTIVE filters as chips", so a chip nobody can tell from an inactive one is the
+    // control not drawn; and the lens control in the SAME component already marks its current item, which
+    // made it two controls in one file disagreeing about how to say "this one is on".
+    //
+    // ASSERTED ON WHAT A READER MEETS — the class the chip carries and the `aria-current` a screen reader
+    // hears — and NEVER on `data-chip-active`, which is exactly the attribute that could not see the defect.
+    const container = await renderStream({ page: 'page-one', cited: '1' }, corpusAtPageOne);
+    const chips = requireSubjects('the chips of a filtered view', [...container.querySelectorAll('[data-chip]')]);
+    const on = chips.filter((chip) => chip.getAttribute('data-chip-active') === 'true');
+    const off = chips.filter((chip) => chip.getAttribute('data-chip-active') === null);
+    // THE LENS IS READ FROM A CROSS-PAGE VIEW, because board ט·ב does not draw the lens control inside a
+    // single-page view at all — so the token this chip is meant to match has to be fetched where it lives.
+    const lens = (await renderStream({ cited: '1' })).querySelector('[data-lens][aria-current]');
+    expect({
+      // TWO-SIDED BY CONSTRUCTION: one chip is on and the others are not, so "they all look the same" fails
+      // whichever way the sameness falls.
+      activeCount: on.length,
+      inactiveCount: off.length > 0,
+      // THE CLASSES DIFFER, and they differ in the token that carries the difference.
+      activeIsInked: on.every((chip) => (chip.getAttribute('class') ?? '').includes('text-ink') && !(chip.getAttribute('class') ?? '').includes('text-ink-muted')),
+      inactiveIsMuted: off.every((chip) => (chip.getAttribute('class') ?? '').includes('text-ink-muted')),
+      // THE DEFECT, STATED AS THE PROPERTY IT BROKE: no two chips of different states carry the same class.
+      sameClassEitherWay: on.some((chip) => off.some((other) => other.getAttribute('class') === chip.getAttribute('class'))),
+      // AND IT IS ANNOUNCED, not only drawn.
+      activeAriaCurrent: on.map((chip) => chip.getAttribute('aria-current')),
+      inactiveAriaCurrent: off.map((chip) => chip.getAttribute('aria-current')),
+      // NO NEW COLOUR AND NO NEW TOKEN: the chip uses the one the lens control in the same component uses.
+      lensToken: (lens?.getAttribute('class') ?? '').includes('text-ink'),
+    }).toEqual({
+      activeCount: 1,
+      inactiveCount: true,
+      activeIsInked: true,
+      inactiveIsMuted: true,
+      sameClassEitherWay: false,
+      activeAriaCurrent: ['true'],
+      inactiveAriaCurrent: [null, null],
+      lensToken: true,
+    });
   });
 
   it('THE LENS SET IS TWO — PAGES · CITED — and the SCOPE LABEL does not return', async () => {
@@ -200,7 +276,7 @@ describe('corpus-stream', () => {
   });
 
   it('THE PAGE MAKES EXACTLY ONE READ AND THE FILTERS ARE ITS PARAMETERS — §8, never a second read', async () => {
-    await renderStream({ page: 'page-one', kind: 'DIFF' });
+    await renderStream({ page: 'page-one', kind: 'DIFF' }, corpusAtPageOne);
     const calls = requireSubjects('reads made by the stream', apiCallsMade());
     expect({
       count: calls.length,
@@ -213,13 +289,13 @@ describe('corpus-stream', () => {
     // §24 region 4 and §26: the row opens THE RECORD, and since the shell gained a pane it is a TAB and not a
     // sheet of its own. Held as a value — WHICH record each row opens — because a tap that opened the same
     // record from every row would satisfy any count.
-    const container = await renderStream({ page: 'page-one' });
+    const container = await renderStream({ page: 'page-one' }, corpusAtPageOne);
     const taps = requireSubjects('row taps', [...container.querySelectorAll('[data-open-record]')]);
     const ids = taps.map((tap) => tap.getAttribute('data-open-record') ?? '');
     expect({
       // Every row has exactly one, captures and diffs alike — both weights open a record.
       tapsPerRow: [container.querySelectorAll('[data-capture-row] [data-open-record]').length, container.querySelectorAll('[data-diff-card] [data-open-record]').length],
-      // DISTINCT: five rows, five different records.
+      // DISTINCT: four rows, four different records.
       distinct: new Set(ids).size === ids.length,
       // IT IS A BUTTON AND NOT AN ANCHOR. The record is a pane tab, not a route, and an anchor would promise
       // a URL this act does not produce — the `no-door-before-it-exists` shape, one chunk early.
@@ -240,7 +316,9 @@ describe('corpus-stream', () => {
       // NO NESTED CONTROL — the copy and the „קרא עוד" reveal stay OUTSIDE the tap, because a control inside a
       // control is what `valid-nesting` refuses and what a browser resolves by guessing.
       noControlInsideTap: taps.every((tap) => tap.querySelector('button, a') === null),
-    }).toEqual({ tapsPerRow: [2, 3], distinct: true, allButtons: true, idNotShown: true, tapMatchesItsOwnRow: true, noControlInsideTap: true });
+      // TWO CAPTURES AND TWO DIFFS: the page-named body holds this page's rows only, and the gate hides two
+      // of its four diffs — which is also why the count line below has something to announce.
+    }).toEqual({ tapsPerRow: [2, 2], distinct: true, allButtons: true, idNotShown: true, tapMatchesItsOwnRow: true, noControlInsideTap: true });
   });
 
   it('AN UNPARSEABLE DATE IS NOT A FILTER — it is DROPPED before the wire, as `kind=BOGUS` already was', async () => {
@@ -248,12 +326,15 @@ describe('corpus-stream', () => {
     // the start and the two dates were not, and that asymmetry was the ONLY way a reader could put a value on
     // the wire that the route refuses — measured, `?since=garbage` earned a 400 and the page rendered a 500
     // before `readPublic` carried the state. The shape is the backend's own `DAY`, copied with its source named.
-    const container = await renderStream({ page: 'page-one', since: 'garbage' });
+    const container = await renderStream({ page: 'page-one', since: 'garbage' }, corpusAtPageOne);
     expect({
       // The bad value never reaches the read; the good filter beside it still does.
       wire: apiCallsMade().at(0)?.path,
-      // A DROPPED value is not a chip either, so nothing offers to remove a filter that is not in force.
+      // A DROPPED value is not a chip either, so nothing offers to remove a filter that is not in force —
+      // and since board ט·ב the PAGE is not a chip at all, so a view filtered to one page with a garbage
+      // date has NO active chip. The way back to region 0 is the link, asserted below.
       activeChips: [...container.querySelectorAll('[data-chip][data-chip-active="true"]')].length,
+      allPages: container.querySelector('[data-all-pages]')?.getAttribute('href'),
       // TWO-SIDED: a WELL-FORMED date is kept, so this is a parser and not a deletion.
       keepsAGoodDate: readCorpusFilters(new URLSearchParams({ since: '2022-01-01' })).since,
       dropsABadOne: readCorpusFilters(new URLSearchParams({ since: 'garbage' })).since,
@@ -268,7 +349,8 @@ describe('corpus-stream', () => {
       aloneItIsTheList: readCorpusQuery(new URLSearchParams({ since: 'garbage' })).view,
     }).toEqual({
       wire: '/api/corpus?page=page-one',
-      activeChips: 1,
+      activeChips: 0,
+      allPages: '/he/corpus',
       keepsAGoodDate: '2022-01-01',
       dropsABadOne: undefined,
       dropsAnUnpaddedDay: undefined,
@@ -282,7 +364,7 @@ describe('corpus-stream', () => {
     // Ruling (a): the card is ONE page's shape, so a stream reached by `?cited=1`, `?since=` or `?until=`
     // alone has no "the page" and begins under the chips. Two-sided, because a card drawn always and a card
     // drawn never both satisfy "there is a condition".
-    const withPage = await renderStream({ page: 'page-one' });
+    const withPage = await renderStream({ page: 'page-one' }, corpusAtPageOne);
     const withoutPage = await renderStream({ kind: 'DIFF' });
     const cited = await renderStream({ cited: '1' });
     expect({
@@ -303,24 +385,79 @@ describe('corpus-stream', () => {
     });
   });
 
-  it('THE STRIP DRAWS EVERY DIFF THE PAGE HAS, THE GATED ONES DIMMED, AND RINGS THE CITED CAPTURE (c, e, g)', async () => {
-    // The rendered half of what `time-strip` holds as arithmetic: that the marks reach the DOM at all, and
-    // that the gate's hidden rows are DRAWN here while they are hidden below. `de-emphasise, never hide`.
-    const container = await renderStream({ page: 'page-one' });
-    const bars = [...container.querySelectorAll('[data-strip-bar]')];
-    const dots = requireSubjects('strip dots', [...container.querySelectorAll('[data-strip-dot]')]);
-    const hiddenBelow = container.querySelector('[data-hidden-count]') !== null;
+  it('THE STRIP IS THE PAGE`S SHAPE AND NOT THE VIEW`S — four filters, one strip, measured on the real corpus (c, e, g)', async () => {
+    // THE DEFECT, MEASURED LIVE ON 2026-09-21 AND RULED THE SAME DAY (§24 :755). The card's text line came
+    // from the unfiltered facet while its strip was built from the filtered, cursor-windowed entries, so ONE
+    // ELEMENT CONTRADICTED ITSELF:
+    //
+    //   ?page=<corona>            „43 רשומות"   16 dots + 16 bars
+    //   …&kind=CAPTURE            „43 רשומות"   16 dots +  0 bars
+    //   …&kind=DIFF               „43 רשומות"    0 dots + 16 bars
+    //   …&kind=DIFF&cited=1       „43 רשומות"    0 dots +  0 bars
+    //
+    // THE CASE IS THAT TABLE. Each arm stages the body a real read answers — the entries NARROWED by the chip,
+    // the facet row carrying the page's whole `shape`, because the facet is computed before the filter — and
+    // the strip must come out the SAME every time. A strip built from `answer.entries` reproduces the table
+    // above; one built from the shape cannot, whatever the chip.
+    const shaped = (entries: typeof corpusAtPageOne.entries) => ({ ...corpusAtPageOne, entries });
+    const captures = corpusAtPageOne.entries.filter((entry) => entry.kind === 'CAPTURE');
+    const diffs = corpusAtPageOne.entries.filter((entry) => entry.kind === 'DIFF');
+    const strip = (container: HTMLElement) => ({
+      dots: [...container.querySelectorAll('[data-strip-dot]')].map((dot) => [dot.getAttribute('data-strip-count'), dot.getAttribute('data-strip-ringed')]),
+      bars: [...container.querySelectorAll('[data-strip-bar]')].map((bar) => [bar.getAttribute('data-strip-count'), bar.getAttribute('data-strip-dim')]),
+      // THE LINE AND THE STRIP ARE READ TOGETHER, because the defect was never "the strip is wrong" — it was
+      // the two disagreeing. A case reading only the marks would pass a page that drew the right strip under
+      // a count taken from somewhere else.
+      records: container.querySelector('[data-page-card] span')?.textContent?.includes('10 רשומות'),
+    });
+
+    const whole = strip(await renderStream({ page: 'page-one' }, corpusAtPageOne));
+    const capturesOnly = strip(await renderStream({ page: 'page-one', kind: 'CAPTURE' }, shaped(captures)));
+    const diffsOnly = strip(await renderStream({ page: 'page-one', kind: 'DIFF' }, shaped(diffs)));
+    const nothing = strip(await renderStream({ page: 'page-one', kind: 'DIFF', cited: '1' }, shaped([])));
+
+    // THE PAGE'S OWN MARKS, from `PAGE_ONE_SHAPE`: four capture bins holding 2 + 1 + 1 + 1 and four diff bins
+    // holding 1 + 1 + 1 + 2, the second capture bin cited and the last two diff bins below the gate. The
+    // counts are written as the DOM carries them — a count of one is not drawn at all (e).
+    const PAGE = {
+      dots: [['2', null], [null, 'true'], [null, null], [null, null]],
+      bars: [[null, null], [null, null], [null, 'true'], ['2', 'true']],
+      records: true,
+    };
+    expect({ whole, capturesOnly, diffsOnly, nothing }).toEqual({ whole: PAGE, capturesOnly: PAGE, diffsOnly: PAGE, nothing: PAGE });
+
+    // AND THE WINDOWS REALLY DID DIFFER, so the equality above is an assertion and not four readings of one
+    // body. Without this arm a page that ignored its own filters would satisfy every line of it.
     expect({
-      // The fixture's five diffs all reach the strip; the stream below hides the ones the gate catches.
-      barsDrawn: bars.length,
-      dimBars: bars.filter((bar) => bar.getAttribute('data-strip-dim') === 'true').length,
-      fullBars: bars.filter((bar) => bar.getAttribute('data-strip-dim') === null).length,
-      // The gate is still doing its job below, which is what makes "drawn above, hidden below" the assertion.
-      gateStillHidesBelow: hiddenBelow,
-      ringedDots: dots.filter((dot) => dot.getAttribute('data-strip-ringed') === 'true').length,
-      // TWO-SIDED on the ring: the fixture has one cited capture and one uncited.
-      unringedDots: dots.filter((dot) => dot.getAttribute('data-strip-ringed') === null).length,
-    }).toEqual({ barsDrawn: 5, dimBars: 2, fullBars: 3, gateStillHidesBelow: true, ringedDots: 1, unringedDots: 1 });
+      wholeWindow: corpusAtPageOne.entries.length,
+      capturesWindow: captures.length,
+      diffsWindow: diffs.length,
+      emptyWindow: 0,
+      // TWO-SIDED ON THE MARKS THEMSELVES: the strip is neither all-dim nor all-full, neither all-ringed nor
+      // all-plain, so „the same strip four times" is not the same BLANK strip four times.
+      someDim: PAGE.bars.some(([, dim]) => dim === 'true'),
+      someFull: PAGE.bars.some(([, dim]) => dim === null),
+      someRinged: PAGE.dots.some(([, ringed]) => ringed === 'true'),
+      somePlain: PAGE.dots.some(([, ringed]) => ringed === null),
+    }).toEqual({ wholeWindow: 6, capturesWindow: 2, diffsWindow: 4, emptyWindow: 0, someDim: true, someFull: true, someRinged: true, somePlain: true });
+  });
+
+  it('A FACET ROW WITH NO `shape` DRAWS NO STRIP — a loud absence, never a half-drawn one', async () => {
+    // §28: `shape` is null on every row of a read that names no page, because region 0 draws no strip. The
+    // card itself is ruled by (a) — `page` set — so the two conditions are different questions and this holds
+    // the second: given a card, a row with nothing to draw draws NOTHING, rather than an empty axis with its
+    // month labels, which would read as "this page never changed" — a claim about the corpus.
+    const shapeless = { ...corpusAtPageOne, pages: corpusAtPageOne.pages.map((row) => ({ ...row, shape: null })) };
+    const container = await renderStream({ page: 'page-one' }, shapeless);
+    expect({
+      card: container.querySelectorAll('[data-page-card]').length,
+      strip: container.querySelectorAll('[data-time-strip]').length,
+      months: container.querySelectorAll('[data-month-tick]').length,
+      marks: container.querySelectorAll('[data-strip-dot], [data-strip-bar]').length,
+      // THE CONTROL: the very same staging WITH a shape draws all four, so the zeroes above are the rule and
+      // not a page that failed to render.
+      withShape: (await renderStream({ page: 'page-one' }, corpusAtPageOne)).querySelectorAll('[data-time-strip]').length,
+    }).toEqual({ card: 1, strip: 0, months: 0, marks: 0, withShape: 1 });
   });
 
   it('A CITED CAPTURE ROW DRAWS THE CITED MARK — by the capture`s OWN `evidence`, which is what region 3 rings', async () => {
@@ -394,23 +531,27 @@ describe('corpus-stream', () => {
       rows: container.querySelectorAll('[data-entry]').length,
       // BOTH filters that were SENT are marked, and only those two — a two-sided floor, so a page marking
       // everything active passes no more than one marking nothing.
+      // Since board ט·ב the PAGE is not a chip, so only the FILTER that was sent is marked — and the page's
+      // own removal is the link, asserted below.
       activeCount: active.length,
+      allPages: container.querySelector('[data-all-pages]')?.getAttribute('href'),
       // Each one's link REMOVES its own parameter, which is what "for removal" means. The `since` chip's
       // href must not carry `since`, or pressing it re-sends the value that earned the 400.
       sinceChipDropsSince: active.some((chip) => !hrefOf(chip).includes('since=')),
       // The `since` that IS sent survives the round trip, so the chip above is removing a real filter.
       sinceReachedTheWire: apiCallsMade().at(0)?.path.includes('since=2022-01-01') === true,
-      pageChipDropsPage: active.some((chip) => !hrefOf(chip).includes('page=')),
+      pageIsNotAChip: chips.every((chip) => !(chip.textContent ?? '').includes('דף')),
       // NO ID AS TEXT: the page the facet could not return is labelled by the catalogue, never by its id.
       noIdInChips: chips.every((chip) => !(chip.textContent ?? '').includes('page-one')),
       hasWords: (container.querySelector('[data-stream-empty]')?.textContent ?? '').trim().length > 0,
     }).toEqual({
       empty: 1,
       rows: 0,
-      activeCount: 2,
+      activeCount: 1,
+      allPages: '/he/corpus',
       sinceChipDropsSince: true,
       sinceReachedTheWire: true,
-      pageChipDropsPage: true,
+      pageIsNotAChip: true,
       noIdInChips: true,
       hasWords: true,
     });

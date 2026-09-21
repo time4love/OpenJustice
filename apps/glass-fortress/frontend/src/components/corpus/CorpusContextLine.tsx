@@ -1,8 +1,7 @@
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { displayUrl } from '@/lib/format';
-import { writeClaimsQuery, writeCorpusQuery, type CorpusFilters } from '@/lib/corpusQuery';
-import type { PagesFacetRow } from '@/types/corpus';
+import { claimsPath, corpusPath, writeClaimsQuery, writeCorpusQuery, type CorpusFilters } from '@/lib/corpusQuery';
+import type { CorpusScope } from '@/types/corpus';
 
 // ---------------------------------------------------------------------------
 // REGION 1, WRITTEN FRESH — docs/gf-ui-flows.md §24 region 1 and region 2 (:748–:751); §25 :770 and :783.
@@ -61,85 +60,104 @@ export type ContextView = 'stream' | 'claims';
  * the claims branch cannot be reached without one; `writeCorpusQuery` is the stream's, and is what the PAGE
  * chip's exit uses.
  */
-function href(filters: CorpusFilters, view: ContextView): string {
+function href(filters: CorpusFilters, view: ContextView, scope: CorpusScope): string {
   if (view === 'claims' && filters.page !== undefined) {
     const { page, since, until } = filters;
-    return `/corpus/claims?${writeClaimsQuery({ page, ...(since === undefined ? {} : { since }), ...(until === undefined ? {} : { until }) }).toString()}`;
+    return `${claimsPath(scope)}?${writeClaimsQuery({ page, ...(since === undefined ? {} : { since }), ...(until === undefined ? {} : { until }) }).toString()}`;
   }
   const query = writeCorpusQuery(filters).toString();
-  return query === '' ? '/corpus' : `/corpus?${query}`;
+  const base = corpusPath(scope);
+  return query === '' ? base : `${base}?${query}`;
 }
 
-/** One chip: its label, and the link that ADDS or REMOVES it while leaving the others alone. */
-function Chip({ label, active, to, view }: { label: string; active: boolean; to: CorpusFilters; view: ContextView }) {
+/**
+ * One chip: its label, and the link that ADDS or REMOVES it while leaving the others alone.
+ *
+ * AN ACTIVE CHIP LOOKS ACTIVE, and until this round it did not: `className` was byte-identical either way and
+ * the only difference was `data-chip-active`, which is a TEST HOOK that three cases read and no reader can
+ * see. §24 :717 calls this row "the ACTIVE filters as chips", so a chip that cannot be told from an inactive
+ * one is the control not drawn. It also answers the researcher's "I can't get back": pressing an active chip
+ * has always removed its own parameter, and nothing said which was on.
+ *
+ * THE TOKEN IS THE LENS CONTROL'S OWN, from the same file — `text-ink` against `text-ink-muted` — because two
+ * controls in one component marking "this is the current one" two different ways is one rule with two
+ * implementations. `aria-current="true"` rather than the lens's `"page"`: a chip is a filter in force, not the
+ * page a reader is on.
+ */
+function Chip({ label, active, to, view, scope }: { label: string; active: boolean; to: CorpusFilters; view: ContextView; scope: CorpusScope }) {
   return (
-    <Link data-chip data-chip-active={active ? 'true' : undefined} href={href(to, view)} className="whitespace-nowrap rounded-full border border-line px-3 py-1 text-xs text-ink-muted">
+    <Link
+      data-chip
+      data-chip-active={active ? 'true' : undefined}
+      aria-current={active ? 'true' : undefined}
+      href={href(to, view, scope)}
+      className={`whitespace-nowrap rounded-full border border-line px-3 py-1 text-xs ${active ? 'text-ink' : 'text-ink-muted'}`}
+    >
       {label}
     </Link>
   );
 }
 
-export function CorpusContextLine({ filters, count, pages, view = 'stream' }: { filters: CorpusFilters; count: number; pages: readonly PagesFacetRow[]; view?: ContextView }) {
+/** The two date parameters, as a list, so the chips that draw them are one expression and not two. */
+const DATE_FILTERS = ['since', 'until'] as const;
+
+export function CorpusContextLine({ filters, count, scope, view = 'stream' }: { filters: CorpusFilters; count: number; scope: CorpusScope; view?: ContextView }) {
   const t = useTranslations('corpus');
   const active: LensId = filters.cited === true ? 'cited' : 'pages';
+  // A SINGLE-PAGE VIEW IS A DIFFERENT VIEW, and the whole of board ט·ב is this one predicate: when a page is
+  // in force the PAGE is the SUBJECT — named by the card above this row — so the row holds ROW FILTERS only,
+  // and the lens control, which names `/corpus`'s two doorways, would mark one of them current on a view that
+  // is neither.
+  const singlePage = filters.page !== undefined;
   const without = (field: keyof CorpusFilters): CorpusFilters => {
     const next = { ...filters };
     delete next[field];
     return next;
   };
+  // THE CHIPS AS A VALUE, so the row below can ask whether it holds any before it draws its own label.
+  //
+  // KIND AND CITED ARE `list_corpus`' PARAMETERS AND NOT `list_trajectories`' (§6.1 :237 against :247). Drawn
+  // on the claims view they would offer a reader a filter whose press earns a 400 from the route — so the
+  // controls are not drawn there at all, rather than drawn and disarmed.
+  const chips = [
+    ...DATE_FILTERS.filter((field) => filters[field] !== undefined).map((field) => (
+      <Chip key={field} label={t(`filters.${field}`)} active to={without(field)} view={view} scope={scope} />
+    )),
+    ...(view === 'stream'
+      ? [
+          <Chip key="capture" label={t('kind.capture')} active={filters.kind === 'CAPTURE'} to={filters.kind === 'CAPTURE' ? without('kind') : { ...filters, kind: 'CAPTURE' }} view={view} scope={scope} />,
+          <Chip key="diff" label={t('kind.diff')} active={filters.kind === 'DIFF'} to={filters.kind === 'DIFF' ? without('kind') : { ...filters, kind: 'DIFF' }} view={view} scope={scope} />,
+          <Chip key="cited" label={t('filters.cited')} active={filters.cited === true} to={filters.cited === true ? without('cited') : { ...filters, cited: true }} view={view} scope={scope} />,
+        ]
+      : []),
+  ];
   return (
     <div data-corpus-context className="mb-3 flex flex-col gap-2 border-b border-line pb-2">
       <span data-corpus-count className="text-xs text-ink-muted">{t('count', { count })}</span>
 
-      {/* THE CHIPS, one horizontally scrolling row (§24 :748). The scrolling is a LAYOUT property and no case
-          can hold it — jsdom computes none — so it is a browser reading; what the cases hold is that every
-          chip is a query parameter and that the round trip through the URL is an identity. */}
-      <div data-corpus-filters className="flex gap-2 overflow-x-auto" role="group" aria-label={t('filters.page')}>
-        {pages.map((page) => (
-          <Chip
-            key={page.trackedUrlId}
-            label={displayUrl(page.url)}
-            active={filters.page === page.trackedUrlId}
-            to={filters.page === page.trackedUrlId ? without('page') : { ...filters, page: page.trackedUrlId }}
-            view={view}
-          />
-        ))}
+      {/* ONE HORIZONTALLY SCROLLING ROW (§24 :748). The scrolling is a LAYOUT property and no case can hold
+          it — jsdom computes none — so it is a browser reading; what the cases hold is that every chip is a
+          query parameter and that the round trip through the URL is an identity.
 
-        {/* EVERY FILTER IN FORCE IS DRAWN, AND THE FACET IS NOT WHAT DECIDES THAT. The chips above are the
-            PICKER — one per page the read returned — and on a 400 the read returned none, so the page a
-            reader actually set had no chip at all and could not be removed. A2 gives the 400 state as "the
-            filters shown for removal", and the filters in force are `filters`, never the facet: a chip drawn
-            only when the answer came back is a chip that is missing exactly when it is needed.
+          THE ROW HOLDS ROW FILTERS ONLY (ui §24 :748 as RULED 2026-09-21): KIND · CITED · SINCE / UNTIL, under
+          a visible label. THE PAGE PICKER IS GONE — a chip per page put the whole corpus in a scrolling row in
+          front of one page's records, and a page is CHOSEN in region 0, which is the list built for choosing
+          one. The page in force is named by the card above and removed by the one link above that.
 
-            THE LABEL IS THE CATALOGUE'S, NEVER THE ID. A page the facet did not return has no url here, and
-            §4 forbids showing the `trackedUrlId`; `filters.page` („דף") is the approved word the chip group
-            already uses for this parameter, so nothing new is invented and no id reaches a reader.
-
-            SINCE and UNTIL get the same treatment and for the same reason — REMOVAL is not a picker. Chunk 5a
-            drew no date control because setting a date is its own drawing problem with no approved copy, and
-            that stands: these chips appear ONLY when the parameter is already in the URL, and their one act
-            is to take it out. Without them a reader who reached the 400 through `?since=` could press every
-            chip on the page and keep sending the value that caused it — measured on the real body, where all
-            three hrefs carried `since=garbage` forward. */}
-        {/* THE PAGE CHIP, and on the CLAIMS view it is always this one rather than a picker: that read
-            returns no facet, and a page is REQUIRED, so the chip in force is the only page there is. Its
-            removal is the one link that leaves the view, because there is no claims view without a page. */}
-        {filters.page !== undefined && (view === 'claims' || !pages.some((page) => page.trackedUrlId === filters.page)) ? (
-          <Chip label={t('filters.page')} active to={without('page')} view="stream" />
-        ) : null}
-        {filters.since === undefined ? null : <Chip label={t('filters.since')} active to={without('since')} view={view} />}
-        {filters.until === undefined ? null : <Chip label={t('filters.until')} active to={without('until')} view={view} />}
-        {/* KIND AND CITED ARE `list_corpus`' PARAMETERS AND NOT `list_trajectories`' (§6.1 :237 against
-            :247). Drawn on the claims view they would offer a reader a filter whose press earns a 400 from
-            the route — so the controls are not drawn there at all, rather than drawn and disarmed. */}
-        {view === 'stream' ? (
-          <>
-            <Chip label={t('kind.capture')} active={filters.kind === 'CAPTURE'} to={filters.kind === 'CAPTURE' ? without('kind') : { ...filters, kind: 'CAPTURE' }} view={view} />
-            <Chip label={t('kind.diff')} active={filters.kind === 'DIFF'} to={filters.kind === 'DIFF' ? without('kind') : { ...filters, kind: 'DIFF' }} view={view} />
-            <Chip label={t('filters.cited')} active={filters.cited === true} to={filters.cited === true ? without('cited') : { ...filters, cited: true }} view={view} />
-          </>
-        ) : null}
-      </div>
+          AND THE ROW IS DRAWN ONLY WHEN IT HOLDS A CONTROL. On the claims view with no date set it held its
+          label and nothing else — measured live on `/he/research/corpus/claims?page=<corona>`, where the whole
+          innerText of `data-corpus-filters` was „סינון" over zero chips — because that view draws neither KIND
+          nor CITED by design. A label over nothing tells a reader a control is there and then withholds it.
+          The condition is the chip list's own LENGTH rather than an enumeration of the views that have chips:
+          an enumeration is a second place to keep the list of chips right. */}
+      {chips.length === 0 ? null : (
+        <div data-corpus-filters className="flex items-baseline gap-2 overflow-x-auto" role="group" aria-label={t('filtersLabel')}>
+          <span data-filters-label className="whitespace-nowrap text-xs text-ink-muted">
+            {t('filtersLabel')}
+          </span>
+          {chips}
+        </div>
+      )}
 
       {/* WHAT IS STILL MISSING FOR SINCE AND UNTIL IS THE CONTROL THAT SETS THEM, and only that. §24 puts them
           in this row; a DATE is a value a reader supplies, and the picker that supplies it has no approved
@@ -147,11 +165,11 @@ export function CorpusContextLine({ filters, count, pages, view = 'stream' }: { 
           are honoured wherever they arrive in the URL, and as of this chunk both can be REMOVED once set —
           removal needs no picker, and without it the 400 they can cause had no way out. */}
 
-      {/* THE LENSES ARE `/corpus`'s TWO DOORWAYS (§25 :770) and neither of them is this view. Drawing the
-          control here would mark PAGES or CITED as `aria-current` on a page that is neither — an answer to
-          "where am I" that is wrong. The claims view is reached from a page's own card, and the PAGE chip
-          above is the way back. */}
-      {view === 'stream' ? (
+      {/* THE LENSES ARE `/corpus`'s TWO DOORWAYS (§25 :770), and neither of them is a SINGLE-PAGE view or the
+          claims view. Drawing the control on either would mark PAGES or CITED as `aria-current` on a page that
+          is neither — an answer to "where am I" that is wrong. The way back from one page is the
+          `corpus.allPages` link above its card (board ט·ב), never a chip and never a lens. */}
+      {view === 'stream' && !singlePage ? (
       <nav data-corpus-lenses className="flex flex-wrap gap-3 text-sm" aria-label={t('lenses')}>
         {LENSES.map((lens) =>
           lens.id === active ? (
@@ -159,7 +177,7 @@ export function CorpusContextLine({ filters, count, pages, view = 'stream' }: { 
               {t(`lens.${lens.id}`)}
             </span>
           ) : (
-            <Link key={lens.id} data-lens={lens.id} href={href(lens.filters, 'stream')} className="text-ink-muted underline">
+            <Link key={lens.id} data-lens={lens.id} href={href(lens.filters, 'stream', scope)} className="text-ink-muted underline">
               {t(`lens.${lens.id}`)}
             </Link>
           ),

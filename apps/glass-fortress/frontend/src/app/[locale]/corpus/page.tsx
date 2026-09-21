@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 import { readPublic, readUnfiltered } from '@/lib/api';
 import { parseCorpusPages, parseCorpusStream } from '@/lib/corpusBody';
-import { queryOf, readCorpusQuery, readCursor, toReadParameters, writeCorpusQuery, writeReadQuery, type CorpusFilters } from '@/lib/corpusQuery';
+import { corpusPath, queryOf, readCorpusQuery, readCursor, toReadParameters, writeCorpusQuery, writeReadQuery, type CorpusFilters } from '@/lib/corpusQuery';
 import { CorpusContextLine } from '@/components/corpus/CorpusContextLine';
 import { PagesList } from '@/components/corpus/PagesList';
 import { PageCard } from '@/components/corpus/PageCard';
@@ -126,16 +126,36 @@ export default async function CorpusPage({ params, searchParams }: PageParams) {
     return (
       <main className="page-column flex flex-col gap-3 py-4">
         <h1 className="text-lg text-ink">{t('title')}</h1>
-        <CorpusContextLine filters={query.filters} count={answer.entries.length} pages={answer.pages} />
-        {/* REGION 3, and ruling (a) is the whole of this condition: the card is ONE page's shape, so a stream
-            reached by `?cited=1`, `?since=` or `?until=` alone carries none and begins under the chips. The
-            facet is what supplies the url and the interval, so a filter naming a page this scope cannot see
-            draws no card either — and that is the same 404 the stream already renders as its empty state.
-            It is handed EVERY entry, not the gate's survivors: (g) draws all 21 of the real page's diffs and
-            dims the 13 the gate hides, so passing `Stream`'s shown set would silently make the strip
-            "the shape the classifier approved". */}
-        {card === undefined ? null : <PageCard page={card} entries={answer.entries} />}
-        <Stream entries={answer.entries} />
+        {/* BOARD ט·ב: THE ONE WAY BACK, above the header — `corpus.allPages` returns to region 0, which is
+            where a page is chosen. It replaces the PAGE chip's removal: a chip per page put the whole corpus
+            in a scrolling row in front of one page's records.
+
+            THE CONDITION IS THE FILTER IN FORCE, NOT THE CARD. On a 400 the read returned no facet, so there
+            is no card — and that is exactly the moment a reader most needs to take the page off, because the
+            page is how they reached the refusal. A link drawn only when the answer came back is a link that
+            is missing exactly when it is needed, which is the defect the page CHIP was written against and
+            which this must not re-introduce. */}
+        {query.filters.page === undefined ? null : (
+          <Link data-all-pages href={corpusPath('public')} className="self-start text-xs text-ink-muted underline">
+            {t('allPages')}
+          </Link>
+        )}
+        {/* THE PAGE CARD IS THE FIRST ELEMENT OF A SINGLE-PAGE VIEW (§24 :752 as RULED 2026-09-21) — a header
+            that says the view is ONE page's, above the filters rather than below them. Ruling (a) still holds
+            the condition: the card is ONE page's shape, so a stream reached by `?cited=1`, `?since=` or
+            `?until=` alone carries none and begins at the filters. The facet supplies the url and the
+            interval, so a filter naming a page this scope cannot see draws no card either — the same 404 the
+            stream already renders as its empty state.
+
+            IT IS HANDED THE FACET ROW AND NOTHING ELSE (§24 :755, ruled 2026-09-21). The strip's source is
+            that row's own `shape`, computed with the read and BEFORE the filter and the cursor — so this page
+            cannot hand the card a window even by accident, which is what it used to do. */}
+        {card === undefined ? null : <PageCard page={card} scope="public" />}
+        <CorpusContextLine filters={query.filters} count={answer.entries.length} scope="public" />
+        {/* THE HIDDEN-COUNT LINE READS THE SAME SHAPE THE STRIP DOES, for the same reason: on a single-page
+            view „N מוסתרים" is the PAGE's figure and not this window's. With no page there is no shape and
+            the line stays the window's, which is all a cross-page stream knows. */}
+        <Stream entries={answer.entries} shape={card?.shape ?? null} />
         {/* „טען חדשים יותר" — §24 region 4's forward control, and the ONE the read can serve. MEASURED on the
             running backend: the window is OLDEST FIRST (23.12.2021 → 17.3.2022 at `limit=10`) and the cursor
             advances toward NEWER, so forward is „newer" and this control belongs at the FOOT of the stream.

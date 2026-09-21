@@ -93,7 +93,9 @@ describe('/research — the four regions', () => {
         'תוכן שצוטט וזז',
         'תזות',
         'מסגורים',
-        'הארכיון במספרים',
+        // BOARD ב, 2026-09-21: „הארכיון במספרים" named a list of numbers region 4 no longer draws, and the
+        // key left both catalogues in the same change. The door's own title stands in its place here.
+        'הארכיון של החוקרים',
         'היקף',
         'שלי',
         'של כולם',
@@ -319,19 +321,66 @@ describe('/research — the four regions', () => {
     }
   });
 
-  it('RD-6 THE CORPUS REGION IS `list_pages` SUMMED — the pages, the rows per outcome, the stops, as TEXT', async () => {
+  it('RD-6 REGION 4 IS ONE DOOR CARD — its title is the link, and its summary line is the four approved plurals', async () => {
     const { container, fetching } = await dashboard(WHOLE);
     try {
-      expect(container.querySelector('[data-corpus-surveyed]')?.textContent).toBe('3 דפים נסקרו');
-      expect(container.querySelector('[data-corpus-rows]')?.textContent).toBe('58 שורות');
-      expect(container.querySelector('[data-corpus-stops]')?.textContent).toBe('עצירה אחת ממתינה');
-      expect(container.querySelector('[data-stop-pending]')?.textContent).toBe('עצירה ממתינה; היא נפתרת בשיחה');
-      // A PENDING STOP IS TEXT AND NEVER THE MARKING LINK (MARKING :576–:578; §31 :925) — and the URL is in
-      // the fixture, so the absence is over something.
+      const card = container.querySelector('[data-corpus-card]');
+      if (card === null) throw new Error('region 4 drew no door card');
+      // THE TEXT-NODE SET, BY VALUE (R65's M4): a number changed, a word added or a separator lost reddens
+      // here, where a case reading one attribute at a time would not see any of them.
+      const nodes = textNodes(card)
+        .map((node) => (node.textContent ?? '').replace(/\s+/gu, ' ').trim())
+        .filter((text) => text !== '');
+      expect(nodes).toEqual([
+        'הארכיון של החוקרים',
+        '3 דפים נסקרו',
+        '·',
+        '26 צילומים נרכשו',
+        '·',
+        '4 לא נשלפו',
+        '·',
+        'עצירה אחת ממתינה',
+      ]);
+      // THE TITLE IS THE DOOR (Q-H) and the card holds exactly one anchor — the page that landed beside it.
+      expect([...card.querySelectorAll('a')].map((anchor) => anchor.getAttribute('href'))).toEqual(['/he/research/corpus']);
+      // THE PER-OUTCOME LIST LEFT `/research` for the page it describes; a breakdown on the door was seven
+      // lines of arithmetic in front of one link.
+      expect(container.querySelectorAll('[data-outcome]').length).toBe(0);
+      // A PENDING STOP IS A NUMBER HERE AND NEVER THE MARKING LINK (MARKING :576–:578; §31 :925) — and the
+      // URL is in the fixture, so the absence is over something.
       expect(articleRules.pendingStop?.markingUrl).toContain('article-rules');
       expect([...container.querySelectorAll('a')].map((anchor) => anchor.getAttribute('href') ?? '')).not.toContain(
         articleRules.pendingStop?.markingUrl,
       );
+    } finally {
+      fetching.restore();
+    }
+  });
+
+  it('RD-11 A FRAMING WITH NO ROUND IS NOT A FRAMING THAT PRODUCED NO THESIS — board ב`s two arms, both pinned', async () => {
+    const { container, fetching } = await dashboard(WHOLE);
+    try {
+      const rowFor = (id: string): Element => {
+        const row = container.querySelector(`[data-framing-row="${id}"]`);
+        if (row === null) throw new Error(`no framing row for ${id}`);
+        return row;
+      };
+      expect({
+        // `framing-4`: rounds 0, no thesis — it has not been WORKED ON, which „עדיין לא הוליד תזה" misstates.
+        noRound: (rowFor('framing-4').querySelector('[data-framing-no-round]')?.textContent ?? '').trim(),
+        noRoundAlsoSaysNoThesis: rowFor('framing-4').querySelectorAll('[data-framing-no-thesis]').length,
+        // `framing-3`: one round, no thesis — the fact §12 :1163 asks be shown, and it is unchanged.
+        withRounds: (rowFor('framing-3').querySelector('[data-framing-no-thesis]')?.textContent ?? '').trim(),
+        withRoundsAlsoSaysNoRound: rowFor('framing-3').querySelectorAll('[data-framing-no-round]').length,
+        // `framing-1`: rounds AND a thesis — neither word belongs on it.
+        attached: rowFor('framing-1').querySelectorAll('[data-framing-no-round], [data-framing-no-thesis]').length,
+      }).toEqual({
+        noRound: 'נפתח בלי סבב',
+        noRoundAlsoSaysNoThesis: 0,
+        withRounds: 'עדיין לא הוליד תזה',
+        withRoundsAlsoSaysNoRound: 0,
+        attached: 0,
+      });
     } finally {
       fetching.restore();
     }

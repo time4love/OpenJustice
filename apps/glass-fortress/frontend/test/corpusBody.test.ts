@@ -31,7 +31,16 @@ import { claimsAnswer, claimsUndetected } from './fixtures/corpus/claims';
 // ---------------------------------------------------------------------------
 
 /** A facet row the appendix fully specifies (§28 :792), used whole and then damaged one field at a time. */
-const WHOLE = { trackedUrlId: 'page-one', url: 'https://example.gov/one/', public: true, first: '20211223211940', last: '20220211120000', entries: 4 };
+const WHOLE = { trackedUrlId: 'page-one', url: 'https://example.gov/one/', public: true, first: '20211223211940', last: '20220211120000', entries: 4, shape: null };
+
+/** The same row as a read that NAMES this page answers it — §28's `shape`, in days and never in pixels. */
+const WITH_SHAPE = {
+  ...WHOLE,
+  shape: {
+    captures: [{ day: '20211223', count: 2, cited: true }],
+    diffs: [{ before: '20211223', after: '20220211', count: 1, chunks: 5, passed: false }],
+  },
+};
 
 const without = (field: keyof typeof WHOLE): Record<string, unknown> => {
   const row: Record<string, unknown> = { ...WHOLE };
@@ -46,6 +55,33 @@ describe('corpus-body', () => {
     // And the fixture the whole suite leans on parses too: a fixture that its own parser rejects is a fixture
     // every later case is green over for the wrong reason.
     expect(parseCorpusPages(corpusStream)).toHaveLength(corpusStream.pages.length);
+  });
+
+  it('THE `shape` PARSES IN FULL — the bins are read as the wire sends them, in DAYS and with their counts', () => {
+    const parsed = requireSubjects('the parsed facet', parseCorpusPages({ entries: [], pages: [WITH_SHAPE], nextCursor: null })).at(0);
+    expect(parsed).toEqual(WITH_SHAPE);
+    // AND THE DAYS STAY EIGHT DIGITS. `timeStrip.dayOf` slices `0..8`, so a parser that "helpfully" widened a
+    // day to the 14-digit archive name would still position every mark correctly and would still be a drift.
+    expect({
+      day: parsed?.shape?.captures.at(0)?.day.length,
+      before: parsed?.shape?.diffs.at(0)?.before.length,
+      // THE TWO FIELDS A DEFAULT WOULD HAVE DECIDED SILENTLY: a bin's count and its gate verdict.
+      count: parsed?.shape?.captures.at(0)?.count,
+      passed: parsed?.shape?.diffs.at(0)?.passed,
+    }).toEqual({ day: 8, before: 8, count: 2, passed: false });
+  });
+
+  it('A MISSING `shape` THROWS — `null` is a read that named no page, an ABSENT key is a body that drifted', () => {
+    // THE TWO ARE DIFFERENT FACTS AND THE PARSER MAY NOT CONFLATE THEM. §28 makes `shape` null on every row of
+    // a read that names no page, and region 0 draws no strip — so `null` must parse. A body that STOPPED
+    // sending the field would then read as "no page was named" on a single-page view, and region 3 would
+    // vanish with nothing said: the silent half this module exists to refuse.
+    //
+    // MEASURED ON THE RUNNING BACKEND, both arms: `?page=<corona>` answers a `shape` object, and the bare read
+    // answers the key with `null` in it. Neither omits it.
+    expect(() => parseCorpusPages({ entries: [], pages: [without('shape')], nextCursor: null })).toThrow('pages[0].shape expected an object');
+    // THE CONTROL: `null` is accepted, so the throw above is about the key and not about the field.
+    expect(requireSubjects('the parsed facet', parseCorpusPages({ entries: [], pages: [WHOLE], nextCursor: null })).at(0)?.shape).toBeNull();
   });
 
   it('A MISSING `public` THROWS AND NAMES THE FIELD — it never defaults to `true`, which would publish a surveyed page', () => {
@@ -78,8 +114,8 @@ describe('corpus-body', () => {
       }
     });
     expect({ count: fields.length, thrown }).toEqual({
-      count: 6,
-      thrown: ['trackedUrlId: named', 'url: named', 'public: named', 'first: named', 'last: named', 'entries: named'],
+      count: 7,
+      thrown: ['trackedUrlId: named', 'url: named', 'public: named', 'first: named', 'last: named', 'entries: named', 'shape: named'],
     });
   });
 

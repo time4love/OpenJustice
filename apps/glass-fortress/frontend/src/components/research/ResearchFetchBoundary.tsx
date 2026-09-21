@@ -84,7 +84,28 @@ export function ResearchDoor({ states, children }: { states: readonly AsyncState
   return <>{children}</>;
 }
 
-export function ResearchFetchBoundary<T>({ state, children }: { state: AsyncState<ResearchRead<T>>; children: (body: T) => ReactNode }): ReactNode {
+/**
+ * WHAT A 400 RENDERS, AND WHY IT IS A PROP RATHER THAN A BRANCH IN HERE.
+ *
+ * A2 :1149 gives the 400 ONE rendering on both doors — "the filters shown for removal" — and the read view's
+ * §27 pages are the first of its pages to send a filter at all. What the removal controls ARE is the corpus's
+ * own context line, which this module must not know about: a boundary that imported the chips would be the
+ * gated door's generic state machine depending on one page's furniture.
+ *
+ * SO THE CALLER OPTS IN, AND THE DEFAULT STAYS LOUD. A read that sends no parameter cannot legitimately meet
+ * a 400 — the platform built a malformed URL — and for those this still throws by name rather than drawing a
+ * region a reader cannot act on (`readUnfiltered`'s ruling, `lib/api.ts` :205–:213).
+ */
+export function ResearchFetchBoundary<T>({
+  state,
+  refused,
+  children,
+}: {
+  state: AsyncState<ResearchRead<T>>;
+  /** The filters in force, drawn for removal — supplied only by a page that sends filters (A2 :1149). */
+  refused?: ReactNode;
+  children: (body: T) => ReactNode;
+}): ReactNode {
   const t = useTranslations();
 
   if (state.status === 'idle' || state.status === 'loading') {
@@ -123,9 +144,10 @@ export function ResearchFetchBoundary<T>({ state, children }: { state: AsyncStat
       // second and third and fourth copy of one sentence.
       return null;
     case 'FILTERS_REFUSED':
-      // THE READ VIEW'S OWN PAGES SEND NO FILTER, so a refused parameter here is the platform building a
-      // malformed URL — a defect, not a state (`readUnfiltered`'s ruling, `lib/api.ts` :205–:213). It throws by
-      // name rather than drawing a region a reader cannot act on. The filter-bearing corpus reads are §27's.
-      throw new Error('research boundary: a read this page sends no filters to answered 400');
+      // A READ THAT SENDS NO FILTER CANNOT LEGITIMATELY MEET A 400 — that is the platform building a malformed
+      // URL, a defect and not a state, and it throws by name. A read that DOES send filters (§27's corpus
+      // pages) hands in what to draw instead, which A2 :1149 says is the filters shown for removal.
+      if (refused === undefined) throw new Error('research boundary: a read this page sends no filters to answered 400');
+      return <>{refused}</>;
   }
 }

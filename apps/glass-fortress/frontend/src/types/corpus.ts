@@ -66,6 +66,44 @@ export interface CorpusPage {
   public: boolean;
 }
 
+/**
+ * One DAY of the page's captures, merged (§24 :755) — `day` is `YYYYMMDD`, eight digits.
+ *
+ * THE UNIT IS THE DAY BECAUSE THE STRIP'S UNIT IS THE DAY: `timeStrip`'s own `dayOf` reads the first eight
+ * characters of a capture's 14-digit archive name and discards the rest, so an instant on the wire would be
+ * precision the instrument throws away.
+ */
+export interface CaptureBin {
+  day: string;
+  /** How many CAPTURES fell on that day — never how many bins, which is what a merged mark must still sum. */
+  count: number;
+  /** ANY capture in the bin carries its own `evidence` — ruling (c)'s reading, and (e)'s ring on a merge. */
+  cited: boolean;
+}
+
+/** One `(before-day, after-day)` pair's diffs, merged — both `YYYYMMDD`. */
+export interface DiffBin {
+  before: string;
+  after: string;
+  count: number;
+  /** THE BIN'S MAXIMUM chunk count, never their sum (ruling (e)): a sum draws a magnitude no change has. */
+  chunks: number;
+  /** ANY diff in the bin passed the significance gate — the tone mirrors the ring's ANY, for (g)'s reason. */
+  passed: boolean;
+}
+
+/**
+ * ONE PAGE'S WHOLE SHAPE OVER TIME — what region 3's strip is drawn from, and the page's, never the view's.
+ *
+ * IT CARRIES DAYS AND NEVER GEOMETRY (§24 :755). No pixels, no midpoint, no merge: those are the drawing's
+ * and they live in `lib/timeStrip.ts`. What the wire owns is WHAT HAPPENED; what the component owns is where
+ * it lands.
+ */
+export interface PageShape {
+  captures: CaptureBin[];
+  diffs: DiffBin[];
+}
+
 /** One row of the `pages` FACET (§28 :751–:753) — the pages list's only legal source at `public`. */
 export interface PagesFacetRow extends CorpusPage {
   /** The first and last snapshot dates in scope — an INTERVAL, which is how a page is shown (§4 :169). */
@@ -73,6 +111,17 @@ export interface PagesFacetRow extends CorpusPage {
   last: string;
   /** How many records the scope holds for this page. */
   entries: number;
+  /**
+   * The page's shape over time, PRESENT ONLY ON THE PAGE A READ NAMES and `null` on every other row.
+   *
+   * IT IS THE STRIP'S ONLY SOURCE (§24 :755, ruled 2026-09-21). The card's text line was already the facet's
+   * while its strip was built from the FILTERED, cursor-windowed entries, so one element contradicted itself:
+   * measured on the real corpus, `?page=<corona>` drew „43 רשומות" over 16 dots and 16 bars, `&kind=DIFF`
+   * the same line over an empty half. The facet is computed BEFORE the filter and before the cursor's slice,
+   * so a shape read from here cannot be narrowed by either — and `null` draws NO strip rather than a partial
+   * one, which is a loud absence instead of a silent half.
+   */
+  shape: PageShape | null;
 }
 
 /** A capture's anchor (A4 :1083–:1084). `attributed` is the ATTRIBUTED mark; it is never a failure. */

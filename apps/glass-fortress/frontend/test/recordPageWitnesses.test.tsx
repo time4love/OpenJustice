@@ -434,7 +434,14 @@ describe('record-page-witnesses — the reading region', () => {
    * from the one set of pages this step adds. So they are a named subject with their own floor, exactly as
    * the record pages are.
    */
-  const RESEARCH_PAGES = ['src/app/[locale]/research/page.tsx'] as const;
+  const RESEARCH_PAGES = [
+    'src/app/[locale]/research/page.tsx',
+    // UI-8 chunk 5, NAMED as the clause requires: both put a body in front of someone to READ, and both are a
+    // thin server shell over a client body — so the `READ_COMPONENTS` detector cannot see their reads and the
+    // opt-in could be dropped from either without a red case anywhere.
+    'src/app/[locale]/research/corpus/page.tsx',
+    'src/app/[locale]/research/corpus/claims/page.tsx',
+  ] as const;
 
   /** The pages whose EVERY return is a read — this chunk's three, asserted per branch. */
   const RECORD_PAGES = [
@@ -525,7 +532,8 @@ describe('record-page-witnesses — the reading region', () => {
       return optedInMains(file) < mains;
     });
     expect(researchMissing).toEqual([]);
-    expect(researchBranches).toBe(1);
+    // THE FLOOR, MOVED BY TWO: one `<main>` per read-view page, each with `reading` on it.
+    expect(researchBranches).toBe(3);
   });
 });
 

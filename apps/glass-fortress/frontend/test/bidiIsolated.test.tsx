@@ -5,7 +5,9 @@ import {
   ancestorsOf,
   renderClaimsWithSheet,
   renderPage,
-  renderResearchDashboard,
+  snapshotResearchClaims,
+  snapshotResearchCorpus,
+  snapshotResearchDashboard,
   setAuthState,
   setPathname,
   setPublicBodies,
@@ -118,7 +120,14 @@ async function allPages(locale: Locale): Promise<{ name: string; container: HTML
     // UI-8 chunk 4: `/research` composes a DATE into a Hebrew sentence in every owed entry („פתוח מ־{date}")
     // and names each record by its capture dates — so it carries the shape this scan exists for, and it is
     // the first GATED page to join the set.
-    { name: '/research', container: await renderResearchDashboard(locale) },
+    { name: '/research', container: await snapshotResearchDashboard(locale) },
+    // UI-8 chunk 5: `/research/corpus` composes an INTERVAL of two formatted dates into a Hebrew row, and the
+    // extraction sheet composes „הושווה לצילום מ־{date}" — a Hebrew sentence with a date at its end, which is
+    // the exact shape R67's M5 was ruled on. The claims lens at `all` carries the same dated words its public
+    // twin does, on a page whose rows include one no reader may open.
+    { name: '/research/corpus', container: await snapshotResearchCorpus(locale) },
+    { name: '/research/corpus (the stream, the sheet three deep)', container: await snapshotResearchCorpus(locale, { searchParams: { page: 'page-one' }, depth: 3 }) },
+    { name: '/research/corpus/claims', container: await snapshotResearchClaims(locale) },
   ];
 }
 

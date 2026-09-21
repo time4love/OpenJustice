@@ -2,11 +2,14 @@ import { createElement, type ComponentType, type ReactElement, type ReactNode } 
 import { act, fireEvent, render, type RenderResult } from '@testing-library/react';
 import { NextIntlClientProvider, createTranslator, type AbstractIntlMessages } from 'next-intl';
 import type { ResearcherProfile } from '@/context/AuthContext';
+import type { CorpusEntry } from '@/types/corpus';
 import { routing } from '@/i18n/routing';
-import { RightPane, TabsProvider } from '@/components/shell/RightPane';
+import { DeclareTabs, RightPane, TabsProvider } from '@/components/shell/RightPane';
+import { useRecordTab } from '@/components/corpus/RecordSheet';
 import { messageCatalogs, requireSubjects } from './scan';
 import { claimsAnswer } from './fixtures/corpus/claims';
-import { evidenceReviews, framings, pages as pagesFixture, thesesList, thesisReviewsOwed } from './fixtures/research/reads';
+import { articleRules, captures, evidenceReviews, framings, pages as pagesFixture, ruleHistory, thesesList, thesisReviewsOwed } from './fixtures/research/reads';
+import { claimsAtAll, corpusAtAll, corpusAtAllAtPageOne } from './fixtures/research/corpusAll';
 
 // ---------------------------------------------------------------------------
 // RENDER-SCAN HELPERS FOR THE FRONTEND'S INSTRUMENTS (docs/gf-ui-refactor-plan.md
@@ -400,6 +403,21 @@ export function globalFetchDouble(answers: Record<string, { status: number; body
   };
 }
 
+/**
+ * THE ONE RECORD TAB, DECLARED — a HARNESS affordance, for the two instruments that render a sheet ALONE.
+ *
+ * From UI-8 chunk 5 a PAGE makes exactly one declaration: `DeclareTabs` REPLACES the registry
+ * (`RightPane.tsx` :44–:46, :66–:72), and `/research/corpus` has the record sheet and §27's three nested
+ * sheets open at the same moment, so the stream composes them all and `useRecordTab` returns a VALUE.
+ * `record-content-is-one` and `sheet-reads-on-open` render one sheet with no stream around it, which is the
+ * right subject for both — what they need is a declarer, and it belongs here rather than as a component
+ * under `src/` that nothing in the app would call.
+ */
+export function DeclareRecordTab({ entries, openId }: { entries: readonly CorpusEntry[]; openId: string | null }) {
+  const tab = useRecordTab(entries, openId);
+  return <DeclareTabs tabs={tab === null ? [] : [tab]} />;
+}
+
 /** What a page render answers: the one 404, or the rendered tree. */
 export type PageRender = { notFound: true } | ({ notFound: false } & RenderResult);
 
@@ -507,7 +525,10 @@ export async function renderResearchDashboard(locale: Locale = routing.defaultLo
     '/api/research/evidence-reviews': { status: 200, body: evidenceReviews },
     '/api/research/theses': { status: 200, body: thesesList },
     '/api/research/framings': { status: 200, body: framings },
-    '/api/research/pages': { status: 200, body: pagesFixture },
+    // A CROSS-PAGE STREAM at `all`, reached by a date: the body holding BOTH pages' rows belongs to a read that
+  // names no page, and its facet therefore carries no shape.
+  '/api/research/corpus?since=2021-01-01': { status: 200, body: corpusAtAll },
+  '/api/research/pages': { status: 200, body: pagesFixture },
   };
   window.localStorage.setItem('gf_access_token', JSON.stringify({ accessToken: 'scan-token', refreshToken: null, expiresAt: null }));
   // THE PATHNAME IS THE HELPER'S, because the page's DOOR calls `useRouter` (§13 :474's 401 is an act) and
@@ -539,6 +560,206 @@ export async function renderResearchDashboard(locale: Locale = routing.defaultLo
     }
     return rendered.container;
   } finally {
+    gatedUrls.push(...fetching.calls.map(({ url }) => url));
     fetching.restore();
   }
+}
+
+/**
+ * THE GATED READS `/research/corpus` AND `/research/corpus/claims` MEET — one answer table, both helpers.
+ *
+ * The extraction sheet's three reads are here even though nothing fetches them on arrival: they are IDLE
+ * until a reader opens a sheet (`ExtractionSheet.tsx`), and a case that opens one needs the answer staged
+ * BEFORE the press rather than a second staging mid-case.
+ */
+const GATED_CORPUS_ANSWERS: Record<string, { status: number; body?: unknown }> = {
+  '/api/research/corpus': { status: 200, body: corpusAtAll },
+  // A READ THAT NAMES A PAGE GETS THE PAGE-NAMED BODY: one facet row, carrying §28's `shape`. Staging
+  // `corpusAtAll` here would stage a body the backend never answers — every row's `shape` null on a read that
+  // named one — and region 3 would draw no strip on the very view it exists for.
+  '/api/research/corpus?page=page-one': { status: 200, body: corpusAtAllAtPageOne },
+  // A CROSS-PAGE STREAM at `all`, reached by a date: the body holding BOTH pages' rows belongs to a read that
+  // names no page, and its facet therefore carries no shape.
+  '/api/research/corpus?since=2021-01-01': { status: 200, body: corpusAtAll },
+  '/api/research/pages': { status: 200, body: pagesFixture },
+  '/api/research/pages/page-one/captures': { status: 200, body: captures },
+  '/api/research/pages/page-one/rules': { status: 200, body: articleRules },
+  '/api/research/pages/page-one/rules/rule-1/history': { status: 200, body: ruleHistory },
+  '/api/research/pages/page-two/captures': { status: 200, body: captures },
+  '/api/research/pages/page-two/rules': { status: 200, body: articleRules },
+  '/api/research/pages/page-two/rules/rule-1/history': { status: 200, body: ruleHistory },
+  '/api/research/corpus/claims?page=page-one': { status: 200, body: claimsAtAll },
+};
+
+/** The bearer and the pathname every gated page needs before its client body will read anything. */
+function stageGatedSession(locale: Locale, path: string): void {
+  // A FRESH VISIT, and the clear is load-bearing. The pane's open layer and its ACTIVE TAB are browser-local
+  // (`shell/localState.ts`), so a case that renders the page twice would start the second render on the tab
+  // the first one left open — mounting a sheet nobody pressed and issuing its read. Measured on 2026-09-21,
+  // while counting §27's on-demand reads.
+  window.localStorage.clear();
+  window.localStorage.setItem('gf_access_token', JSON.stringify({ accessToken: 'scan-token', refreshToken: null, expiresAt: null }));
+  // The DOOR calls `useRouter` (§13 :474's 401 is an act) and next-intl's router reads `usePathname`, which
+  // the navigation double refuses until a case sets it. A caller that had to remember this would forget it.
+  setPathname(`/${locale}${path}`);
+}
+
+const gatedUrls: string[] = [];
+
+/**
+ * EVERY URL THE LAST GATED RENDER ASKED FOR, in order — the `apiCallsMade()` precedent, for the door that
+ * does not go through `lib/api`'s reader.
+ *
+ * It is what makes "opened only on demand" (§27 :871) a MEASUREMENT rather than a promise: the three
+ * extraction reads are absent from this list until the sheet that needs each one is pressed open.
+ */
+export function gatedFetchUrls(): readonly string[] {
+  return [...gatedUrls];
+}
+
+/** How deep into §27's three nested sheets a render should press before it hands the tree back. */
+export type ExtractionDepth = 0 | 1 | 2 | 3;
+
+/**
+ * A MACROTASK, NOT A MICROTASK. Opening one of §27's sheets starts a read: a `useMemo` produces the fetcher,
+ * an EFFECT starts it, and `researchFetch` awaits `fetch` and then `response.json()`. A single
+ * `await Promise.resolve()` lands between two of those and the tree is still on `loading` — which reads as
+ * "the control was never drawn". Draining the timer queue inside `act` settles all of them.
+ */
+async function settle(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+async function pressOpen(container: HTMLElement, selector: string, drew: string, what: string): Promise<void> {
+  const control = container.querySelector(selector);
+  if (control === null) throw new Error(`renderResearchCorpus: nothing drew ${what} to press`);
+  await act(async () => {
+    fireEvent.click(control);
+  });
+  await settle();
+  if (container.querySelector(drew) === null) throw new Error(`renderResearchCorpus: pressing ${what} opened no ${drew} — the pane drew nothing to scan`);
+}
+
+/**
+ * `/research/corpus`, RENDERED WHOLE — the PAGE, shell and body, at whichever view the query names.
+ *
+ * ONE HELPER RATHER THAN ONE PER SCAN, for the reason `renderResearchDashboard` records: several instruments
+ * need the same tree, and several stagings of one page is one rule with several implementations. It renders
+ * through `renderPage`, so `page.tsx`'s own `<main>`, heading and reading measure are INSIDE every scan that
+ * calls it — the blind-probe lesson of R67, where a disclaimer planted on a shell reddened nothing.
+ *
+ * `depth` presses §27's sheets open in order, because the sheets are half of this view and a scan over the
+ * list alone reads the half that mints no hrefs and holds no archive text. `answers` widens the table for a
+ * case that needs a different body (a 400, a refusal, a facet that disagrees).
+ */
+export async function renderResearchCorpus(
+  locale: Locale = routing.defaultLocale,
+  {
+    searchParams = {},
+    answers = {},
+    depth = 0,
+  }: { searchParams?: Record<string, string>; answers?: Record<string, { status: number; body?: unknown }>; depth?: ExtractionDepth } = {},
+): Promise<HTMLElement> {
+  const corpusPage = (await import('@/app/[locale]/research/corpus/page')).default;
+  stageGatedSession(locale, '/research/corpus');
+  const fetching = globalFetchDouble({ ...GATED_CORPUS_ANSWERS, ...answers });
+  gatedUrls.length = 0;
+  try {
+    const rendered = await renderPage(corpusPage, { locale }, {
+      locale,
+      searchParams,
+      wrapper: ({ children }) => (
+        <TabsProvider>
+          {children}
+          <RightPane />
+        </TabsProvider>
+      ),
+    });
+    if (rendered.notFound) throw new Error('renderResearchCorpus: /research/corpus answered the one 404, not a body');
+    await settle();
+    if (depth >= 1) await pressOpen(rendered.container, '[data-open-extraction]', '[data-extraction-sheet]', 'the extraction control');
+    if (depth >= 2) await pressOpen(rendered.container, '[data-open-rules]', '[data-rules-sheet]', 'the rules control');
+    if (depth >= 3) await pressOpen(rendered.container, '[data-open-rule-history]', '[data-rule-history]', "the rule's history control");
+    return rendered.container;
+  } finally {
+    gatedUrls.push(...fetching.calls.map(({ url }) => url));
+    fetching.restore();
+  }
+}
+
+/**
+ * `/research/corpus/claims` at `all`, rendered whole, with the first claim's sheet open beside the rows.
+ *
+ * `open: false` RENDERS WITHOUT PRESSING, because a refused read has no row to press and a case about the
+ * page's own chrome — the way back, the filter row — must be able to reach a view that returned nothing.
+ * `searchParams` widens the question beyond the page, which is how a case reaches the view WITH a date on it.
+ */
+export async function renderResearchClaims(
+  locale: Locale = routing.defaultLocale,
+  { page = 'page-one', searchParams = {}, answers = {}, open = true }: { page?: string; searchParams?: Record<string, string>; answers?: Record<string, { status: number; body?: unknown }>; open?: boolean } = {},
+): Promise<HTMLElement> {
+  const claimsPage = (await import('@/app/[locale]/research/corpus/claims/page')).default;
+  stageGatedSession(locale, '/research/corpus/claims');
+  const fetching = globalFetchDouble({ ...GATED_CORPUS_ANSWERS, ...answers });
+  gatedUrls.length = 0;
+  try {
+    const rendered = await renderPage(claimsPage, { locale }, {
+      locale,
+      searchParams: { page, ...searchParams },
+      wrapper: ({ children }) => (
+        <TabsProvider>
+          {children}
+          <RightPane />
+        </TabsProvider>
+      ),
+    });
+    if (rendered.notFound) throw new Error('renderResearchClaims: the gated claims view answered the one 404, not a body');
+    await settle();
+    if (!open) return rendered.container;
+    const tap = rendered.container.querySelector('[data-open-claim]');
+    if (tap === null) throw new Error('renderResearchClaims: the claims view rendered no row to open');
+    await act(async () => {
+      fireEvent.click(tap);
+    });
+    await settle();
+    if (rendered.container.querySelector('[data-claim-sheet]') === null) {
+      throw new Error('renderResearchClaims: the tap opened no sheet — the pane drew nothing to scan');
+    }
+    return rendered.container;
+  } finally {
+    gatedUrls.push(...fetching.calls.map(({ url }) => url));
+    fetching.restore();
+  }
+}
+
+/**
+ * A DETACHED COPY OF A GATED PAGE, AS IT STOOD WHEN IT WAS RENDERED — for the scans, which read several
+ * surfaces and then examine them all.
+ *
+ * THE HAZARD IT CLOSES IS SHARED, NOT LOCAL. The pane's active tab lives in `shell/localState.ts`, whose
+ * writer calls `notify()` over EVERY listener in the document (:29–:31) — so the moment a later render presses
+ * a sheet open, every tree still mounted from an earlier render re-reads the store and changes which panel it
+ * is showing. A scan that collected four containers and looked at them afterwards was therefore reading the
+ * LAST render's pane four times. Measured on 2026-09-21: a marking-URL anchor planted on the rules panel was
+ * invisible to the render arm of `no-marking-link-from-research` for exactly this reason, while two other
+ * cases in the same file caught it.
+ *
+ * A DEEP CLONE IS THE RIGHT SHAPE because a scan reads text, classes, `data-` attributes and hrefs, all of
+ * which a clone preserves, and because nothing can mutate it afterwards. A case that PRESSES something wants
+ * the live tree and calls the renderer directly — the two names say which is which.
+ */
+export async function snapshotResearchCorpus(...args: Parameters<typeof renderResearchCorpus>): Promise<HTMLElement> {
+  return (await renderResearchCorpus(...args)).cloneNode(true) as HTMLElement;
+}
+
+/** The same, for the gated claims lens. */
+export async function snapshotResearchClaims(...args: Parameters<typeof renderResearchClaims>): Promise<HTMLElement> {
+  return (await renderResearchClaims(...args)).cloneNode(true) as HTMLElement;
+}
+
+/** And for `/research`, which every scan of chunk 4 reads the same way. */
+export async function snapshotResearchDashboard(...args: Parameters<typeof renderResearchDashboard>): Promise<HTMLElement> {
+  return (await renderResearchDashboard(...args)).cloneNode(true) as HTMLElement;
 }

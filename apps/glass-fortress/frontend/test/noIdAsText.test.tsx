@@ -1,7 +1,19 @@
 jest.mock('../src/lib/api', () => jest.requireActual<typeof import('./render')>('./render').apiDouble());
 jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>('./render').navigationDouble());
 
-import { type Locale, type PageRender, ancestorsOf, renderPage, renderResearchDashboard, setAuthState, setPathname, setPublicBodies, textNodes } from './render';
+import {
+  type Locale,
+  type PageRender,
+  ancestorsOf,
+  renderPage,
+  snapshotResearchClaims,
+  snapshotResearchCorpus,
+  snapshotResearchDashboard,
+  setAuthState,
+  setPathname,
+  setPublicBodies,
+  textNodes,
+} from './render';
 import { ID_SHAPES, requireSubjects } from './scan';
 import { captureRead } from './fixtures/corpus/capture';
 import { diffInput } from './fixtures/corpus/diffInput';
@@ -106,7 +118,13 @@ async function everyPage(locale: Locale): Promise<{ name: string; container: HTM
     // UI-8 chunk 4: `/research` is the first GATED page here, and it carries a thesis id per row — in the
     // URL of the public-page link and in nothing else. §4 :167 has no door exception: the rule is about what
     // a READER meets, and a researcher is a reader.
-    { name: 'research', container: await renderResearchDashboard(locale) },
+    { name: 'research', container: await snapshotResearchDashboard(locale) },
+    // UI-8 chunk 5: the gated corpus carries a `trackedUrlId` in every row's href, a 14-digit instant on every
+    // capture row and a `fileHash` in every COPY control — and the extraction sheet adds a `ruleId` and a
+    // rule's whole history. It is the page with the most ids per screen in the read view.
+    { name: 'research/corpus', container: await snapshotResearchCorpus(locale) },
+    { name: 'research/corpus (the sheet three deep)', container: await snapshotResearchCorpus(locale, { searchParams: { page: 'page-one' }, depth: 3 }) },
+    { name: 'research/corpus/claims', container: await snapshotResearchClaims(locale) },
   ];
 }
 
@@ -122,8 +140,10 @@ describe('no-id-as-text', () => {
       const pages = await everyPage(locale);
       // THE FLOOR, MOVED UP BY ONE AT UI-8 chunk 4, with the page NAMED — and the fixture's thesis ids are
       // CUID-SHAPED so this scan has something to catch on it: with readable ids it would examine nothing.
-      expect(pages.length).toBeGreaterThanOrEqual(9);
+      expect(pages.length).toBeGreaterThanOrEqual(12);
       expect(pages.map(({ name }) => name)).toContain('research');
+      expect(pages.map(({ name }) => name)).toContain('research/corpus');
+      expect(pages.map(({ name }) => name)).toContain('research/corpus/claims');
       for (const { name, container } of pages) {
         const nodes = textNodes(container);
         requireSubjects(`text nodes of the ${name} page (${locale})`, nodes);

@@ -18,7 +18,18 @@ jest.mock('../src/lib/doors', () => {
 
 import { join } from 'node:path';
 import { fireEvent } from '@testing-library/react';
-import { type Locale, type PageRender, renderClaimsWithSheet, renderPage, renderResearchDashboard, setAuthState, setPathname, setPublicBodies } from './render';
+import {
+  type Locale,
+  type PageRender,
+  renderClaimsWithSheet,
+  renderPage,
+  snapshotResearchClaims,
+  snapshotResearchCorpus,
+  snapshotResearchDashboard,
+  setAuthState,
+  setPathname,
+  setPublicBodies,
+} from './render';
 import { FRONTEND, jsxTagsIn, publicThesisModules, requireSubjects, stringsIn } from './scan';
 import { RightPane, TabsProvider } from '../src/components/shell/RightPane';
 import { CALL_TAB_ID } from '../src/components/thesis/PaneTabs';
@@ -146,7 +157,16 @@ async function everyPublicPage(): Promise<{ name: string; hrefs: string[] }[]> {
     // UI-8 chunk 4: `/research` is the first GATED page in this set, and it belongs here for the same reason
     // the public ones do — the rule is about what the PLATFORM draws a door to before the door exists, not
     // about who is reading. Its own anchors are the chrome's and the public thesis page's.
-    { name: '/research', hrefs: [...requireSubjects('anchors of /research', [...(await renderResearchDashboard('he')).querySelectorAll('a')].map((anchor) => anchor.getAttribute('href') ?? ''))] },
+    { name: '/research', hrefs: [...requireSubjects('anchors of /research', [...(await snapshotResearchDashboard('he')).querySelectorAll('a')].map((anchor) => anchor.getAttribute('href') ?? ''))] },
+    // UI-8 chunk 5: the gated corpus MINTS hrefs — a row per page, a chip per filter, the lens control, the
+    // claims entry on the page card — so it is the read view's richest source of a link to a route that may
+    // not exist. It is read at BOTH views, because region 0 and the stream draw different sets.
+    { name: '/research/corpus (region 0)', hrefs: [...requireSubjects('anchors of /research/corpus', [...(await snapshotResearchCorpus('he')).querySelectorAll('a')].map((anchor) => anchor.getAttribute('href') ?? ''))] },
+    {
+      name: '/research/corpus (the stream, the sheet three deep)',
+      hrefs: [...requireSubjects('anchors of the gated stream', [...(await snapshotResearchCorpus('he', { searchParams: { page: 'page-one' }, depth: 3 })).querySelectorAll('a')].map((anchor) => anchor.getAttribute('href') ?? ''))],
+    },
+    { name: '/research/corpus/claims', hrefs: [...requireSubjects('anchors of the gated claims lens', [...(await snapshotResearchClaims('he')).querySelectorAll('a')].map((anchor) => anchor.getAttribute('href') ?? ''))] },
   ];
 }
 
@@ -191,8 +211,10 @@ describe('no-door-before-it-exists', () => {
     const pages = await everyPublicPage();
     // THE FLOOR, MOVED UP BY ONE AT UI-8 chunk 4 — and the page is NAMED, because a floor that only counts
     // says nothing about WHICH page joined the set.
-    expect(pages.length).toBeGreaterThanOrEqual(7);
+    expect(pages.length).toBeGreaterThanOrEqual(10);
     expect(pages.map(({ name }) => name)).toContain('/research');
+    expect(pages.map(({ name }) => name)).toContain('/research/corpus (region 0)');
+    expect(pages.map(({ name }) => name)).toContain('/research/corpus/claims');
     const offenders = pages.flatMap(({ name, hrefs }) =>
       hrefs.filter((href) => DOOR_URLS.some((pattern) => pattern.test(unprefixed(href)))).map((href) => `${name}: ${href}`),
     );

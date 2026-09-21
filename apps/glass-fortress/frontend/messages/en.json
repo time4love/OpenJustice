@@ -2014,7 +2014,9 @@
       "captureAbsent": "Absent",
       "leftIn": "The change in which it was removed",
       "returnedIn": "The change in which it returned"
-    }
+    },
+    "filtersLabel": "Filter",
+    "allPages": "All pages"
   },
   "opinion": {
     "label": "AI Analysis — does not constitute a judicial finding"
@@ -2144,14 +2146,16 @@
         "PROPOSED": "Latest round: proposed",
         "ASSESSED": "Latest round: assessed",
         "CHOSEN": "Latest round: chosen"
-      }
+      },
+      "openedNoRound": "Opened without a round"
     },
     "corpus": {
-      "heading": "The corpus in numbers",
       "open": "The researchers' archive",
       "surveyed": "{count, plural, one {one page surveyed} other {# pages surveyed}}",
       "rows": "{count, plural, one {one row} other {# rows}}",
-      "stopsPending": "{count, plural, one {one stop pending} other {# stops pending}}"
+      "stopsPending": "{count, plural, one {one stop pending} other {# stops pending}}",
+      "acquired": "{count, plural, one {one capture acquired} other {# captures acquired}}",
+      "unfetched": "{count, plural, one {one row not fetched} other {# not fetched}}"
     },
     "outcome": {
       "UNFETCHED": "Not fetched",

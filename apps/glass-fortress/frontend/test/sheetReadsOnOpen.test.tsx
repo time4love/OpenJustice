@@ -15,9 +15,9 @@ const pending = new Set<string>();
 import { act } from 'react';
 import { render } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { apiCallsMade, messagesFor, renderWithIntl, setPublicBodies, textNodes, type Locale } from './render';
+import { apiCallsMade, DeclareRecordTab, messagesFor, renderWithIntl, setPublicBodies, textNodes, type Locale } from './render';
 import { messageCatalogs, requireSubjects } from './scan';
-import { CaptureSheet, RecordSheetTab, recordIdOf } from '../src/components/corpus/RecordSheet';
+import { CaptureSheet, recordIdOf } from '../src/components/corpus/RecordSheet';
 import { RecordContent } from '../src/components/record/RecordContent';
 import { RightPane, TabsProvider } from '../src/components/shell/RightPane';
 import { corpusStream } from './fixtures/corpus/stream';
@@ -69,7 +69,7 @@ async function openSheet(entry: CorpusEntry): Promise<HTMLElement> {
   await act(async () => {
     ({ container } = renderWithIntl(
       <TabsProvider>
-        <RecordSheetTab entries={entries} openId={recordIdOf(entry)} />
+        <DeclareRecordTab entries={entries} openId={recordIdOf(entry)} />
         <RightPane />
       </TabsProvider>,
       { locale: LOCALE },
