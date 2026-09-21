@@ -796,7 +796,7 @@ the extraction sheet opened three deep on one capture, its rules equal to `get_a
 provoked signed out and `returnTo` bringing the reader back; the 403 provoked in the fixture only (no unapproved account is
 created for it); the history's size at phone width recorded (§41). Nothing written, nothing paid.
 
-**STATUS:** OPEN. Closes with `docs/gf-ui-step-8-<date>.md`: the history size measured, the library chosen if any, the exercise. **RE-BRIEFED 2026-09-16** against the design canvas, pages 1 and 5 — docs/gf-ui-design-session-2026-09-16.md §4.
+**STATUS:** OPEN. Closes with `docs/gf-ui-step-8-<date>.md`: the history size measured, the library chosen if any, the exercise. **The read's COST is measured and recorded in `docs/gf-thesis-read-cost-2026-09-22.md`** — 39 delegate calls, the body assembled three times, a ~550 ms per-query floor from a laptop and ~2 s deployed; it carries the target shape and TWO OPEN RULINGS: whether the working view's second read (`/api/research/reviews`, unlisted by §10 :370–:371) becomes `owed` on A4 :1476's envelope, and whether the loader rebuild belongs to this step at all rather than beside #547. **The history SIZE measurement this line already owes was NOT taken.** **RE-BRIEFED 2026-09-16** against the design canvas, pages 1 and 5 — docs/gf-ui-design-session-2026-09-16.md §4.
 
 ### UI-9 · `/about` rewritten, `/safety` interim, `/researchers` corrected
 

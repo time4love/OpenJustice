@@ -40,6 +40,36 @@ sequence rather than being protected from any one call.
 **Do not batch approvals.** "Approve steps 3-7" defeats it: the point is that step 4 is written after
 step 3's result is known.
 
+## How the DEV and REVIEW seats work — `docs/gf-two-session-protocol.md` binds every session
+
+**Read it when a session opens as a seat, not only when `HANDOFF` is typed.** It governs how the work is
+done; handover is one section of it. It carries the reasoning and the instance behind each rule below — these
+lines are the imperative form, and they bind on their own.
+
+- **THE RESEARCHER RULES AT THE PAGE, NOT IN PROSE.** Size a chunk to end at **something the researcher can
+  open**, not at a coherent code change or a green suite. The report is the REVIEW seat's grading; the PAGE
+  is the researcher's ruling. **Batch is not landing** — more runnable local states, not more merges.
+- **BRINGING THE LOCAL PAIR UP IS THE SEAT'S JOB** (`preview_start` against `.claude/launch.json`; the
+  backend needs Node 22; `:3011` is behind a staging password only the researcher enters). "Blocked on the
+  researcher" is legitimate for the password and the bearer — **never for a server nobody started.**
+- **SUPPRESS WHAT THE PAGE WOULD CATCH; ESCALATE WHAT IT WOULD HIDE.** Suppressible, and decided from a cold
+  read of the design: region order, wording, which elements a view draws, a label, a width, a state word.
+  **Escalated, always:** defamation and COMPLIANCE · a chain write, a paid call, data loss · an architectural
+  shape later chunks build on · anything no page shows. **FAIL OPEN** — cannot name the document AND line
+  that answers it, the question goes to the researcher — and **RECORD every suppressed question** with what
+  answered it. One the researcher later has to rule anyway revokes the rule.
+- **WHEN A RULING IS ABOUT WHAT A PAGE SHOWS, DRAW IT OR RENDER IT.** Do not describe it.
+- **A `:line` CITATION IS NEVER WRITTEN FROM A SEARCH WINDOW.** Print the line's whole enclosing unit — the
+  function body, the appendix clause, the table row — in the same turn you cite it. *An implementation's
+  DOCSTRING states what its author believed; its ROWS state what it serves.*
+- **BEFORE A FAILING TEST PROVES A DEFECT, ASK WHETHER ITS WORLD IS REACHABLE.** Name the clause that
+  creates that world and check whether one forbids it. No clause forbids it → the defect stands. One does →
+  the FIXTURE is wrong. **FAIL OPEN:** cannot cite the forbidding clause, the defect stands.
+
+**This does NOT loosen Guided Execution above.** That rule governs a multi-step flow against real data —
+every step shown before it runs. This one governs which DESIGN QUESTIONS interrupt the researcher during
+development. A step in a flow is always shown; a question the page would answer is not asked.
+
 ## Code Quality Standard
 Above all else, code must be clean and written to the highest standards:
 - Every change must leave the codebase in a better or equal state — never worse.

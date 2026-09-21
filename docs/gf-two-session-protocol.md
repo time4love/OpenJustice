@@ -1,4 +1,8 @@
-# The two-session protocol — how a refactor step is handed from one pair of sessions to the next
+# How the DEV and REVIEW seats work — the two-session protocol
+
+> **This governs how the work is DONE. Handover is one section of it, not its subject.** A seat reads it when
+> the session OPENS, not only when `HANDOFF` is typed. `CLAUDE.md` carries the imperative form of its operating
+> rules; this file carries the reasoning and the instance behind each one.
 
 **The definition, 2026-09-09, written by the R34 REVIEW seat after four handoffs each found an omission when checked against the previous one.** The handoff FILES live outside this repository (`~/.claude/projects/-Users-jonathand-OpenJustice/handoffs/`, beside a `check-handoff.py` that greps a new set against the lists below and prints what is missing); this is their specification, in git because it is the project's process and not one session's memory. The operating model it implements is `docs/gf-refactor-plan.md` §9; `CLAUDE.md`'s `REVDEV` section is its one-session form.
 
@@ -16,6 +20,149 @@ tokens of its own context, BEFORE its last keyword flow:
 **Self-contained, every time.** No file says "as R<n-1>'s prompt said"; a chain to an older prompt
 is a reading nobody does. The previous round's `R<n-1>-review-state.md` is in the reading list as a
 LOG to read once, not as a source of instructions.
+
+## THE RESEARCHER'S REVIEW SURFACE IS A RUNNING PAGE, NOT A REPORT
+
+**Ruled by the researcher 2026-09-21, and it reorganises everything below it.**
+
+> *"During a design session we have a deep discussion and we raise many issues; in that context we get a
+> solid design and UI board. But during a dev review session, out of that context, I find it hard to
+> understand many of the nuances of the questions. Many times I just trust your recommendation. Eventually
+> we have a working page, then it is easier for me to spot the issues … this is where I can truly say if
+> the dev was done OK."*
+
+The researcher's judgement is at its highest bandwidth **at the artefact**, and at its lowest in prose about
+the artefact. They are using the platform — building a thesis in claude.ai, then reading it in the UI and
+asking whether they understand what they are looking at, whether it is fast, whether the dates are clear.
+No report answers those, and no decoy measures them.
+
+**So: a chunk is sized to end at something the researcher can OPEN.** Not at a coherent code change, not at
+a green suite. The report is for the REVIEW seat's grading; **the page is for the researcher's ruling.**
+
+**BATCH IS NOT LANDING, and conflating them contradicts a standing ruling.** The researcher ruled on
+2026-09-18, after seven landings in one day, that landing every small change wastes time. Smaller batches
+mean **more runnable local states**, not more merges: a chunk ends when there is a page to open; landings
+stay grouped.
+
+**THE LOCAL PAIR IS THE REVIEW SEAT'S JOB, NOT A BLOCKED ITEM.** On 2026-09-21 every report of a long
+session carried "a reading on `:3011` — blocked on the researcher", while both servers were simply down.
+The one surface where the researcher's judgement is strongest was unavailable for a whole day, and a landed,
+runnable page sat unlooked-at for an hour. **The seat brings the pair up (`preview_start` against
+`.claude/launch.json`; the backend needs Node 22; `:3011` is behind a staging password only the researcher
+enters) and says so in its report.** "Blocked on the researcher" is legitimate only for the password and the
+bearer — never for a server nobody started.
+
+**WHEN A RULING IS ABOUT WHAT A PAGE SHOWS, DRAW IT OR RENDER IT.** Do not describe it. The researcher asked
+for a visual several times on 2026-09-21 before the seat made it a habit, and each time it collapsed a
+multi-exchange question into one.
+
+## SUPPRESS OR ESCALATE — which questions reach the researcher
+
+Follows directly from the rule above, and it is what makes suppression safe rather than negligent.
+
+**SUPPRESSIBLE — decide it from a cold read of the design, record it, and let the researcher overrule at the
+page:** anything a researcher opening the page would notice. Region order, wording, which elements a view
+draws, a label, a width, a state word. The researcher cannot fairly judge these in prose and can judge them
+in five seconds on screen.
+
+**ESCALATE — it must reach the researcher, because no page will catch it:**
+
+- **defamation and COMPLIANCE** — invisible until it is public;
+- **a chain write, a paid call, data loss** — irreversible, or it costs money;
+- **an architectural shape other chunks will build on** — the page looks fine and the cost arrives three
+  chunks later;
+- **anything no page shows** — an envelope field nothing renders yet, a public-door leak, a cost that only
+  appears at scale.
+
+**FAIL OPEN.** If the gate cannot name the document **and line** that answers a question, the question goes
+to the researcher. Doubt resolves toward asking. A gate that cannot see must not report "nothing found" —
+the vacuity rule this repository already applies to every scan.
+
+**EVERY SUPPRESSED QUESTION IS RECORDED** — the question, what answered it, the line — in the seat's state
+file. Without that audit trail the rule is unfalsifiable, and its worst failure (a design question killed in
+silence, then built) would never surface. **One suppressed question the researcher later has to rule anyway
+is enough to revoke this rule.**
+
+Measured on the session that produced it: of the questions put to the researcher that day, "which of §17's
+regions does the centre draw" and "the context line's order" were both SUPPRESSIBLE — the claim rendering
+twice is a five-second catch on screen. "Option (a) versus (c) for the citation wire" was correctly
+ESCALATED: architectural, and wrong would have surfaced only after the next chunk built on it.
+
+## A DERIVED RECORD NAMES ITS SOURCE, AND THE SOURCE IS KEPT
+
+**Ruled by the researcher 2026-09-22.** Any document that records an EXTERNAL analysis — a cold reader's
+review, a profile, a measurement run, an advisory session's answer — **keeps the raw output and links it**.
+The dated doc is the DERIVATION; the raw output is the SOURCE; both are kept, and the derivation says where
+the source is.
+
+**The instance.** A findings doc was written recording a cold reader's design proposal. It was written from
+the reviewing seat's SUMMARY of that answer rather than from the answer, and lost the concrete detail — the
+interface, the wave contents, the function map, the pseudo-code — keeping only the conclusions. The suite was
+green; both reachability tests passed; the doc was indexed and pointed at. **Nothing was wrong with it except
+that it no longer contained what it was written to carry.** It was caught by the researcher asking *"where
+did you save the updated design?"* — and an audit then found the raw answer existed **nowhere on disk**:
+hundreds of thousands of tokens of reasoning that had corrected nine of the seat's own claims survived only
+as that seat's paraphrase, one session-close away from being gone.
+
+**WHY IT IS ITS OWN RULE.** It is the same mechanism as the citation rule above, one level up. That one says
+a `:line` cite is written from the line, not from a search window. This one says a RECORD is written from the
+source, not from your account of it. **A summary written down reads afterwards exactly like a
+transcription** — nothing in the artifact marks which it is, which is why the source must sit beside it.
+
+It is also why a cold reader keeps finding what an accumulated seat cannot: **a cold reader has no summary to
+write down.** It must go to the source because it has nothing else. A long-running seat's advantage is its
+context, and context is stored compressions.
+
+## WHAT THE TESTS DO NOT COVER — say it, do not imply otherwise
+
+**Ruled by the researcher 2026-09-22, because implying coverage is worse than having none.**
+
+The repository enforces two properties of a document and **not a third**:
+
+| property | enforced? |
+|---|---|
+| **EXISTENCE** — the doc is linked from `docs/README.md` | **yes**, `docsIndexIsReachable` (and since 2026-09-21 it reaches `.html`, which found `docs/integrity/index.html` un-indexed since it landed) |
+| **SITUATION** — the doc is pointed at from the `STATUS:` line of the level it bears on | **partly.** `findingsDocsAreReachable` covers ONE plan (`gf-factual-layer-rebuild-dev-plan.md`) and only docs that opt in with a `Bears on:` line. Measured 2026-09-22: **17 of 55 dated docs opt in.** A findings doc for any other plan is unenforced, and a doc with no `Bears on:` is skipped silently |
+| **FIDELITY** — the doc carries what it was written to carry | **NO, and no test can.** A doc can be indexed, pointed at, and hollow |
+
+**The only control for fidelity that has ever worked here is a person asking where something went.** Keep the
+source beside the derivation (the rule above), and do not treat a green suite as evidence that a record is
+complete — it is evidence that the record EXISTS.
+
+## A CITATION IS NEVER WRITTEN FROM A SEARCH WINDOW
+
+**Ruled 2026-09-21, after four wrong citations were landed in one day by the seat that wrote them.**
+
+A `:line` citation may be written only when the citing seat has printed the line's **whole enclosing unit**
+— the function body, the appendix clause, the table row — in the same turn it writes the cite.
+
+The instance: `publishedThesis.ts` :249's docstring says *"the citations of EVERY version named"*; its rows
+are `CitationRef = { kind, name, pin }`, the UNRESOLVED refs. The seat read the docstring in a grep window,
+wrote "the resolver" into A4 :1476 and the plan's :709, and both landed. A cold read found it. The same
+mechanism produced three more that day: a line cited as *naming* a principle it only illustrates, a phrase
+cited at :367 that spans :367–:368, and a union arm written without checking it against the type it had to
+match.
+
+**An implementation's docstring states what its author believed. Its rows state what it serves.** This is
+the same failure the appendices already name — *an envelope read off an implementation states what is
+SERVED, never what is OWED* — one level down, in the citation rather than the envelope.
+
+## BEFORE A TEST-WORLD PROVES A DEFECT, ASK WHETHER THAT WORLD IS REACHABLE
+
+**Ruled 2026-09-21.** When a failing test is offered as evidence of a defect, name the design clause that
+CREATES that world, and check whether any clause FORBIDS it. **If no clause forbids it, the defect stands.
+If one does, the fixture is what is wrong.**
+
+The instance: a landed test seeded a thesis citing a diff with no content version at all, and the gated read
+threw. The seat accepted the framing and asked the researcher to widen a closed union in the appendix. A
+cold read found T2 :413–:414 — the version write REFUSES `AWAITING_DERIVATION` — and evidence :1027–:1029 —
+that `AWAITING_DERIVATION` is a property of CURRENT, never of the pin, and stored versions are append-only.
+The world was unreachable; the throw was a correct loud guard; the fixture was wrong. The proposed amendment
+would have been actively harmful: `RecordContent.tsx` renders NOTHING for a content kind it does not know,
+so the KEEP column would have "survived" the new arm by opening a chip onto an empty pane.
+
+**FAIL OPEN here too:** a seat that cannot cite the clause forbidding the world does not get to dismiss the
+defect.
 
 ## Every unverifiable instruction gets an output field
 
@@ -259,10 +406,25 @@ checker looks for, e.g. "no migration") or forgot it.
    document of the READ list — the section above. A first report missing a field is incomplete.
 
 ### `R<n>-review-prompt.md`
+
+**0. THE TWO TESTS ARE INLINED IN THE PROMPT ITSELF, not left to a doc the seat read hours ago.** A rule a
+seat must REMEMBER to consult is a rule that decays — measured 2026-09-21, when a seat that had read this
+protocol at the start of the day still sent the researcher two suppressible questions nine hours later. So
+the prompt's own reply-shape section carries, verbatim:
+
+> **Before this question reaches the researcher:** would they notice the wrong answer by OPENING THE PAGE? If
+> yes it is mine to decide from the design and record. It escalates only if it is invisible there —
+> defamation/COMPLIANCE · a chain write, a paid call, data loss · an architectural shape later chunks build
+> on · anything no page shows. **Cannot name the document AND line that answers it → it escalates.**
+
+> **Before a failing test proves a defect:** which clause CREATES this world, and does one FORBID it? No
+> forbidding clause → the defect stands. One → the fixture is wrong. **Cannot cite it → the defect stands.**
+
 1. The seat: REVIEWER, HOLDS THE TREE, every git command here on the keywords; never edits DEV's
    code, never `jest -u`, never `prisma migrate`, `railway` only to read at LAND or run a named
    maintenance script on instruction; "a claim in a report is not evidence"; the crossed-seat rule.
-2. READ IN THIS ORDER: CLAUDE.md · README · `R<n>-state.md` · `R<n-1>-review-state.md` whole ·
+2. READ IN THIS ORDER: CLAUDE.md · README · **`docs/gf-two-session-protocol.md` BY PATH** ·
+   **the step's APPROVED BOARDS by path** · `R<n>-state.md` · `R<n-1>-review-state.md` whole ·
    `R<n>-dev-prompt.md` (its scope binds; its reading list is yours) · the sketch precedent and the
    sketch path that MUST be on disk · the memory files. "Grep EVERY design and the triage by name
    before saying KEEP or RETIRE."
