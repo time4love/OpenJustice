@@ -3,7 +3,7 @@ jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { type Locale, type PageRender, renderPage, setPublicBodies, snapshotResearchClaims, snapshotResearchCorpus, snapshotResearchDashboard, textNodes } from './render';
+import { type Locale, type PageRender, renderPage, setPublicBodies, snapshotResearchClaims, snapshotResearchCorpus, snapshotResearchDashboard, snapshotResearchThesis, textNodes } from './render';
 import { FRONTEND, declarationsOf, importsOf, jsxTagsIn, publicThesisModules, requireSubjects, stringsIn } from './scan';
 import published from './fixtures/thesis/published.json';
 import callLive from './fixtures/thesis/call-live.json';
@@ -212,6 +212,10 @@ async function renderedPublicPages(): Promise<{ name: string; container: HTMLEle
     // this is where that is caught.
     { name: '/research/corpus', container: await snapshotResearchCorpus(LOCALE, { searchParams: { page: 'page-one' } }) },
     { name: '/research/corpus/claims', container: await snapshotResearchClaims(LOCALE) },
+    // UI-8 chunk 7a: §11 :395–:399's ruling is about THIS page — the working view's context block is NOT
+    // sticky, because no thesis has a short name and the block carries the claim. Until now the ruling had no
+    // subject: the page it names did not exist.
+    { name: '/research/theses/[thesisId]', container: await snapshotResearchThesis(LOCALE) },
   ];
   return [...requireSubjects('rendered public pages', rendered)];
 }
@@ -286,9 +290,14 @@ describe('no-context-line', () => {
 
   it('NO RENDERED PUBLIC PAGE CARRIES A CONTEXT LINE OR A STUCK ELEMENT — over pages that really rendered', async () => {
     const pages = await renderedPublicPages();
-    // THE FLOOR, MOVED UP BY ONE AT UI-8 chunk 4, with the page NAMED.
-    expect(pages.length).toBeGreaterThanOrEqual(4);
+    // THE FLOOR, MOVED UP BY ONE AT UI-8 chunk 4 AND AGAIN AT 7a, with each page NAMED.
+    expect(pages.length).toBeGreaterThanOrEqual(5);
     expect(pages.map(({ name }) => name)).toContain('/research');
+    // THE WORKING VIEW IS THIS SCAN'S ONLY REAL SUBJECT, and that is why it is named rather than counted:
+    // §11 :399's NOT-STICKY ruling had NO SUBJECT AT ALL until this page existed — it is the one page whose
+    // context block carries a CLAIM, which is the reason the ruling gives. Added to the list in chunk 7a and
+    // blind until now: deleting the line left this case green, measured 2026-09-21.
+    expect(pages.map(({ name }) => name)).toContain('/research/theses/[thesisId]');
     const offenders = pages.flatMap(({ name, container }) => [
       ...stickyRenderOffences(name, container),
       ...[...container.querySelectorAll(`[${RETIRED_MARKER}]`)].map(() => `${name}: [${RETIRED_MARKER}]`),

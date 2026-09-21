@@ -452,6 +452,20 @@ export const thesisContextFull: ThesisContext = {
   history: fullTranscript,
 };
 
+/**
+ * THE SAME FULL BODY, ANSWERING FOR THE THESIS THE OWED LIST NAMES (`reads.ts`' `thesisReviewsOwed`).
+ *
+ * WHY IT EXISTS: the working view KEEPS the owed entries whose `thesisId` is its own, and the two fixtures
+ * were written for different pages — so without a body under that id, every render of this page shows a
+ * thesis with nothing owed, and the region that carries the dates, the records and the commands is never
+ * drawn for a scan to read. The id is pinned as a literal here and asserted against the owed list in
+ * `researchThesis.test.tsx`, so the two cannot drift apart silently.
+ */
+export const thesisContextOwed: ThesisContext = {
+  ...thesisContextFull,
+  thesis: { ...thesisContextFull.thesis, thesisId: 'cmu0aaaa00011112222333344' },
+};
+
 /** A COLLEAGUE'S THESIS — identical in shape, `mine` false in every voice and on the thesis itself (§13 :480). */
 export const thesisContextColleague: ThesisContext = {
   ...thesisContextFull,

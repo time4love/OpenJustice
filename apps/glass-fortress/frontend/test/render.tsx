@@ -10,6 +10,8 @@ import { messageCatalogs, requireSubjects } from './scan';
 import { claimsAnswer } from './fixtures/corpus/claims';
 import { articleRules, captures, evidenceReviews, framings, pages as pagesFixture, ruleHistory, thesesList, thesisReviewsOwed } from './fixtures/research/reads';
 import { claimsAtAll, corpusAtAll, corpusAtAllAtPageOne } from './fixtures/research/corpusAll';
+import { thesisContextOwed } from './fixtures/research/thesisContext';
+import type { ThesisContext } from '@/types/research';
 
 // ---------------------------------------------------------------------------
 // RENDER-SCAN HELPERS FOR THE FRONTEND'S INSTRUMENTS (docs/gf-ui-refactor-plan.md
@@ -762,4 +764,54 @@ export async function snapshotResearchClaims(...args: Parameters<typeof renderRe
 /** And for `/research`, which every scan of chunk 4 reads the same way. */
 export async function snapshotResearchDashboard(...args: Parameters<typeof renderResearchDashboard>): Promise<HTMLElement> {
   return (await renderResearchDashboard(...args)).cloneNode(true) as HTMLElement;
+}
+
+/**
+ * `/research/theses/[thesisId]`, RENDERED WHOLE — the PAGE, shell and body (UI-8 chunk 7a).
+ *
+ * ONE HELPER RATHER THAN ONE PER SCAN, for the reason `renderResearchDashboard` records: `bidi-isolated`,
+ * `no-id-as-text`, `no-context-line`, `no-disclaimer-off-the-thesis`, `no-door-before-it-exists` and
+ * `no-marking-link-from-research` all need the same tree, and several stagings of one page is one rule with
+ * several implementations.
+ *
+ * THE DEFAULT BODY IS THE ONE WITH WORK OWED ON IT (`thesisContextOwed`), because a scan reading this page
+ * must meet the region that carries the dates, the records and the commands — a thesis owing nothing draws one
+ * line there, and a scan over that tree examines less than the page can show.
+ *
+ * TWO READS ARE STAGED, because the page makes two: the thesis (A4 :1476) and the owed list (A4 :1523), whose
+ * entries this page KEEPS by `thesisId`. `answers` widens the table for a case that needs another body — a
+ * refusal, a colleague's thesis, a withdrawn one.
+ *
+ * IT FAILS LOUDLY when the page draws no context block, because a scan over a half-rendered tree examines less
+ * than it thinks it does.
+ */
+export async function renderResearchThesis(
+  locale: Locale = routing.defaultLocale,
+  { context = thesisContextOwed, answers = {} }: { context?: ThesisContext; answers?: Record<string, { status: number; body?: unknown }> } = {},
+): Promise<HTMLElement> {
+  const thesisPage = (await import('@/app/[locale]/research/theses/[thesisId]/page')).default;
+  // THE URL NAMES THE BODY'S OWN THESIS, always. A helper whose path and whose body could disagree would let a
+  // case pass over a page reading someone else's thesis.
+  const thesisId = context.thesis.thesisId;
+  stageGatedSession(locale, `/research/theses/${thesisId}`);
+  const fetching = globalFetchDouble({
+    [`/api/research/theses/${thesisId}`]: { status: 200, body: context },
+    '/api/research/reviews': { status: 200, body: thesisReviewsOwed },
+    ...answers,
+  });
+  gatedUrls.length = 0;
+  try {
+    const rendered = await renderPage(thesisPage, { locale, thesisId }, { locale });
+    if (rendered.notFound) throw new Error('renderResearchThesis: the working view answered the one 404, not a body');
+    await settle();
+    return rendered.container;
+  } finally {
+    gatedUrls.push(...fetching.calls.map(({ url }) => url));
+    fetching.restore();
+  }
+}
+
+/** The same, detached, for the scans that read several surfaces and examine them afterwards. */
+export async function snapshotResearchThesis(...args: Parameters<typeof renderResearchThesis>): Promise<HTMLElement> {
+  return (await renderResearchThesis(...args)).cloneNode(true) as HTMLElement;
 }

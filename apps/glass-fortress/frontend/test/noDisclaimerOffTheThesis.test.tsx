@@ -3,7 +3,7 @@ jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { type Locale, type PageRender, renderPage, renderResearchDashboard, setAuthState, setPathname, setPublicBodies, snapshotResearchClaims, snapshotResearchCorpus, textNodes } from './render';
+import { type Locale, type PageRender, renderPage, renderResearchDashboard, setAuthState, setPathname, setPublicBodies, snapshotResearchClaims, snapshotResearchCorpus, snapshotResearchThesis, textNodes } from './render';
 import { requireSubjects } from './scan';
 import { corpusStream } from './fixtures/corpus/stream';
 import { claimsAnswer } from './fixtures/corpus/claims';
@@ -134,6 +134,24 @@ describe('no-disclaimer-off-the-thesis · the rendered pages', () => {
       claimRows: claims.querySelectorAll('[data-claim-row]').length > 0,
       controlFindsBoth: DISCLAIMERS.filter((sentence) => (control.textContent ?? '').includes(sentence)).length,
     }).toEqual({ onTheCorpus: [], onTheClaims: [], corpusRows: true, claimRows: true, controlFindsBoth: 2 });
+  });
+
+  it('THE WORKING VIEW CARRIES NO DISCLAIMER — it draws a thesis, and COMPLIANCE.md :92 names the PUBLIC ones (UI-8 chunk 7a)', async () => {
+    // THIS IS THE CLOSEST CALL IN THE SET, which is why it is asserted rather than assumed: the page's centre
+    // IS a thesis, and a reader of the rule by its subject alone would put the disclaimer here. :92 names
+    // „every thesis page · every /call/[thesisId] page" — the pages whose reader is the PUBLIC. A gated
+    // working view has one reader, the researcher who wrote it, and §26 :820's ruling reaches it unchanged.
+    const container = await snapshotResearchThesis(LOCALE);
+    const control = controlFragment();
+    expect({
+      found: DISCLAIMERS.filter((sentence) => shownText(container).includes(sentence)),
+      // THE FLOOR: the page really drew its two regions and the owed entries — so "no disclaimer" is a fact
+      // about a rendered thesis and not about a tree that produced nothing.
+      regions: container.querySelectorAll('[data-region]').length,
+      owed: container.querySelectorAll('[data-owed-entry]').length > 0,
+      claim: (container.querySelector('h1[data-claim]')?.textContent ?? '').length > 0,
+      controlFindsBoth: DISCLAIMERS.filter((sentence) => (control.textContent ?? '').includes(sentence)).length,
+    }).toEqual({ found: [], regions: 2, owed: true, claim: true, controlFindsBoth: 2 });
   });
 
   it('THE CLAIMS VIEW CARRIES NO DISCLAIMER — a corpus view is neither a thesis page nor a call page', async () => {

@@ -9,6 +9,7 @@ import {
   snapshotResearchClaims,
   snapshotResearchCorpus,
   snapshotResearchDashboard,
+  snapshotResearchThesis,
   setAuthState,
   setPathname,
   setPublicBodies,
@@ -125,6 +126,9 @@ async function everyPage(locale: Locale): Promise<{ name: string; container: HTM
     { name: 'research/corpus', container: await snapshotResearchCorpus(locale) },
     { name: 'research/corpus (the sheet three deep)', container: await snapshotResearchCorpus(locale, { searchParams: { page: 'page-one' }, depth: 3 }) },
     { name: 'research/corpus/claims', container: await snapshotResearchClaims(locale) },
+    // UI-8 chunk 7a: the working view is the page whose whole subject is ONE thesis, named by a cuid in its
+    // URL — the id has two homes here (§4 :167–:176), the URL and the COPY, and this holds that it has no third.
+    { name: 'research/theses/[thesisId]', container: await snapshotResearchThesis(locale) },
   ];
 }
 
@@ -140,10 +144,13 @@ describe('no-id-as-text', () => {
       const pages = await everyPage(locale);
       // THE FLOOR, MOVED UP BY ONE AT UI-8 chunk 4, with the page NAMED — and the fixture's thesis ids are
       // CUID-SHAPED so this scan has something to catch on it: with readable ids it would examine nothing.
-      expect(pages.length).toBeGreaterThanOrEqual(12);
+      expect(pages.length).toBeGreaterThanOrEqual(13);
       expect(pages.map(({ name }) => name)).toContain('research');
       expect(pages.map(({ name }) => name)).toContain('research/corpus');
       expect(pages.map(({ name }) => name)).toContain('research/corpus/claims');
+      // UI-8 chunk 7a: the page whose whole subject is ONE thesis, named by a cuid in its URL and read aloud
+      // in the owed commands. Deleting its line left this case green until now.
+      expect(pages.map(({ name }) => name)).toContain('research/theses/[thesisId]');
       for (const { name, container } of pages) {
         const nodes = textNodes(container);
         requireSubjects(`text nodes of the ${name} page (${locale})`, nodes);

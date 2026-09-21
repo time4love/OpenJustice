@@ -118,6 +118,11 @@ describe('no-marking-link-from-research', () => {
     // THE FLOOR: the closure really ran and the sheet that HOLDS the marking URL is in the set — a subject
     // builder that returned the two directories alone would scan over a set that cannot contain the href.
     expect(files).toContain('src/components/research/ExtractionSheet.tsx');
+    // UI-8 chunk 7a: the working view is under the source rule from the day it exists. It is NOT in the
+    // render arm above, and that is deliberate rather than an omission — the page draws no anchor at all in
+    // this chunk, and a render arm over a page with no anchors is the vacuity `requireSubjects` refuses. It
+    // joins that arm with the links of chunk 7b.
+    expect(files).toContain('src/components/research/ResearchThesis.tsx');
     expect(files).toContain('src/components/corpus/Stream.tsx');
     expect(files.length).toBeGreaterThanOrEqual(15);
 
