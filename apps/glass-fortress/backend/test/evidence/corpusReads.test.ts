@@ -25,7 +25,8 @@ import { listFindingsHandler } from '../../src/mcp/tools/listFindings';
 import { listPagesHandler } from '../../src/mcp/tools/listPages';
 import { verifyClaimTextHandler } from '../../src/mcp/tools/verifyClaimText';
 import { claimHash, computeSourceStateHash, DETECTION_VERSION, presencePatternHash, type Observation } from '../../src/services/claimTrajectory';
-import { AFTER, BEFORE, BETWEEN, CHUNKS, CURRENT_VERSION, DIFF_NAME, DIFF_ROW, PAGE, URL } from '../helpers/corpusFixture';
+import { DIFF_VERSION } from '../../src/lib/diffVersion';
+import { AFTER, BEFORE, BETWEEN, CHUNKS, CURRENT_VERSION, DIFF_NAME, DIFF_ROW, PAGE, URL, WHOLE_CLASSIFICATION } from '../helpers/corpusFixture';
 import { asked, resetDouble, store, windows, written, type Row } from '../helpers/evidenceDouble';
 import { load } from '../thesis/absent';
 import type { ExportContract } from '../thesis/contract';
@@ -505,8 +506,12 @@ describe('list_corpus — §6.1 :236–:243, §28 :746–:753, A4 :1081–:1091 
       { trackedUrlId: PAGE_2.id, url: PAGE_2.url, public: false, first: P2A.waybackTimestamp, last: P2C.waybackTimestamp, entries: 4 },
       { trackedUrlId: PAGE_3.id, url: PAGE_3.url, public: false, first: null, last: null, entries: 0 },
     ];
+    // `shape` IS THE ONE FIELD OF THIS FACET THAT A NAMED PAGE CHANGES (§24 region 3, ruled 2026-09-21), so it is
+    // held by the SH cases below and stripped here rather than folded into this one — which keeps C8's subject the
+    // sentence its name makes: first, last and entries are the page's own under every filter.
+    const withoutShape = ({ shape: _shape, ...rest }: Record<string, unknown>): Record<string, unknown> => rest;
     for (const more of [{}, { page: PAGE_2.url }, { since: '2021-06-01', until: '2021-06-30' }, { kind: 'DIFF' }]) {
-      expect(answer(await run('list_corpus', { scope: 'all', ...more }, RESEARCHER))['pages']).toEqual(expected);
+      expect(arr(answer(await run('list_corpus', { scope: 'all', ...more }, RESEARCHER))['pages']).map(withoutShape)).toEqual(expected);
     }
   });
 
@@ -518,6 +523,277 @@ describe('list_corpus — §6.1 :236–:243, §28 :746–:753, A4 :1081–:1091 
     expect(windows).toEqual([]);
     expect(fetchCaptureHtml).not.toHaveBeenCalled();
     expect(jest.mocked(axios).get).not.toHaveBeenCalled();
+  });
+});
+
+
+// --- THE PAGE'S SHAPE — §24 region 3, RULED 2026-09-21 (the researcher) -----------------------------------------------
+
+/**
+ * A PAGE WHOSE BINS ANSWER EVERY RULING OF REGION 3, and every one of them is a fact about the real corpus rather
+ * than a shape invented for a case: two captures on ONE day (the strip's unit is the day), three diffs sharing ONE
+ * day pair at 50 · 52 · 52 chunks (May's three, which is where the SUM was measured to invent a magnitude no change
+ * has), a bin every diff of which the classifier judged insignificant, a bin whose diff carries NO opinion, and a
+ * pair still AWAITING DERIVATION.
+ */
+const SHAPE_PAGE = { id: 'page-shape', url: 'https://www.gov.il/he/departments/news/shape' };
+
+const S_A1 = capture('snap-a1', '20220103090000', '2022-01-03', 'a1-bytes');
+const S_A2 = capture('snap-a2', '20220103140000', '2022-01-03', 'a2-bytes');
+const S_B1 = capture('snap-b1', '20220501080000', '2022-05-01', 'b1-bytes');
+const S_B2 = capture('snap-b2', '20220501170000', '2022-05-01', 'b2-bytes');
+const S_C1 = capture('snap-c1', '20220620120000', '2022-06-20', 'c1-bytes');
+const S_D1 = capture('snap-d1', '20220810120000', '2022-08-10', 'd1-bytes');
+const S_E1 = capture('snap-e1', '20220905120000', '2022-09-05', 'e1-bytes');
+
+/** COMPUTED, never typed — this is the one capture of the world that carries its own `evidence` (ruling (c)). */
+const A2_NAME = recordId({
+  kind: 'CAPTURE',
+  url: SHAPE_PAGE.url,
+  capture: { waybackTimestamp: S_A2.waybackTimestamp, documentHash: S_A2.documentHash },
+});
+
+/** A whole classification at a chosen verdict — every key of CLASSIFICATION_KEYS, so the reader reads it rather than throwing on a HALF row. */
+const verdict = (legallySignificant: boolean, categories: readonly string[]): Record<string, unknown> => ({
+  ...WHOLE_CLASSIFICATION,
+  isLegallySignificant: legallySignificant,
+  investigativeCategories: [...categories],
+});
+
+const chunksOfSize = (n: number, seed: string): Record<string, unknown>[] =>
+  Array.from({ length: n }, (_, i) => ({ side: i % 2 === 0 ? 'REMOVED' : 'ADDED', text: `${seed}-${String(i)}`, survival: 'SURVIVES' }));
+
+/** A pair of the shape page. `chunks` null is the pair the walk owes a version — AWAITING DERIVATION, a STATE and not an error. */
+const shapeDiff = (
+  id: string,
+  before: Capture,
+  after: Capture,
+  chunks: Record<string, unknown>[] | null,
+  classification: Record<string, unknown> | null,
+): Row => ({
+  id,
+  trackedUrlId: SHAPE_PAGE.id,
+  beforeSnapshot: before,
+  afterSnapshot: after,
+  contentVersions:
+    chunks === null
+      ? []
+      : [
+          {
+            contentVersionHash: `content-${id}`,
+            // CURRENT is three equalities (evidence A3): both endpoints' text hashes and DIFF_VERSION. A fixture
+            // that got one wrong would make every diff of this page AWAITING DERIVATION and the case vacuous.
+            beforeTextHash: before.textHash,
+            afterTextHash: after.textHash,
+            diffVersion: DIFF_VERSION,
+            chunks,
+            classification,
+            survivalVersion: 'v1-survival',
+          },
+        ],
+});
+
+function seedShapePage(): void {
+  store.pages = [SHAPE_PAGE, PAGE_2];
+  store.captures = [
+    held(SHAPE_PAGE, S_A1, WITH),
+    held(SHAPE_PAGE, S_A2, WITH),
+    held(SHAPE_PAGE, S_B1, WITHOUT),
+    held(SHAPE_PAGE, S_B2, WITHOUT),
+    held(SHAPE_PAGE, S_C1, WITHOUT),
+    held(SHAPE_PAGE, S_D1, WITHOUT),
+    held(SHAPE_PAGE, S_E1, WITHOUT),
+    held(PAGE_2, P2A, WITH),
+    held(PAGE_2, P2B, WITHOUT),
+  ];
+  store.diffs = [
+    // ONE DAY PAIR, THREE DIFFS — 50 · 52 · 52. The third is flagged by its CATEGORIES ALONE, with
+    // `isLegallySignificant: false`, so a gate that read only the stored flag would answer false here.
+    shapeDiff('diff-a1-b1', S_A1, S_B1, chunksOfSize(50, 'a1b1'), verdict(false, [])),
+    shapeDiff('diff-a1-b2', S_A1, S_B2, chunksOfSize(52, 'a1b2'), verdict(false, [])),
+    shapeDiff('diff-a2-b1', S_A2, S_B1, chunksOfSize(52, 'a2b1'), verdict(false, ['SAFETY_CLAIM_ALTERATION'])),
+    // A BIN EVERY DIFF OF WHICH THE CLASSIFIER JUDGED INSIGNIFICANT — what makes the `passed` cases non-vacuous.
+    shapeDiff('diff-b2-c1', S_B2, S_C1, chunksOfSize(3, 'b2c1'), verdict(false, [])),
+    // NO OPINION AT ALL: a derived version the classifier never spoke on.
+    shapeDiff('diff-c1-d1', S_C1, S_D1, chunksOfSize(7, 'c1d1'), null),
+    // TWO DIFFS LEAVING THE SAME DAY FOR DIFFERENT DAYS — this pair is NARROWED by S_D1 sitting between its
+    // endpoints (§7), which is an ordinary shape of the real corpus and the one the bin's KEY depends on. Without
+    // it no two diffs of this world share a `before` day, so a bin keyed on `before` alone answers identically
+    // and the key is held by nothing. Its opinion is flagged by the FLAG with EMPTY categories — the one arm of
+    // the gate the shape world did not otherwise exercise.
+    shapeDiff('diff-c1-e1', S_C1, S_E1, chunksOfSize(11, 'c1e1'), verdict(true, [])),
+    // AWAITING DERIVATION: the walk owes this pair a version.
+    shapeDiff('diff-d1-e1', S_D1, S_E1, null, null),
+  ];
+  // The one cited capture — an Evidence row under the capture's own name is what `evidence ≠ null` reads (ruling (c)).
+  store.evidenceRows = [{ fileHash: A2_NAME, kind: 'CAPTURE', status: 'PROMOTED', affirmedContentVersionHash: null, snapshot: null, urlVersionDiff: null }];
+}
+
+/** The shape this page HAS, written out once — days, counts, the MAX chunk count, and the two ANY flags. */
+const SHAPE = {
+  captures: [
+    // ONE BIN for two captures 5 hours apart (the unit is the day), RINGED because ONE of the two is cited.
+    { day: '20220103', count: 2, cited: true },
+    { day: '20220501', count: 2, cited: false },
+    { day: '20220620', count: 1, cited: false },
+    { day: '20220810', count: 1, cited: false },
+    { day: '20220905', count: 1, cited: false },
+  ],
+  diffs: [
+    // 52, THE GROUP'S LARGEST — never 154, which is what summing 50 + 52 + 52 would draw.
+    { before: '20220103', after: '20220501', count: 3, chunks: 52, passed: true },
+    { before: '20220501', after: '20220620', count: 1, chunks: 3, passed: false },
+    { before: '20220620', after: '20220810', count: 1, chunks: 7, passed: true },
+    // SAME `before` AS THE ROW ABOVE, DIFFERENT `after` — two bins, never one.
+    { before: '20220620', after: '20220905', count: 1, chunks: 11, passed: true },
+    { before: '20220810', after: '20220905', count: 1, chunks: 0, passed: true },
+  ],
+};
+
+describe("list_corpus — the `pages` facet's `shape` (§24 region 3, ruled 2026-09-21; rulings (b)–(g) of :758)", () => {
+  beforeEach(seedShapePage);
+
+  /** The facet row of one page from a read at `all`, as the researcher. */
+  const facetRow = async (id: string, more: Readonly<Record<string, unknown>> = {}): Promise<Record<string, unknown>> => {
+    const rows = arr(answer(await run('list_corpus', { scope: 'all', ...more }, RESEARCHER))['pages']);
+    const row = rows.find((p) => p['trackedUrlId'] === id);
+    if (row === undefined) throw new Error(`no facet row for ${id} — the read answered ${JSON.stringify(rows.map((p) => p['trackedUrlId']))}`);
+    return row;
+  };
+  const shapeOfRead = async (more: Readonly<Record<string, unknown>> = {}): Promise<unknown> =>
+    (await facetRow(SHAPE_PAGE.id, { page: SHAPE_PAGE.url, ...more }))['shape'];
+
+  /**
+   * One diff bin, BY ITS PAIR and never by its index. The cases below first read `bins[2]` and `bins[3]`, and
+   * adding one row to the world moved what those meant — an assertion that still passed while naming a different
+   * subject. A bin's identity is the pair, so that is what a case asks for.
+   */
+  const binFor = async (before: string, after: string): Promise<Record<string, unknown>> => {
+    const bins = arr(obj(await shapeOfRead())['diffs']);
+    const bin = bins.find((b) => b['before'] === before && b['after'] === after);
+    if (bin === undefined) throw new Error(`no diff bin ${before}→${after} — the shape holds ${JSON.stringify(bins.map((b) => [b['before'], b['after']]))}`);
+    return bin;
+  };
+
+  it('SH1 the shape is the PAGE\'s and never the FILTER\'s — kind, cited and a since/until window return a byte-identical shape, and it is the unfiltered read\'s', async () => {
+    // THE CASE THE DEFECT FAILED. Measured on staging 2026-09-21: `?page=<corona>` drew 16 dots and 16 bars,
+    // `&kind=CAPTURE` the same card line over 16 dots and NO bars, `&kind=DIFF&cited=1` over an empty strip —
+    // one element contradicting itself, because the strip came from the filtered array and the line from the facet.
+    const whole = JSON.stringify(await shapeOfRead());
+    expect(whole).toBe(JSON.stringify(SHAPE));
+    for (const filter of [{ kind: 'CAPTURE' }, { kind: 'DIFF' }, { cited: true }, { kind: 'DIFF', cited: true }, { since: '2022-05-01', until: '2022-05-31' }]) {
+      expect([filter, JSON.stringify(await shapeOfRead(filter))]).toEqual([filter, whole]);
+    }
+    // …and the filters really do narrow what the read RETURNS, so the equality above is not equality of two empties.
+    const entriesOf = async (more: Readonly<Record<string, unknown>>): Promise<number> =>
+      arr(answer(await run('list_corpus', { scope: 'all', page: SHAPE_PAGE.url, ...more }, RESEARCHER))['entries']).length;
+    expect([await entriesOf({}), await entriesOf({ kind: 'CAPTURE' }), await entriesOf({ cited: true })]).toEqual([14, 7, 1]);
+  });
+
+  it('SH2 the shape is not the WINDOW\'s — limit 1 answers the same shape as limit 100, so the strip stops depending on CORPUS_READ_LIMIT', async () => {
+    expect(JSON.stringify(await shapeOfRead({ limit: 1 }))).toBe(JSON.stringify(await shapeOfRead({ limit: 100 })));
+    expect(await shapeOfRead({ limit: 1 })).toEqual(SHAPE);
+    // The window really is one row wide — otherwise the two reads are the same read.
+    const windowed = answer(await run('list_corpus', { scope: 'all', page: SHAPE_PAGE.url, limit: 1 }, RESEARCHER));
+    expect([arr(windowed['entries']).length, windowed['nextCursor'] === null]).toEqual([1, false]);
+  });
+
+  it('SH3 a bin\'s `chunks` is its group\'s MAXIMUM and never their sum — three diffs on one day pair at 50, 52 and 52 answer 52, not 154', async () => {
+    const bin = obj(arr(obj(await shapeOfRead())['diffs'])[0]);
+    expect([bin['before'], bin['after'], bin['count'], bin['chunks']]).toEqual(['20220103', '20220501', 3, 52]);
+    expect(bin['chunks']).not.toBe(50 + 52 + 52);
+  });
+
+  it('SH4 `cited` and `passed` are ANY, not every — one cited capture rings a bin of two, one flagged diff full-tones a bin of three', async () => {
+    const shape = obj(await shapeOfRead());
+    // The ring: S_A2 carries evidence and S_A1 does not, and they share a bin.
+    expect(arr(shape['captures']).map((b) => [b['day'], b['count'], b['cited']])).toEqual(
+      SHAPE.captures.map((b) => [b.day, b.count, b.cited]),
+    );
+    // The tone: of the three diffs in the first bin only `diff-a2-b1` is flagged, and the bin is full-toned.
+    expect(arr(shape['diffs']).map((b) => b['passed'])).toEqual([true, false, true, true, true]);
+  });
+
+  it('SH5 a diff with NO opinion PASSES, and a diff the classifier judged insignificant does not — the gate is not vacuous, and it reads the CATEGORIES as well as the flag', async () => {
+    // A classifier that has not spoken has not judged the row insignificant (the researcher, 2026-09-19).
+    expect((await binFor('20220620', '20220810'))['passed']).toBe(true);
+    // And the zero is real: this bin's one diff carries `isLegallySignificant: false` with `investigativeCategories: []`.
+    expect((await binFor('20220501', '20220620'))['passed']).toBe(false);
+    // This bin is flagged only through `diff-a2-b1`, whose stored flag is FALSE and whose categories are not
+    // empty — so a gate reading `legallySignificant` alone answers false here and this bin would be dimmed.
+    expect((await binFor('20220103', '20220501'))['passed']).toBe(true);
+    // …and the other half of the OR is live too: this one's flag is TRUE with EMPTY categories, so a gate reading
+    // the categories alone would dim IT. Between the two rows, neither half can be dropped unnoticed.
+    expect((await binFor('20220620', '20220905'))['passed']).toBe(true);
+  });
+
+  it('SH6 a pair AWAITING DERIVATION counts 0 chunks and is still a bin — the state is not an absence', async () => {
+    expect(await binFor('20220810', '20220905')).toEqual({ before: '20220810', after: '20220905', count: 1, chunks: 0, passed: true });
+  });
+
+  it('SH7 a read that names NO page carries `shape: null` on every facet row; a read that names one carries it on that row alone', async () => {
+    // Region 0 draws no strip (§24 :695–:701), so the bare read must not grow by one byte.
+    const bare = arr(answer(await run('list_corpus', { scope: 'all' }, RESEARCHER))['pages']);
+    expect(bare.map((p) => [p['trackedUrlId'], p['shape']])).toEqual([
+      [PAGE_2.id, null],
+      [SHAPE_PAGE.id, null],
+    ]);
+    const named = arr(answer(await run('list_corpus', { scope: 'all', page: SHAPE_PAGE.url }, RESEARCHER))['pages']);
+    expect(named.map((p) => [p['trackedUrlId'], p['shape'] === null])).toEqual([
+      [PAGE_2.id, true],
+      [SHAPE_PAGE.id, false],
+    ]);
+    // …and naming the OTHER page moves the shape with it, so the rule is about the NAME and not about this row.
+    expect((await facetRow(PAGE_2.id, { page: PAGE_2.url }))['shape']).not.toBeNull();
+    expect((await facetRow(SHAPE_PAGE.id, { page: PAGE_2.url }))['shape']).toBeNull();
+  });
+
+  it('SH8 the unit is the DAY — two captures five hours apart are ONE bin with count 2, and the bin is named by the day and not by the instant', async () => {
+    const first = obj(arr(obj(await shapeOfRead())['captures'])[0]);
+    expect(first).toEqual({ day: '20220103', count: 2, cited: true });
+    // The two instants exist and differ — otherwise the merge is a fixture artefact.
+    expect([S_A1.waybackTimestamp, S_A2.waybackTimestamp]).toEqual(['20220103090000', '20220103140000']);
+  });
+
+  it('SH9 the shape carries DAYS and never GEOMETRY — no pixel, no midpoint, no field the component owns', async () => {
+    // The 5px merge threshold and the viewBox width are the COMPONENT's (ruling (e)), and "a diff sits at its
+    // interval's midpoint" is ruling (b), a DRAWING rule. A backend that emitted either would be a second place
+    // where the strip's geometry lives.
+    const shape = obj(await shapeOfRead());
+    expect(Object.keys(shape).sort()).toEqual(['captures', 'diffs']);
+    for (const bin of arr(shape['captures'])) expect(Object.keys(bin).sort()).toEqual(['cited', 'count', 'day']);
+    for (const bin of arr(shape['diffs'])) expect(Object.keys(bin).sort()).toEqual(['after', 'before', 'chunks', 'count', 'passed']);
+    // Every day is eight digits — the instant's precision is thrown away here, as `timeStrip.dayOf` throws it away.
+    for (const bin of arr(shape['captures'])) expect(String(bin['day'])).toMatch(/^\d{8}$/);
+    for (const bin of arr(shape['diffs'])) expect([String(bin['before']), String(bin['after'])].every((d) => /^\d{8}$/.test(d))).toBe(true);
+  });
+
+  it('SH11 a bin is keyed by the PAIR and never by `before` alone — two diffs leaving one day for DIFFERENT days are TWO bins, each carrying its own `after`', async () => {
+    // A DIFF IS ITS PAIR (§7, evidence A1: "one pair, by the two captures it spans — never by a date pair, never
+    // by a diff id"), so the bin a diff falls in is the PAIR OF DAYS and not the day it left. Keying on `before`
+    // alone reads as the same rule and is not: it MERGES two changes that ended on different days into one mark
+    // carrying the earlier `after`, so ruling (b)'s midpoint would be computed for an interval no diff spans and
+    // one real change would vanish into another — the silent absorption (g) refuses in the tone's case.
+    const bins = arr(obj(await shapeOfRead())['diffs']);
+    const leaving = bins.filter((b) => b['before'] === '20220620');
+    expect(leaving.map((b) => [b['after'], b['count'], b['chunks']])).toEqual([
+      ['20220810', 1, 7],
+      ['20220905', 1, 11],
+    ]);
+    // The world really does hold two such diffs — otherwise this case is about a page that cannot exercise it.
+    expect(store.diffs.filter((d) => String((d['beforeSnapshot'] as { waybackTimestamp: string }).waybackTimestamp).slice(0, 8) === '20220620')).toHaveLength(2);
+    expect(bins).toHaveLength(5);
+  });
+
+  it('SH10 the shape costs no query — a read that names a page asks exactly what the same read without one asks', async () => {
+    // The facet rides rows `loadCorpus` already holds (§28: "a facet on the one read, not a second read"). If the
+    // shape ever needed a second read, this case is where it shows.
+    await run('list_corpus', { scope: 'all' }, RESEARCHER);
+    const bare = [...asked];
+    asked.length = 0;
+    await run('list_corpus', { scope: 'all', page: SHAPE_PAGE.url }, RESEARCHER);
+    expect([...asked]).toEqual(bare);
+    expect(written).toEqual([]);
   });
 });
 

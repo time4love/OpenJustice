@@ -91,7 +91,10 @@ export async function corpusOf(input: CorpusInput): Promise<CorpusList | Refusal
   const scope = await scopedPages(input.scope, input.page);
   if ('error' in scope) return scope;
 
-  const { entries, pages } = await loadCorpus(scope.scoped);
+  // THE FACET IS LOADED HERE, BEFORE THE FILTER BELOW AND BEFORE THE CURSOR'S SLICE, and that is what makes the
+  // page card's strip the PAGE's shape rather than the view's (§24 region 3, ruled 2026-09-21). `scope.page` is the
+  // page this call NAMED — the only row whose `shape` is computed, because region 0 draws no strip (§24 :695–:701).
+  const { entries, pages } = await loadCorpus(scope.scoped, scope.page?.id ?? null);
   const kept = entries.filter(
     (entry) =>
       (scope.page === null || entry.page.trackedUrlId === scope.page.id) &&

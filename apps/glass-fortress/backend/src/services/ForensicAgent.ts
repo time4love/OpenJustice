@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { LLMFactory, resolveModelId } from '../factories/LLMFactory';
 import {
+  deriveSignificance,
   investigativeCategoriesField,
   type InvestigativeCategory,
 } from '../lib/investigativeCategories';
@@ -201,15 +202,6 @@ export function deriveDiffCategories(
     for (const c of item.investigativeCategories) union.add(c);
   }
   return [...union];
-}
-
-/**
- * Significance is category membership — a change matters to this investigation
- * exactly when it advances one of its standing concerns. Single source of truth,
- * so the flag and the classification can never disagree.
- */
-export function deriveSignificance(categories: readonly InvestigativeCategory[]): boolean {
-  return categories.length > 0;
 }
 
 // ---------------------------------------------------------------------------
