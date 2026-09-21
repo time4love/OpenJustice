@@ -4,7 +4,7 @@ jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>
 import { apiCallsMade, renderPage, setAuthState, setPathname, setPublicBodies, type Locale, type PageRender } from './render';
 import { requireSubjects } from './scan';
 import { readCorpusFilters, readCorpusQuery, readCursor, toReadParameters, writeReadQuery } from '../src/lib/corpusQuery';
-import { corpusStream } from './fixtures/corpus/stream';
+import { corpusAtPageOne } from './fixtures/corpus/stream';
 
 // ---------------------------------------------------------------------------
 // cursor-is-the-read's — docs/gf-ui-flows.md §24 region 4 ("cursor-paginated on the read's own cursor, oldest
@@ -32,8 +32,11 @@ const PAGE = 'page-one';
 /** A cursor the READ issued — base64url of the last entry's key, the shape `encodeCursor` produces. */
 const CURSOR = 'eyJ0IjoiMjAyMjAzMTcwOTM3NTUiLCJrIjoiQ0FQVFVSRSJ9';
 
-const withCursor = { ...corpusStream, nextCursor: CURSOR };
-const withoutCursor = { ...corpusStream, nextCursor: null };
+// THE BODY OF A READ THAT NAMES page-one — every case here sends `?page=`, and only a page-named read carries
+// §28's `shape`. Its facet counts TEN records where the window holds six, which is the real corpus's own
+// relation (43 against a window of 32) and what the last case in this file is written on.
+const withCursor = { ...corpusAtPageOne, nextCursor: CURSOR };
+const withoutCursor = { ...corpusAtPageOne, nextCursor: null };
 
 beforeEach(() => {
   setAuthState('anonymous');
@@ -101,24 +104,79 @@ describe("cursor-is-the-read's", () => {
     }).toEqual({ wire: `/api/corpus?page=${PAGE}&cursor=${CURSOR}`, reads: 1, aloneItIsTheList: 'list', notAFilter: 0 });
   });
 
-  it('REGION 3 DRAWS WHAT THE STREAM HAS — the strip and the rows are ONE array, so they cannot disagree', async () => {
-    // The reviewer's requirement, and the reason it matters: if the strip drew a different set from the rows,
-    // "one page's shape" would quietly become "the shape of what has loaded so far" while the rows said
-    // otherwise. They are handed the SAME `answer.entries` by construction; this holds that they stay so.
+  it('REGION 3 DRAWS THE PAGE AND THE STREAM DRAWS THE WINDOW — and the card says which it is speaking for', async () => {
+    // THIS CASE ASSERTED THE OPPOSITE UNTIL 2026-09-21, and the rule it held is the defect the researcher
+    // ruled on: "the strip and the rows are ONE array, so they cannot disagree". They cannot disagree only
+    // while a page fits one window — and the moment it does not, "one page's shape" quietly becomes "the
+    // shape of what has loaded so far" while the card's own count line, read from the facet, goes on naming
+    // the page. Measured on the real corpus: „43 רשומות" over sixteen dots.
+    //
+    // WHAT REPLACES IT IS THE SAME INSTINCT AT THE RIGHT SCOPE: two regions, two sources, and each says which
+    // it speaks for. The strip is the FACET's `shape` — the page, computed before the filter and before this
+    // cursor — and the stream is the window this cursor returned.
     const container = await render({ page: PAGE }, withCursor);
     const marks = [...container.querySelectorAll('[data-strip-dot]')].reduce((n, dot) => n + Number(dot.getAttribute('data-strip-count') ?? 1), 0);
     const bars = [...container.querySelectorAll('[data-strip-bar]')].reduce((n, bar) => n + Number(bar.getAttribute('data-strip-count') ?? 1), 0);
-    const captures = container.querySelectorAll('[data-capture-row]').length;
+    const shape = withCursor.pages.at(0)?.shape;
+    if (shape === undefined || shape === null) throw new Error('the page-named fixture carries no shape to compare against');
     const rows = container.querySelectorAll('[data-entry]').length;
-    const hidden = Number((container.querySelector('[data-hidden-count]')?.textContent ?? '').replace(/\D/g, '') || 0);
     expect({
-      // Every capture the body has is a dot, and every capture drawn is a row.
-      dotsEqualCaptures: marks === captures,
-      // Every diff the body has is a bar — the gated ones included, which is (g) — so bars equal the diffs in
-      // the body and NOT the diffs the stream shows.
-      barsCoverEveryDiff: bars === rows - captures + hidden,
+      // EVERY RECORD THE PAGE HAS REACHES A MARK — the shape's own totals, not the window's.
+      dotsCoverThePage: marks === shape.captures.reduce((n, bin) => n + bin.count, 0),
+      barsCoverThePage: bars === shape.diffs.reduce((n, bin) => n + bin.count, 0),
+      // AND THE PAGE IS BIGGER THAN THE WINDOW, which is what makes the two lines above assertions: a fixture
+      // whose window held the whole page would satisfy them with either source.
+      pageCaptures: marks,
+      windowCaptures: container.querySelectorAll('[data-capture-row]').length,
+      pageDiffs: bars,
+      windowRows: rows,
       // THE FLOOR: none of these is zero, so the equalities are not two blanks agreeing.
       nonEmpty: marks > 0 && bars > 0 && rows > 0,
-    }).toEqual({ dotsEqualCaptures: true, barsCoverEveryDiff: true, nonEmpty: true });
+    }).toEqual({
+      dotsCoverThePage: true,
+      barsCoverThePage: true,
+      pageCaptures: 5,
+      windowCaptures: 2,
+      pageDiffs: 5,
+      windowRows: 4,
+      nonEmpty: true,
+    });
+  });
+
+  it('„N מוסתרים" IS THE PAGE`S FIGURE ON A SINGLE-PAGE VIEW, and the WINDOW`S where there is no page', async () => {
+    // THE SAME RULE ONE REGION DOWN (§24 :755): region 4's count line was computed from the window and reads
+    // as the page's — "honest only while a page fits one". With a page in force the figure is the shape's:
+    // the sum of `count` over the diff bins that did not pass the gate.
+    //
+    // THE FIXTURE MAKES THE TWO DISAGREE ON PURPOSE. The page hides THREE changes and this window holds only
+    // TWO of them, so a line reading `hidden.length` says 2 and a line reading the shape says 3 — and no
+    // arithmetic accident joins them.
+    const container = await render({ page: PAGE }, withCursor);
+    const shape = withCursor.pages.at(0)?.shape;
+    if (shape === undefined || shape === null) throw new Error('the page-named fixture carries no shape');
+    const announced = Number((container.querySelector('[data-hidden-count]')?.textContent ?? '').replace(/\D/gu, '') || 0);
+    expect({
+      announced,
+      pageHides: shape.diffs.filter((bin) => !bin.passed).reduce((n, bin) => n + bin.count, 0),
+      // THE NUMBER THE OLD SPELLING GAVE, stated so the assertion is against a rival value and not a vacuum.
+      windowHides: withCursor.entries.filter((entry) => entry.kind === 'DIFF' && entry.opinion !== null && !entry.opinion.legallySignificant && entry.opinion.categories.length === 0).length,
+      // AND THE TAP STILL REVEALS THE WINDOW'S, which is the seam this ruling leaves and which the component
+      // states in words: the control exists only while the window really hides something.
+      hiddenRowsBefore: container.querySelectorAll('[data-entry]').length,
+    }).toEqual({ announced: 3, pageHides: 3, windowHides: 2, hiddenRowsBefore: 4 });
+  });
+
+  it('ACROSS PAGES THE LINE IS THE WINDOW`S — there is no page, so there is no shape to read', async () => {
+    // The other half, and without it "the line is the page's" would be a rule with one example. A stream
+    // reached by a KIND chip names no page: §28 sends no shape, so the only figure the view has is its own.
+    const { corpusStream } = await import('./fixtures/corpus/stream');
+    const container = await render({ kind: 'DIFF' }, corpusStream);
+    const announced = Number((container.querySelector('[data-hidden-count]')?.textContent ?? '').replace(/\D/gu, '') || 0);
+    expect({
+      announced,
+      // The cross-page fixture's own gated rows, counted here so the number is grounded and not copied.
+      windowHides: corpusStream.entries.filter((entry) => entry.kind === 'DIFF' && entry.opinion !== null && !entry.opinion.legallySignificant && entry.opinion.categories.length === 0).length,
+      noShape: corpusStream.pages.every((row) => row.shape === null),
+    }).toEqual({ announced: 2, windowHides: 2, noShape: true });
   });
 });

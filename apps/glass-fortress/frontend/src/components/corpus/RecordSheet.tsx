@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { CitingTheses } from '@/components/record/CitingTheses';
 import { useTranslations, useLocale } from 'next-intl';
 import { fetchJson } from '@/lib/api';
@@ -8,7 +8,8 @@ import { parseCaptureText } from '@/lib/corpusBody';
 import { CopyableCode } from '@/components/CopyableCode';
 import { LabelledOpinion } from '@/components/opinion/LabelledOpinion';
 import { RecordContent } from '@/components/record/RecordContent';
-import { DeclareTabs, usePaneLayer, usePaneSelection } from '@/components/shell/RightPane';
+import { PlatformMark } from '@/components/thesis/PlatformMark';
+import { type PaneTab, usePaneLayer, usePaneSelection } from '@/components/shell/RightPane';
 import { displayUrl, formatCaptureDate } from '@/lib/format';
 import type { CaptureEntry, CorpusEntry, DiffEntry } from '@/types/corpus';
 
@@ -146,14 +147,56 @@ function OpenRecord({ entry }: { entry: CorpusEntry }) {
   );
 }
 
-export function CaptureSheet({ entry }: { entry: CaptureEntry }) {
+/**
+ * WHETHER THIS ROW'S RECORD CAN BE OPENED AT ALL — the PUBLIC_PAGE predicate, CALLED from the body's own
+ * `page.public` and never re-derived (§27 :866; evidence A3 :1051).
+ *
+ * THE THREE RECORD PATHS OFF THIS SHEET ARE PUBLIC-ONLY AND THERE IS NO GATED TWIN. `get_capture` refuses
+ * `NOT_PUBLIC` (`getCapture.ts` :89), `/pages/[trackedUrlId]/captures/[capture]` and `…/diffs/…` are public
+ * pages, and ui §7's fourteen gated routes contain no second spelling of any of them. So at `all`, where the
+ * stream carries rows of pages no published thesis has opened, a link onward would land on the one 404 and a
+ * text read would answer it — an anchor to a door that refuses this reader, which is the defect
+ * `no-door-before-it-exists` exists for, and a fetch whose only possible answer is a refusal.
+ *
+ * IT IS THE ROW'S `public`, NOT THE SCOPE, and that is the narrower and truer rule: at `public` the read
+ * returns only opened pages, so the predicate is already true of every row there and a `scope` prop would
+ * decide nothing. The mark says what the absence is, so nothing is silently missing.
+ */
+function opensRecord(entry: CorpusEntry): boolean {
+  return entry.page.public;
+}
+
+/** A record the reader may not open: what it is, its marks, and the platform's word for why (§21 :626). */
+function ClosedRecord({ heading, domain, children }: { heading: string; domain: string; children: ReactNode }) {
+  return (
+    <>
+      <p className="record-head">
+        <bdi dir="ltr">{domain}</bdi>
+      </p>
+      <h2 className="record-title">{heading}</h2>
+      {children}
+      <p data-record-not-public className="record-meta">
+        <PlatformMark kind="notPublic" />
+      </p>
+    </>
+  );
+}
+
+/**
+ * THE ARCHIVE'S BYTES, and it is its own component for one reason: it OWNS the read.
+ *
+ * A hook cannot be called conditionally, so the not-public branch must not merely skip rendering what the
+ * read returned — it must never mount the thing that reads. Splitting here is what makes "zero requests to
+ * `/api/pages/…` for a closed record" a property of the tree rather than of a flag nobody can see.
+ */
+function CaptureText({ entry }: { entry: CaptureEntry }) {
   const t = useTranslations('corpus');
   const locale = useLocale();
   const read = useCaptureText(entry, t('textUnread'));
   const domain = displayUrl(entry.page.url);
   const heading = formatCaptureDate(entry.capture, locale);
   return (
-    <div data-record-sheet data-record-kind="CAPTURE" className="flex flex-col gap-3 p-3">
+    <>
       {/* A FAILED READ DRAWS NO ARCHIVE BOX — and it must not draw the skeleton either, which would say
           "still arriving" about a read that has already ended. IT SAYS SO IN WORDS (approved 2026-09-19):
           silence here is a region a reader cannot tell from "there is nothing to show", which is the shape
@@ -179,9 +222,29 @@ export function CaptureSheet({ entry }: { entry: CaptureEntry }) {
           <CaptureMarks entry={entry} />
         </RecordContent>
       )}
+    </>
+  );
+}
+
+export function CaptureSheet({ entry }: { entry: CaptureEntry }) {
+  const t = useTranslations('corpus');
+  const locale = useLocale();
+  const open = opensRecord(entry);
+  return (
+    <div data-record-sheet data-record-kind="CAPTURE" className="flex flex-col gap-3 p-3">
+      {open ? (
+        <CaptureText entry={entry} />
+      ) : (
+        <ClosedRecord heading={formatCaptureDate(entry.capture, locale)} domain={displayUrl(entry.page.url)}>
+          <CaptureMarks entry={entry} />
+        </ClosedRecord>
+      )}
+      {/* THE CITATION TOKEN STAYS ON BOTH BRANCHES. It is the row's own `fileHash` and the body already
+          carries it; a researcher citing a record the public cannot yet read is exactly how a page BECOMES
+          public, so withholding the token would remove the act the gated door exists for. */}
       <CopyableCode value={`#ev_${entry.fileHash}`} label={t('copyToken')} />
       <CitingTheses evidence={entry.evidence} />
-      <OpenRecord entry={entry} />
+      {open ? <OpenRecord entry={entry} /> : null}
     </div>
   );
 }
@@ -215,40 +278,42 @@ function DiffSheet({ entry }: { entry: DiffEntry }) {
       {/* The opinion in FULL here — the stream clamps it to two lines, and the sheet is where the rest is
           (§24 region 4: "the rest in the sheet"). It stays inside the one labelled container either way. */}
       {entry.opinion === null ? null : <LabelledOpinion opinion={entry.opinion} />}
+      {entry.page.public ? null : <PlatformMark kind="notPublic" />}
       <CitingTheses evidence={entry.evidence} />
-      <OpenRecord entry={entry} />
+      {opensRecord(entry) ? <OpenRecord entry={entry} /> : null}
     </div>
   );
 }
 
 /**
- * THE PANE'S DECLARATION, and the only stateful thing on this page besides the two reveals.
+ * THE OPEN RECORD'S TAB, AS A VALUE — not a declaration, and the change is forced rather than stylistic.
+ *
+ * `DeclareTabs` REPLACES the registry (`RightPane.tsx` :44–:46, :66–:72: `declare(tabs)` sets, unmounting
+ * clears it to `[]`). One page, two declarers, and the second erases the first — which is exactly what
+ * `/research/corpus` would be, where the record sheet and §27's extraction sheet are open at once, and what
+ * §11 :452–:454 requires instead ("a sheet may open one further sheet"). So every sheet on a page is built as
+ * a `PaneTab` and ONE component declares them all. The mechanism is unchanged and the shell is untouched:
+ * `DeclareTabs` + `useOpenRecord(id)` are still the only way a sheet opens.
  *
  * The open record is the READER'S CHOICE made after the page arrives, so it is client state and not a URL
  * parameter: a record opened is not a filtered view and must not be linkable as one. That is the same
  * reasoning `Stream` already records for its reveals.
  */
-export function RecordSheetTab({ entries, openId }: { entries: readonly CorpusEntry[]; openId: string | null }) {
+export function useRecordTab(entries: readonly CorpusEntry[], openId: string | null): PaneTab | null {
   const locale = useLocale();
   const open = entries.find((entry) => recordIdOf(entry) === openId);
-  if (open === undefined) return <DeclareTabs tabs={[]} />;
+  if (open === undefined) return null;
   const label =
     open.kind === 'CAPTURE'
       ? `${displayUrl(open.page.url)} · ${formatCaptureDate(open.capture, locale)}`
       : `${displayUrl(open.page.url)} · ${formatCaptureDate(open.before, locale)}–${formatCaptureDate(open.after, locale)}`;
-  return (
-    <DeclareTabs
-      tabs={[
-        {
-          id: recordIdOf(open),
-          label,
-          // KEYED BY THE RECORD: a different record is a different sheet, not the same sheet re-pointed, so
-          // no record ever draws the previous one's bytes. `useCaptureText` records what was measured.
-          content: open.kind === 'CAPTURE' ? <CaptureSheet key={recordIdOf(open)} entry={open} /> : <DiffSheet entry={open} />,
-        },
-      ]}
-    />
-  );
+  return {
+    id: recordIdOf(open),
+    label,
+    // KEYED BY THE RECORD: a different record is a different sheet, not the same sheet re-pointed, so
+    // no record ever draws the previous one's bytes. `useCaptureText` records what was measured.
+    content: open.kind === 'CAPTURE' ? <CaptureSheet key={recordIdOf(open)} entry={open} /> : <DiffSheet entry={open} />,
+  };
 }
 
 /**

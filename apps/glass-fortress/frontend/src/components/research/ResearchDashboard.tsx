@@ -121,8 +121,11 @@ export function ResearchDashboard({ locale }: { locale: string }) {
         </ResearchFetchBoundary>
       </section>
 
+      {/* REGION 4 IS A DOOR CARD AND CARRIES ITS OWN TITLE (board ב, approved 2026-09-21): the card's heading
+          IS the link to `/research/corpus`, so a second `<h2>` above it would name the region twice — and
+          „הארכיון במספרים" named a list of numbers this region no longer draws. The key lost its caller here
+          and left both catalogues in the same change. */}
       <section data-region="corpus" className="flex flex-col gap-2">
-        <h2 className="text-sm text-ink">{t('research.corpus.heading')}</h2>
         <ResearchFetchBoundary state={pages.state}>{(rows) => <CorpusNumbers pages={rows} />}</ResearchFetchBoundary>
       </section>
     </ResearchDoor>

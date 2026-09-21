@@ -47,6 +47,31 @@ export interface CorpusFilters {
 /** What `/corpus` is showing: region 0, or regions 1–5 with the filters that made it so. */
 export type CorpusView = { view: 'list' } | { view: 'stream'; filters: CorpusFilters };
 
+/**
+ * THE TWO DOORS, AND THE ONLY PLACE EITHER BASE IS SPELLED — docs/gf-ui-flows.md §24 :657 ("`/corpus` and
+ * `/research/corpus` are ONE page rendered from one read at two scopes") and §27; UI plan :750–:760.
+ *
+ * `one-stream-two-doors` says the two doors "render from one component and differ only by scope, the NOT
+ * PUBLIC mark and the extraction sheet". Every href the corpus components mint — a page row, the page card's
+ * claims entry, every filter chip, the lens control — is a path under one of these two bases, and the scope
+ * is the ONLY thing that chooses between them. Written at each call site instead, the base would be a second
+ * rule with six implementations, and the one spelled wrong would send a researcher out of the gated door.
+ *
+ * IT IS PURE AND IT IS A LOOKUP, not a concatenation at the call site: a caller cannot compose `/research` +
+ * `/corpus` wrongly if it never composes at all.
+ */
+const DOORS: Record<CorpusScope, string> = { public: '/corpus', all: '/research/corpus' };
+
+/** The stream/list door for a scope: `/corpus` at `public`, `/research/corpus` at `all`. */
+export function corpusPath(scope: CorpusScope): string {
+  return DOORS[scope];
+}
+
+/** The claims door for a scope — the same base with §25's one segment, never spelled twice. */
+export function claimsPath(scope: CorpusScope): string {
+  return `${DOORS[scope]}/claims`;
+}
+
 /** `list_corpus`' parameters (§6.1 :237) — the read's own spelling, which is not always the URL's. */
 export interface CorpusReadParameters {
   scope: CorpusScope;

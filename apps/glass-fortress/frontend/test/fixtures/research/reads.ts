@@ -500,8 +500,11 @@ export const captures: CaptureRow[] = [
  */
 export const articleRules: ArticleRules = {
   rules: [
-    { ruleId: 'rule-1', selector: 'main article', validFrom: '2021-12-01', validTo: null, trusted: true, lastMatched: '20220502120000' },
-    { ruleId: 'rule-2', selector: 'div.legacy', validFrom: '2021-01-01', validTo: '2021-11-30', trusted: false, lastMatched: null },
+    // `validFrom` AND `validTo` ARE 14-DIGIT CAPTURE INSTANTS, not days — `schema.prisma` :1790–:1795, and
+    // REVIEW read `20211223211940` on the real body. Written as days here, this fixture asserted a spelling
+    // the wire does not use and made a live rule read as not-yet-begun on every real page.
+    { ruleId: 'rule-1', selector: 'main article', validFrom: '20211201000000', validTo: null, trusted: true, lastMatched: '20220502120000' },
+    { ruleId: 'rule-2', selector: 'div.legacy', validFrom: '20210101000000', validTo: '20211130000000', trusted: false, lastMatched: null },
   ],
   pendingStop: {
     capture: '20220502120000',
@@ -519,7 +522,7 @@ export const ruleHistory: RuleHistory = {
   rule: {
     ruleId: 'rule-1',
     selector: 'main article',
-    validFrom: '2021-12-01',
+    validFrom: '20211201000000',
     validTo: null,
     trusted: true,
     createdAt: '2021-12-01T09:00:00.000Z',

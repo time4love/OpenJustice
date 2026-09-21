@@ -3,7 +3,7 @@ jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { type Locale, type PageRender, renderPage, renderResearchDashboard, setAuthState, setPathname, setPublicBodies, textNodes } from './render';
+import { type Locale, type PageRender, renderPage, renderResearchDashboard, setAuthState, setPathname, setPublicBodies, snapshotResearchClaims, snapshotResearchCorpus, textNodes } from './render';
 import { requireSubjects } from './scan';
 import { corpusStream } from './fixtures/corpus/stream';
 import { claimsAnswer } from './fixtures/corpus/claims';
@@ -118,6 +118,22 @@ describe('no-disclaimer-off-the-thesis · the rendered pages', () => {
       rows: container.querySelectorAll('[data-thesis-row]').length > 0,
       controlFindsBoth: DISCLAIMERS.filter((sentence) => (control.textContent ?? '').includes(sentence)).length,
     }).toEqual({ found: [], regions: 4, rows: true, controlFindsBoth: 2 });
+  });
+
+  it('THE GATED CORPUS AND ITS CLAIMS LENS CARRY NO DISCLAIMER — a corpus view is neither, at either scope (UI-8 chunk 5)', async () => {
+    // The POSITIVE control is the same one this file already uses: the fragment is blind (R65's shape), so
+    // the WHOLE catalogue sentence is what is looked for, and the control proves the reader finds both.
+    const corpus = await snapshotResearchCorpus(LOCALE, { searchParams: { page: 'page-one' }, depth: 3 });
+    const claims = await snapshotResearchClaims(LOCALE);
+    const control = controlFragment();
+    expect({
+      onTheCorpus: DISCLAIMERS.filter((sentence) => shownText(corpus).includes(sentence)),
+      onTheClaims: DISCLAIMERS.filter((sentence) => shownText(claims).includes(sentence)),
+      // THE FLOOR: both pages really drew their rows, so "no disclaimer" is a fact about what they render.
+      corpusRows: corpus.querySelectorAll('[data-capture-row]').length > 0,
+      claimRows: claims.querySelectorAll('[data-claim-row]').length > 0,
+      controlFindsBoth: DISCLAIMERS.filter((sentence) => (control.textContent ?? '').includes(sentence)).length,
+    }).toEqual({ onTheCorpus: [], onTheClaims: [], corpusRows: true, claimRows: true, controlFindsBoth: 2 });
   });
 
   it('THE CLAIMS VIEW CARRIES NO DISCLAIMER — a corpus view is neither a thesis page nor a call page', async () => {

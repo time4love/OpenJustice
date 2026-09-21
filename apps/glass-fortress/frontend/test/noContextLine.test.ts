@@ -3,7 +3,7 @@ jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { type Locale, type PageRender, renderPage, renderResearchDashboard, setPublicBodies, textNodes } from './render';
+import { type Locale, type PageRender, renderPage, setPublicBodies, snapshotResearchClaims, snapshotResearchCorpus, snapshotResearchDashboard, textNodes } from './render';
 import { FRONTEND, declarationsOf, importsOf, jsxTagsIn, publicThesisModules, requireSubjects, stringsIn } from './scan';
 import published from './fixtures/thesis/published.json';
 import callLive from './fixtures/thesis/call-live.json';
@@ -206,7 +206,12 @@ async function renderedPublicPages(): Promise<{ name: string; container: HTMLEle
     // UI-8 chunk 4: `/research` joins the render arm. §11 :399's ruling is that the working view's context
     // line is NOT sticky; the DOOR has no context line at all, and nothing held that until now. It is also
     // the first page in this set whose tree is CLIENT-rendered, which is why it comes through the one helper.
-    { name: '/research', container: await renderResearchDashboard(LOCALE) },
+    { name: '/research', container: await snapshotResearchDashboard(LOCALE) },
+    // UI-8 chunk 5: the corpus's own context line is region 1 of §24 and has never been sticky; the gated
+    // twin renders the SAME component, so a `position: sticky` added to it would reach both doors at once and
+    // this is where that is caught.
+    { name: '/research/corpus', container: await snapshotResearchCorpus(LOCALE, { searchParams: { page: 'page-one' } }) },
+    { name: '/research/corpus/claims', container: await snapshotResearchClaims(LOCALE) },
   ];
   return [...requireSubjects('rendered public pages', rendered)];
 }

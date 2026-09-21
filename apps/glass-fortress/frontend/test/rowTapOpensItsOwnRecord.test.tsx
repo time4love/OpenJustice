@@ -13,7 +13,7 @@ jest.mock('../src/components/corpus/RecordSheet', () => {
 import { renderPage, setAuthState, setPathname, setPublicBodies, type Locale, type PageRender } from './render';
 import { requireSubjects } from './scan';
 import { readCorpusFilters, toReadParameters, writeReadQuery } from '../src/lib/corpusQuery';
-import { corpusStream } from './fixtures/corpus/stream';
+import { corpusAtPageOne } from './fixtures/corpus/stream';
 
 // ---------------------------------------------------------------------------
 // row-tap-opens-its-own-record — docs/gf-ui-flows.md §24 region 4 ("a row tap opens THE RECORD"), §26.
@@ -52,7 +52,7 @@ function containerOf(rendered: PageRender): HTMLElement {
 
 async function renderStream(searchParams: Record<string, string>): Promise<HTMLElement> {
   const wire = writeReadQuery(toReadParameters(readCorpusFilters(new URLSearchParams(searchParams)), 'public')).toString();
-  setPublicBodies({ [`/api/corpus${wire === '' ? '' : `?${wire}`}`]: { status: 200, body: corpusStream } });
+  setPublicBodies({ [`/api/corpus${wire === '' ? '' : `?${wire}`}`]: { status: 200, body: corpusAtPageOne } });
   return containerOf(await renderPage((await import('../src/app/[locale]/corpus/page')).default, { locale: LOCALE }, { locale: LOCALE, searchParams }));
 }
 
@@ -78,11 +78,13 @@ describe('row-tap-opens-its-own-record', () => {
       // TWO-SIDED, so "they are all equal" cannot be satisfied by all-the-same: the set is as large as the rows.
       distinct: new Set(got).size,
     }).toEqual({
-      openedCount: 5,
-      tapCount: 5,
+      // FOUR ROWS, not five: the body is the one a read NAMING page-one answers, so it holds that page's rows
+      // alone, and the significance gate hides two of its four diffs.
+      openedCount: 4,
+      tapCount: 4,
       matchesItsOwnRow: taps.map((tap) => tap.getAttribute('data-open-record') ?? ''),
       attributes: taps.map((tap) => tap.getAttribute('data-open-record') ?? ''),
-      distinct: 5,
+      distinct: 4,
     });
   });
 

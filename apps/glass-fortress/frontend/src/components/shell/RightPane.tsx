@@ -63,13 +63,25 @@ export function DeclareTabs({ tabs }: { tabs: PaneTab[] }) {
   // The tabs' identity, not the array's: a page that rebuilds its array on every render must not re-register
   // on every render. The CONTENT is a node and cannot be compared, so the key is the ids and the labels.
   const signature = tabs.map((tab) => `${tab.id}\u0000${tab.label}`).join('\u0001');
+
+  // TWO EFFECTS, AND THE SPLIT IS A CORRECTION (UI-8 chunk 5, declared). Clearing the registry in the
+  // SIGNATURE effect's cleanup put an empty pane between every two declarations: `RightPane` early-returns at
+  // zero tabs, so opening a second sheet UNMOUNTED the first and remounted it a tick later — and a sheet that
+  // reads its own body (§27's three) therefore re-issued that read on every neighbouring press. Measured on
+  // 2026-09-21: opening the rule history re-fetched the work list and the rules, twice each.
+  //
+  // A page's tabs are still exactly what it last declared, and leaving a page still empties the pane — that
+  // is the second effect, which runs on UNMOUNT alone. What is gone is only the empty state in between.
   useEffect(() => {
     declare(tabs);
-    return () => {
-      declare([]);
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `signature` IS the comparison; `tabs` would re-register every render.
   }, [signature, declare]);
+  useEffect(
+    () => () => {
+      declare([]);
+    },
+    [declare],
+  );
   return null;
 }
 

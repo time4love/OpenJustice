@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
-import { renderWithIntl, textNodes, type Locale } from './render';
+import { DeclareRecordTab, renderWithIntl, textNodes, type Locale } from './render';
 import { MESSAGES, messageCatalogs, requireSubjects, SRC, sourceFiles, stringsIn } from './scan';
 import { parseThesisBody } from '../src/lib/thesisBody';
 import { EvidenceRecordPane } from '../src/components/thesis/RecordPane';
-import { RecordSheetTab, recordIdOf } from '../src/components/corpus/RecordSheet';
+import { recordIdOf } from '../src/components/corpus/RecordSheet';
 import { RightPane, TabsProvider } from '../src/components/shell/RightPane';
 import published from './fixtures/thesis/published.json';
 import { corpusStream } from './fixtures/corpus/stream';
@@ -79,7 +79,7 @@ function renderSheet(entry: CorpusEntry, locale: Locale): HTMLElement {
   const entries: readonly CorpusEntry[] = [entry];
   const { container } = renderWithIntl(
     <TabsProvider>
-      <RecordSheetTab entries={entries} openId={recordIdOf(entry)} />
+      <DeclareRecordTab entries={entries} openId={recordIdOf(entry)} />
       <RightPane />
     </TabsProvider>,
     { locale },

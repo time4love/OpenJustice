@@ -71,6 +71,23 @@ afterEach(() => {
   setPathname(undefined);
 });
 
+/**
+ * THE CHIPS THAT WOULD CHANGE THE PAGE IN FORCE — a picker's chip, or a chip that removes the page.
+ *
+ * THE PREDICATE IS ON THE WIRE AND NOT ON A WORD. CP-10 and CP-11 spelled it `chip.textContent.includes('דף')`
+ * until this round, and the picker board ט·ב removed labelled its chips `displayUrl(page.url)` —
+ * „example.gov/one/", which holds no „דף" — so the control could come back whole and both cases would stay
+ * green. Reproduced: wired end to end the picker renders exactly those urls and the suite does not move.
+ *
+ * NOR IS IT "no chip carries a `page` parameter". On this view every chip carries `page=<id>` by design: a
+ * chip's href is the filter set with that ONE chip changed (§24 :750), and removing `since` must leave the
+ * reader on the same page's claims. What marks a page chip is that it changes the PAGE.
+ */
+const chipsTouchingThePage = (container: HTMLElement, page: string): Element[] =>
+  [...container.querySelectorAll('[data-chip]')].filter(
+    (chip) => new URLSearchParams((chip.getAttribute('href') ?? '').split('?').at(1) ?? '').get('page') !== page,
+  );
+
 function containerOf(rendered: PageRender): HTMLElement {
   if (rendered.notFound) throw new Error('the claims view answered the one 404, not a body');
   return rendered.container;
@@ -330,7 +347,7 @@ describe('claims-per-page', () => {
       });
     }
     expect(windows).toEqual(
-      ONE_SIDED.map((one) => ({ name: one.name, filtered: he.corpus.emptyFiltered, claims: null, chips: 2 })),
+      ONE_SIDED.map((one) => ({ name: one.name, filtered: he.corpus.emptyFiltered, claims: null, chips: 1 })),
     );
     const filtered = containerOf(await render({ page: 'page-one', since: '2023-01-01' }, {
       '/api/corpus/claims?page=page-one&since=2023-01-01': { status: 200, body: { entries: [], undetected: [], nextCursor: null } },
@@ -359,27 +376,37 @@ describe('claims-per-page', () => {
       filteredClaimsSentence: null,
       refusedSentence: he.corpus.emptyFiltered,
       refusedClaimsSentence: null,
-      filteredChips: 2,
-      refusedChips: 3,
+      // ONE PER FILTER IN FORCE, and the PAGE is not one of them since board ט·ב — it is the view's subject,
+      // removed by the link this case's siblings pin.
+      filteredChips: 1,
+      refusedChips: 2,
     });
   });
 
-  it('CP-11 THE CONTEXT LINE SERVES THIS VIEW — PAGE and the dates, no KIND, no CITED, no lens; removal stays on the claims view', async () => {
+  it('CP-11 THE CONTEXT LINE SERVES THIS VIEW — THE DATES ONLY, no PAGE, no KIND, no CITED, no lens; removal stays on the claims view', async () => {
+    // RENAMED 2026-09-21: the title said "PAGE and the dates" and board ט·ב had already removed the PAGE
+    // chip, which the case's own assertions state. A case whose title outlives its assertion is a defect this
+    // repository has been bitten by — `shell.test.tsx`'s route case named a property while checking two
+    // specifiers, and a `usePathname` passed it and falsified it at once.
     const container = containerOf(await render({ page: 'page-one', since: '2022-01-01', until: '2022-12-31' }, {
       '/api/corpus/claims?page=page-one&since=2022-01-01&until=2022-12-31': { status: 200, body: claimsAnswer },
     }));
     const chips = requireSubjects('the chips of the claims view', [...container.querySelectorAll('[data-chip]')]);
     const labelled = chips.map((chip) => [chip.textContent, chip.getAttribute('href')]);
     expect(labelled).toEqual([
-      // THE PAGE CHIP LEAVES THE VIEW, and that is right: without a page there is no claims view, so its
-      // removal lands on `/corpus` — carrying the dates, because removing one chip never clears the others.
-      [he.corpus.filters.page, '/he/corpus?since=2022-01-01&until=2022-12-31'],
       // THE DATE CHIPS STAY ON THE VIEW. A `since` removed from the claims view must leave the reader on the
       // claims view of the same page; a chip that dropped them back to the stream would be a filter that
       // navigates, which §24 region 2 is not.
-      [he.corpus.filters.since, '/he/corpus/claims?page=page-one&until=2022-12-31'],
-      [he.corpus.filters.until, '/he/corpus/claims?page=page-one&since=2022-01-01'],
+      ['מתאריך', '/he/corpus/claims?page=page-one&until=2022-12-31'],
+      ['עד תאריך', '/he/corpus/claims?page=page-one&since=2022-01-01'],
     ]);
+    // THE PAGE LEAVES THE VIEW BY THE ONE LINK (board ט·ב), not by a chip: without a page there is no claims
+    // view at all, so its removal lands on region 0 — where a page is chosen — rather than on a stream.
+    expect({
+      allPages: container.querySelector('[data-all-pages]')?.getAttribute('href'),
+      label: container.querySelector('[data-filters-label]')?.textContent,
+      pageIsNotAChip: chipsTouchingThePage(container, 'page-one').length,
+    }).toEqual({ allPages: '/he/corpus', label: 'סינון', pageIsNotAChip: 0 });
     // KIND AND CITED ARE THE STREAM'S AND THIS READ TAKES NEITHER (§6.1 :247): a chip that sent one would
     // earn `Unrecognized key` from the route, so the control must not be drawn at all.
     expect({
@@ -391,23 +418,55 @@ describe('claims-per-page', () => {
     }).toEqual({ kind: 0, cited: 0, lenses: 0 });
   });
 
+  it('CP-13 THE FILTER ROW IS DRAWN ONLY WHEN IT HOLDS A CONTROL — no label over nothing (M3)', async () => {
+    // THE PUBLIC HALF OF THE SAME RULE the gated door holds in CO-21, and it is held on BOTH because the two
+    // doors render ONE component: a change to it reaches both, and a rule held on one door is a rule with a
+    // blind side. Measured live on the gated twin, `data-corpus-filters` rendered with its whole innerText
+    // equal to „סינון" and ZERO chips — this view draws neither KIND nor CITED by design (§6.1 :247), so with
+    // no date in force the row is a label over nothing.
+    const bare = containerOf(await render({ page: 'page-one' }));
+    const dated = containerOf(await render({ page: 'page-one', since: '2022-01-01' }, {
+      '/api/corpus/claims?page=page-one&since=2022-01-01': { status: 200, body: claimsAnswer },
+    }));
+    expect({
+      bareRow: bare.querySelectorAll('[data-corpus-filters]').length,
+      bareLabel: bare.querySelectorAll('[data-filters-label]').length,
+      bareChips: bare.querySelectorAll('[data-chip]').length,
+      // TWO-SIDED: one date brings the row back, label and all, so "never drawn" fails as loudly as "always".
+      datedRow: dated.querySelectorAll('[data-corpus-filters]').length,
+      datedLabel: dated.querySelector('[data-filters-label]')?.textContent,
+      datedChips: dated.querySelectorAll('[data-chip]').length,
+      // AND THE VIEW IS OTHERWISE WHOLE without it — the count line, the way back and the rows all stand, so
+      // the zeroes above are the rule rather than a page that failed to render.
+      bareCount: bare.querySelectorAll('[data-corpus-count]').length,
+      bareBack: bare.querySelector('[data-all-pages]')?.getAttribute('href'),
+      bareRows: bare.querySelectorAll('[data-claim-row]').length > 0,
+    }).toEqual({ bareRow: 0, bareLabel: 0, bareChips: 0, datedRow: 1, datedLabel: 'סינון', datedChips: 1, bareCount: 1, bareBack: '/he/corpus', bareRows: true });
+  });
+
   it('CP-10 A 400 IS THE FILTERS SHOWN FOR REMOVAL (A2 :1149) — the PAGE chip is drawn from the filters, not the facet', async () => {
     const wire = '/api/corpus/claims?page=page-one&since=2023-05-01&until=2022-01-01';
     const container = containerOf(await render({ page: 'page-one', since: '2023-05-01', until: '2022-01-01' }, { [wire]: { status: 400 } }));
     const chips = requireSubjects('the chips shown for removal', [...container.querySelectorAll('[data-chip]')]);
-    // THE READ RETURNED NO FACET, so a chip drawn from the answer would be missing exactly when it is needed.
-    // REMOVAL KEEPS THE OTHERS (§24 region 2), so the page chip's href drops `page=` and carries the dates —
-    // asserting it pointed at a bare `/corpus` would be asserting that removing one chip clears them all.
-    const pageChip = chips.find((chip) => chip.textContent === he.corpus.filters.page);
+    // THE READ RETURNED NOTHING, so anything drawn from the ANSWER would be missing exactly when it is needed
+    // — and since board ט·ב the way off the page is a LINK rather than a chip, so the link is what must be
+    // drawn on a refusal. It is: the condition is the filter in force, never the facet.
     expect({
-      pageChipHref: pageChip?.getAttribute('href'),
-      pageChipActive: pageChip?.getAttribute('data-chip-active'),
+      allPages: container.querySelector('[data-all-pages]')?.getAttribute('href'),
+      // THE DATE CHIPS REMAIN, each removing its own and keeping the other (§24 region 2).
+      chips: chips.map((chip) => [chip.textContent, chip.getAttribute('href')]),
       removable: chips.filter((chip) => chip.getAttribute('data-chip-active') === 'true').length,
+      // NO PAGE CHIP ANYWHERE (board ט·ב) — the page is the SUBJECT of this view, not one of its filters.
+      pageIsNotAChip: chipsTouchingThePage(container, 'page-one').length,
       rows: container.querySelectorAll('[data-claim-row]').length,
     }).toEqual({
-      pageChipHref: '/he/corpus?since=2023-05-01&until=2022-01-01',
-      pageChipActive: 'true',
-      removable: 3,
+      allPages: '/he/corpus',
+      chips: [
+        ['מתאריך', '/he/corpus/claims?page=page-one&until=2022-01-01'],
+        ['עד תאריך', '/he/corpus/claims?page=page-one&since=2023-05-01'],
+      ],
+      removable: 2,
+      pageIsNotAChip: 0,
       rows: 0,
     });
   });

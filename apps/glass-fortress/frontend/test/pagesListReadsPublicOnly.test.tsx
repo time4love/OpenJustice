@@ -112,8 +112,10 @@ describe('pages-list-reads-public-only', () => {
     // would never return at `public`, and the component must drop it anyway: a renderer that trusted its input
     // would publish whatever a future refactor handed it.
     const facet = [
-      { trackedUrlId: 'open-one', url: 'https://example.gov/one/', public: true, first: '20211223211940', last: '20220211120000', entries: 4 },
-      { trackedUrlId: 'surveyed-not-open', url: 'https://example.gov/secret/', public: false, first: '20220101090000', last: '20220301090000', entries: 9 },
+      // `shape: null` on both, which is what region 0's read answers: no page is named, so no row carries one
+      // and the list draws no strip — §28's own rule, and the reason `timeStrips: 0` below is not a coincidence.
+      { trackedUrlId: 'open-one', url: 'https://example.gov/one/', public: true, first: '20211223211940', last: '20220211120000', entries: 4, shape: null },
+      { trackedUrlId: 'surveyed-not-open', url: 'https://example.gov/secret/', public: false, first: '20220101090000', last: '20220301090000', entries: 9, shape: null },
     ];
     const container = await renderCorpus(facet);
     const shown = textNodes(container)
@@ -172,7 +174,7 @@ describe('the pages list itself', () => {
     // 14-digit timestamp — so a page printing one passed `no-id-as-text` everywhere. The shape was added to
     // `test/scan.ts` here, measured safe across the whole suite first.
     const facet = [
-      { trackedUrlId: 'c7039812-d3ed-4206-95ed-8205c3f2b63c', url: 'https://example.gov/one/', public: true, first: '20211223211940', last: '20220211120000', entries: 4 },
+      { trackedUrlId: 'c7039812-d3ed-4206-95ed-8205c3f2b63c', url: 'https://example.gov/one/', public: true, first: '20211223211940', last: '20220211120000', entries: 4, shape: null },
     ];
     const container = await renderCorpus(facet);
     const shown = requireSubjects('text nodes of /corpus', textNodes(container))

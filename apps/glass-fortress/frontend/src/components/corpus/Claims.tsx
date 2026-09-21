@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { CopyableCode } from '@/components/CopyableCode';
+import { PlatformMark } from '@/components/thesis/PlatformMark';
 import { DeclareTabs } from '@/components/shell/RightPane';
 import { displayUrl, formatCaptureDate } from '@/lib/format';
 import { useOpenRecord } from './RecordSheet';
@@ -138,6 +139,10 @@ function ClaimRow({ entry, onOpen }: { entry: TrajectoryEntry; onOpen: (entry: T
           {entry.claimCount > 1 ? <span data-also-moved>{t('alsoMoved', { count: entry.claimCount - 1 })}</span> : null}
         </span>
       </button>
+      {/* THE NOT PUBLIC MARK (§27 :866) — this read carries `page.public` on every row (§6.1 :248), and at
+          `all` a claim may belong to a page no published thesis has opened. Outside the tap, like the
+          stream's. */}
+      {entry.page.public ? null : <PlatformMark kind="notPublic" />}
     </li>
   );
 }
@@ -150,6 +155,9 @@ function ClaimSheet({ entry }: { entry: TrajectoryEntry }) {
   const locale = useLocale();
   const id = entry.page.trackedUrlId;
   const flips = flipsOf(entry.captures);
+  // PUBLIC_PAGE, CALLED from the row's own field — the one predicate that decides whether a record page
+  // exists for this reader at all (§27 :866; evidence A3 :1051). Never re-derived, never a scope.
+  const open = entry.page.public;
   return (
     <div data-claim-sheet className="flex flex-col gap-3 p-3">
       <h2 className="record-title">{t('overTime')}</h2>
@@ -162,10 +170,22 @@ function ClaimSheet({ entry }: { entry: TrajectoryEntry }) {
             {/* `dir="auto"` ON THE DATED STRING — the `RecordContent` heading's own fix, for the same string
                 and the same reason: „צילום של העמוד מ־{date}" is Hebrew with a NEUTRAL run at its end, and a
                 date left to the paragraph's direction renders its parts in the wrong order at the boundary.
-                `bidi-isolated` found it here exactly as it found it on the capture page. */}
-            <a dir="auto" data-capture-link href={`/pages/${id}/captures/${capture.waybackTimestamp}`} className="record-links underline">
-              {record('capture', { date: formatCaptureDate(capture.waybackTimestamp, locale) })}
-            </a>{' '}
+                `bidi-isolated` found it here exactly as it found it on the capture page.
+
+                AN ANCHOR ONLY WHERE THE DOOR OPENS. The record pages are PUBLIC pages and `get_capture`
+                refuses `NOT_PUBLIC` (`getCapture.ts` :89); ui §7's fourteen gated routes hold no second
+                spelling of either. So on a page no published thesis has opened, the same words are drawn as
+                TEXT — the fact is still stated, the link that could only 404 is not offered, and the row's
+                mark above says why. */}
+            {open ? (
+              <a dir="auto" data-capture-link href={`/pages/${id}/captures/${capture.waybackTimestamp}`} className="record-links underline">
+                {record('capture', { date: formatCaptureDate(capture.waybackTimestamp, locale) })}
+              </a>
+            ) : (
+              <span dir="auto" data-capture-link-closed>
+                {record('capture', { date: formatCaptureDate(capture.waybackTimestamp, locale) })}
+              </span>
+            )}{' '}
             <span data-capture-state>{capture.present ? t('capturePresent') : t('captureAbsent')}</span>
           </li>
         ))}
@@ -179,17 +199,26 @@ function ClaimSheet({ entry }: { entry: TrajectoryEntry }) {
             <li key={`${flip.before.waybackTimestamp}-${flip.after.waybackTimestamp}`}>
               {/* The interval is TWO DATES AND NOTHING ELSE, so it is `ltr` outright — the stream's own
                   spelling for the same `corpus.interval` string. */}
-              <a
-                dir="ltr"
-                data-diff-link
-                href={`/pages/${id}/diffs/${flip.before.waybackTimestamp}/${flip.after.waybackTimestamp}`}
-                className="record-links underline"
-              >
-                {corpus('interval', {
-                  first: formatCaptureDate(flip.before.waybackTimestamp, locale),
-                  last: formatCaptureDate(flip.after.waybackTimestamp, locale),
-                })}
-              </a>{' '}
+              {open ? (
+                <a
+                  dir="ltr"
+                  data-diff-link
+                  href={`/pages/${id}/diffs/${flip.before.waybackTimestamp}/${flip.after.waybackTimestamp}`}
+                  className="record-links underline"
+                >
+                  {corpus('interval', {
+                    first: formatCaptureDate(flip.before.waybackTimestamp, locale),
+                    last: formatCaptureDate(flip.after.waybackTimestamp, locale),
+                  })}
+                </a>
+              ) : (
+                <span dir="ltr" data-diff-link-closed>
+                  {corpus('interval', {
+                    first: formatCaptureDate(flip.before.waybackTimestamp, locale),
+                    last: formatCaptureDate(flip.after.waybackTimestamp, locale),
+                  })}
+                </span>
+              )}{' '}
               <span data-flip-direction>{flip.after.present ? t('returnedIn') : t('leftIn')}</span>
             </li>
           ))}

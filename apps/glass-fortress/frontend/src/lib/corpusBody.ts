@@ -23,6 +23,9 @@ import {
   type EvidenceLink,
   type InvestigativeCategory,
   type PagesFacetRow,
+  type CaptureBin,
+  type DiffBin,
+  type PageShape,
 } from '@/types/corpus';
 
 // ---------------------------------------------------------------------------
@@ -57,6 +60,42 @@ const flag = (value: unknown, at: string): boolean => (typeof value === 'boolean
 const count = (value: unknown, at: string): number => (typeof value === 'number' && Number.isFinite(value) ? value : fail(at, 'a number', value));
 const list = (value: unknown, at: string): unknown[] => (Array.isArray(value) ? value : fail(at, 'an array', value));
 
+/** One day's captures (§24 :755) — `day` is `YYYYMMDD`, and `count` is CAPTURES, which a merged mark sums. */
+const captureBin = (value: unknown, at: string): CaptureBin => {
+  const row = object(value, at);
+  return { day: text(row.day, `${at}.day`), count: count(row.count, `${at}.count`), cited: flag(row.cited, `${at}.cited`) };
+};
+
+/** One `(before-day, after-day)` pair's diffs — `chunks` is the bin's MAXIMUM and `passed` its ANY. */
+const diffBin = (value: unknown, at: string): DiffBin => {
+  const row = object(value, at);
+  return {
+    before: text(row.before, `${at}.before`),
+    after: text(row.after, `${at}.after`),
+    count: count(row.count, `${at}.count`),
+    chunks: count(row.chunks, `${at}.chunks`),
+    passed: flag(row.passed, `${at}.passed`),
+  };
+};
+
+/**
+ * THE PAGE'S SHAPE, and `null` IS A VALUE HERE WHILE A MISSING KEY IS A FAILURE.
+ *
+ * The two are different facts and the module's `public` paragraph above is the same reasoning: `null` is the
+ * read SAYING it named no page, so region 0 draws no strip; an ABSENT `shape` is a body that has drifted from
+ * §28, and defaulting it to `null` would silently draw no strip on every single-page view — a region gone,
+ * read by a reader as "this page has no shape". Confirmed on the real body, both arms: `?page=<corona>`
+ * carries a `shape` object and the bare read carries the key with `null` in it.
+ */
+const pageShape = (row: Record<string, unknown>, at: string): PageShape | null => {
+  if (row.shape === null) return null;
+  const shape = object(row.shape, `${at}.shape`);
+  return {
+    captures: list(shape.captures, `${at}.shape.captures`).map((bin, index) => captureBin(bin, `${at}.shape.captures[${String(index)}]`)),
+    diffs: list(shape.diffs, `${at}.shape.diffs`).map((bin, index) => diffBin(bin, `${at}.shape.diffs[${String(index)}]`)),
+  };
+};
+
 /**
  * One row of the `pages` facet (§28 :792).
  *
@@ -74,6 +113,7 @@ function pagesFacetRow(value: unknown, at: string): PagesFacetRow {
     first: text(row.first, `${at}.first`),
     last: text(row.last, `${at}.last`),
     entries: count(row.entries, `${at}.entries`),
+    shape: pageShape(row, at),
   };
 }
 
