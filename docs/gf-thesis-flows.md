@@ -220,8 +220,8 @@ an interval computed from captures, never from a stored date pair. The compariso
 establish a criminal charge; how strong the charge is depends on how well the thesis answers the
 devil's advocate's objections — from the corpus, from a FOIA answer, from a whistleblower's
 document (T4, T5). Framing does not make the charge strong. It makes it the RIGHT charge, with
-its elements named, and it names which element has no record behind it yet — the first gaps,
-before any version exists.
+its elements named, and it names which element has no record behind it yet — the CANDIDATES for
+the thesis's first gaps. **AMENDED 2026-09-21 (#462): a named MISSING element is not yet a gap — A3 :1382's `GAP_LIST` holds only gapIds WITH A DECISION and `decide_gap` refuses NO_HEAD, so no gap exists before a version does.**
 
 **What framing reads is the CORPUS, computed.** Evidence does not exist yet — a thesis may exist
 before its evidence, and framing is what exists for that (evidence §1) — so the assessor is
@@ -281,8 +281,8 @@ STATE        the framing and its rounds; nothing on any thesis until T2 creates 
 holder absent, and one datum — the date of a presentation to the ministry — that would close the
 stronger claim, which the drafting conceded away instead of naming. Under this flow that element
 is recorded MISSING at framing, and T4 turns a missing element into what it is: a FOIA target,
-a whistleblower gap, or a corpus search not yet run. A thesis is opened with its gaps on record
-from its first day.
+a whistleblower gap, or a corpus search not yet run. **AMENDED 2026-09-21 (#462), on the researcher's ruling of 2026-09-13: a thesis is opened with its MISSING ELEMENTS on record from its first day — not with its gaps.**
+**A3 :1382's `GAP_LIST` holds every gapId WITH A DECISION, A4 :1462's `create_thesis` writes none, and `decide_gap` refuses NO_HEAD — so nothing is on the gap list until the researcher decides one at T4. The element map is framing's record of what has no record behind it; the gap list is the record of what was decided about it.**
 
 **Where the Prosecutor enters, and where it does not yet.** Today the researcher reads the
 corpus and proposes the cluster; the critic of §10, when it exists, proposes clusters that have
@@ -619,8 +619,8 @@ not. The critic's strength grade is shown as the critic's and gates nothing.
 gap             something the thesis needs and the corpus lacks; identity = sha256 of its
                 whitespace-collapsed description, so a re-run that raises the same gap finds
                 its decision and a re-worded one is new
-enters from     T1: an element recorded MISSING at framing — the researcher's, already on the
-                list at OPEN · the critic: a suggested gap the researcher ACCEPTS (below)
+enters from     T1: an element recorded MISSING at framing — the researcher's, NOT yet on the
+                list (AMENDED 2026-09-21, #462, on the researcher's ruling of 2026-09-13: a gap enters the list only WITH A DECISION — A3 :1382; create_thesis writes none, A4 :1462; decide_gap refuses NO_HEAD, so no gap exists before a head version does) · the critic: a suggested gap the researcher ACCEPTS (below)
 
 Claude       → decide_gap(thesisId, gap, decision, …)                        ⚠️ the new tool
 backend      REFUSES NO_HEAD · NOT_AUTHOR · REASON_REQUIRED (on DISMISSED, CONCEDED)
