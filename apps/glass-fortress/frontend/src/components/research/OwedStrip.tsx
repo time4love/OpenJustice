@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { CopyableCode } from '@/components/CopyableCode';
 import { PlatformMark, type MarkKind } from '@/components/thesis/PlatformMark';
 import { formatCaptureDate, formatDate } from '@/lib/format';
-import type { ContentUnit, EvidenceReviewList, FlagReason, NamedRecord, ThesisReviewList, TrajectoryCurrency } from '@/types/research';
+import type { ContentUnit, EvidenceReview, FlagReason, NamedRecord, NotEvaluable, ThesisReview, TrajectoryCurrency } from '@/types/research';
 
 // ---------------------------------------------------------------------------
 // WHAT I OWE — docs/gf-ui-flows.md §29 :890–:894 and §11 :402–:408; thesis T6 :881–:882 ("stop-shaped …
@@ -156,35 +156,57 @@ function Chunks({ label, units }: { label: string; units: readonly ContentUnit[]
   );
 }
 
+/**
+ * IT TAKES THE ROWS IT DRAWS, NEVER A COUNT — and the count is gone from the prop because reading one was the
+ * defect (measured on `/research` at `mine`, 2026-09-21: `owed: 4` beside 0 kept rows drew an empty `<ul>`
+ * where „אין כרגע מה שחייבים." belongs).
+ *
+ * THE WIRE'S `owed` IS NOT THIS VIEW'S COUNT, by the design's own words: ui §7.1 :326 has `owed` counting
+ * EVERY researcher's entries at `all`, and :328 has the page open on `mine` by KEEPING the entries whose
+ * `mine` is true. The working view keeps by `thesisId` in the same way. So at every scope but `all` the
+ * envelope's number answers a different question from the list beside it, and a component that mixed the two
+ * could disagree with itself.
+ *
+ * EMPTINESS IS THEREFORE WHAT IT RENDERS: all three lists empty. It is decided HERE, once, rather than by each
+ * caller deriving a count — which is the same rule with two implementations, and was already in the tree twice
+ * (the dashboard's spread versus the working view's `mine.length`).
+ *
+ * `notEvaluable` IS ONE OF THE THREE, and that is a second silent drop closed by the same predicate: a body
+ * with no reviews and a `notEvaluable` row used to draw „nothing is owed" and DROP the row, because the old
+ * test never looked at the list it renders below.
+ */
 export function OwedStrip({
   theses,
   evidence,
+  notEvaluable,
   claimOf,
   locale,
 }: {
-  theses: ThesisReviewList;
-  evidence: EvidenceReviewList;
+  /** The thesis reviews this view draws — already kept by whatever the page keeps by: a scope, or one thesis. */
+  theses: readonly ThesisReview[];
+  /** The corpus-wide entries, `/research`'s region 1 alone; the working view passes none. */
+  evidence: readonly EvidenceReview[];
+  notEvaluable: readonly NotEvaluable[];
   /** The claim of a thesis the page has already read, or null — the Q-G join, never a read of its own. */
   claimOf: (thesisId: string) => string | null;
   locale: string;
 }) {
   const t = useTranslations('research.owed');
   const flag = useTranslations('theses.sheet.flag');
-  const owed = theses.owed + evidence.owed;
 
   return (
     // THE REGION AND ITS HEADING ARE THE PAGE'S, not this component's — so a heading is on the page while its
     // body is still loading, for all four regions alike. Two regions drawing their heading through a boundary
     // and two outside it made the loading page say two of the four names (measured on :3011, chunk 4).
     <>
-      {owed === 0 && theses.reviews.length === 0 && evidence.reviews.length === 0 ? (
+      {theses.length === 0 && evidence.length === 0 && notEvaluable.length === 0 ? (
         // AN EMPTY LIST IS AN ANSWER (A4 :1525), and the line saying so is the region — never a blank.
         <p data-owed-empty className="text-sm text-ink-muted">
           {t('empty')}
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {theses.reviews.map((review) => (
+          {theses.map((review) => (
             <OwedEntry
               key={`${review.kind}:${review.thesisId}:${review.name}`}
               kind={review.kind}
@@ -225,7 +247,7 @@ export function OwedStrip({
               {review.kind === 'UNARGUED' ? <RecordName record={review.material.record} locale={locale} /> : null}
             </OwedEntry>
           ))}
-          {evidence.reviews.map((review) => (
+          {evidence.map((review) => (
             <OwedEntry
               key={review.fileHash}
               kind={review.kind}
@@ -246,7 +268,7 @@ export function OwedStrip({
                   answer under it. It lands with the anchors. */}
             </OwedEntry>
           ))}
-          {evidence.notEvaluable.map((row) => (
+          {notEvaluable.map((row) => (
             <li key={row.fileHash} data-owed-not-evaluable={row.reason} className="rounded border border-line bg-surface p-3 text-sm">
               <p className="text-ink">{t('notEvaluable')}</p>
               <p className="text-xs text-ink-muted">{t(`notEvaluableReason.${row.reason}`)}</p>

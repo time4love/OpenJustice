@@ -45,6 +45,10 @@ describe('no-write-from-research', () => {
     // a subject builder that returned only the two directories would pass the rules below over a set that
     // cannot contain a write, which is the vacuity this repository names as its own.
     expect(files).toContain('src/app/[locale]/research/page.tsx');
+    // UI-8 chunk 7a: the working view and its body — the page that reads a thesis is under the rule that says
+    // a research page never writes one.
+    expect(files).toContain('src/app/[locale]/research/theses/[thesisId]/page.tsx');
+    expect(files).toContain('src/components/research/ResearchThesis.tsx');
     expect(files).toContain('src/components/research/ResearchDashboard.tsx');
     expect(files).toContain('src/lib/researchFetch.ts');
     expect(files).toContain('src/lib/researchBody.ts');

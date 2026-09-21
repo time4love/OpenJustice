@@ -69,8 +69,9 @@ export function ResearchDashboard({ locale }: { locale: string }) {
             <ResearchFetchBoundary state={evidence.state}>
               {(evidenceReviews) => (
                 <OwedStrip
-                  theses={{ ...thesisReviews, reviews: atScope(thesisReviews.reviews, scope) }}
-                  evidence={evidenceReviews}
+                  theses={atScope(thesisReviews.reviews, scope)}
+                  evidence={evidenceReviews.reviews}
+                  notEvaluable={evidenceReviews.notEvaluable}
                   claimOf={claimOf}
                   locale={locale}
                 />

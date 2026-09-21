@@ -441,6 +441,11 @@ describe('record-page-witnesses — the reading region', () => {
     // opt-in could be dropped from either without a red case anywhere.
     'src/app/[locale]/research/corpus/page.tsx',
     'src/app/[locale]/research/corpus/claims/page.tsx',
+    // UI-8 chunk 7a: the WORKING VIEW, the same shape — a thin server shell over a client body, because the
+    // bearer is in `window.localStorage`. It is the one page of the four whose `<main>` carries no heading of
+    // its own (the CLAIM is the heading, and the claim arrives with the body), which is exactly why the
+    // reading measure has to be asserted here rather than inferred from a title.
+    'src/app/[locale]/research/theses/[thesisId]/page.tsx',
   ] as const;
 
   /** The pages whose EVERY return is a read — this chunk's three, asserted per branch. */
@@ -532,8 +537,8 @@ describe('record-page-witnesses — the reading region', () => {
       return optedInMains(file) < mains;
     });
     expect(researchMissing).toEqual([]);
-    // THE FLOOR, MOVED BY TWO: one `<main>` per read-view page, each with `reading` on it.
-    expect(researchBranches).toBe(3);
+    // THE FLOOR, MOVED BY ONE AT CHUNK 7a: one `<main>` per read-view page, each with `reading` on it.
+    expect(researchBranches).toBe(4);
   });
 });
 

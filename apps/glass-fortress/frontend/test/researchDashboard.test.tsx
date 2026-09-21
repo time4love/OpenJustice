@@ -445,4 +445,65 @@ describe('/research — the states of §13', () => {
       fetching.restore();
     }
   });
+  it('RD-11 AT `mine`, A LIST WHERE EVERY ENTRY IS A COLLEAGUE`S DRAWS THE LINE SAYING NOTHING IS OWED', async () => {
+    // THE DEFECT THIS HOLDS, measured 2026-09-21: the wire's `owed` counts EVERY researcher's entries (§7.1
+    // :326) while the page opens on `mine` by KEEPING the ones marked the caller's (:328) — so at `mine` the
+    // count and the rows disagree, and a strip that read the count drew an empty <ul> where „אין כרגע מה
+    // שחייבים." belongs. ui §11 :406 and §29 :894: „Empty is a line saying so"; A4 :1524–:1525: „{ owed: 0,
+    // reviews: [] } is an answer, never a refusal".
+    const colleagues = {
+      owed: thesisReviewsOwed.owed,
+      reviews: thesisReviewsOwed.reviews.map((review) => ({ ...review, mine: false, author: 'handle-b' })),
+    };
+    // THE FLOOR, BY VALUE: the body really carries four entries and every one of them is a colleague's — so
+    // "no rows" below is the FILTER's doing. A case asserting no rows is satisfied by a body that arrived
+    // empty, and this is what tells the two apart.
+    expect(colleagues.reviews.length).toBe(4);
+    expect(colleagues.reviews.every((review) => !review.mine)).toBe(true);
+    expect(colleagues.owed).toBeGreaterThan(0);
+
+    const { container, fetching } = await dashboard({
+      ...WHOLE,
+      [PATHS.reviews]: { status: 200, body: colleagues },
+      [PATHS.evidence]: { status: 200, body: { owed: 0, reviews: [], notEvaluable: [] } },
+    });
+    try {
+      const owedRegion = container.querySelector('[data-region="owed"]');
+      expect(owedRegion?.querySelectorAll('[data-owed-entry]').length).toBe(0);
+      expect(owedRegion?.querySelector('[data-owed-empty]')?.textContent).toBe('אין כרגע מה שחייבים.');
+      // THE CONTROL, in the same case: at `all` the very same body draws its four rows — so the zero above is
+      // the scope's and not a body the page could not read.
+      const all = container.querySelector('[data-scope-option="all"]');
+      if (all === null) throw new Error('RD-11: the page drew no scope switch');
+      await act(async () => {
+        fireEvent.click(all);
+        await Promise.resolve();
+      });
+      expect(container.querySelectorAll('[data-owed-entry]').length).toBe(4);
+    } finally {
+      fetching.restore();
+    }
+  });
+  it('RD-12 A `notEvaluable` ROW WITH NO REVIEWS IS DRAWN, not swallowed by the "nothing is owed" line', async () => {
+    // THE SECOND DROP THE SAME PREDICATE CAUSED. The old test looked at two lists and the region renders
+    // THREE: a body whose reviews are empty and whose `notEvaluable` carries rows drew „אין כרגע מה שחייבים."
+    // and dropped them. Emptiness is what the strip DRAWS, so all three lists decide it.
+    const onlyNotEvaluable = { owed: 0, reviews: [], notEvaluable: evidenceReviews.notEvaluable };
+    // THE FLOOR, BY VALUE: the body really carries rows to drop, and really carries no review.
+    expect(onlyNotEvaluable.notEvaluable.length).toBe(2);
+    expect(onlyNotEvaluable.reviews.length).toBe(0);
+
+    const { container, fetching } = await dashboard({
+      ...WHOLE,
+      [PATHS.reviews]: { status: 200, body: { owed: 0, reviews: [] } },
+      [PATHS.evidence]: { status: 200, body: onlyNotEvaluable },
+    });
+    try {
+      const owedRegion = container.querySelector('[data-region="owed"]');
+      expect(owedRegion?.querySelectorAll('[data-owed-not-evaluable]').length).toBe(2);
+      expect(owedRegion?.querySelector('[data-owed-empty]')).toBeNull();
+    } finally {
+      fetching.restore();
+    }
+  });
 });

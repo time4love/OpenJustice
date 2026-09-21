@@ -8,6 +8,7 @@ import {
   snapshotResearchClaims,
   snapshotResearchCorpus,
   snapshotResearchDashboard,
+  snapshotResearchThesis,
   setAuthState,
   setPathname,
   setPublicBodies,
@@ -128,6 +129,9 @@ async function allPages(locale: Locale): Promise<{ name: string; container: HTML
     { name: '/research/corpus', container: await snapshotResearchCorpus(locale) },
     { name: '/research/corpus (the stream, the sheet three deep)', container: await snapshotResearchCorpus(locale, { searchParams: { page: 'page-one' }, depth: 3 }) },
     { name: '/research/corpus/claims', container: await snapshotResearchClaims(locale) },
+    // UI-8 chunk 7a: the working view composes „מפורסם — גרסה אחת מאחור" and, on a withdrawn thesis,
+    // „הפרסום בוטל ב־{date}" — a Hebrew sentence carrying a date, which is the shape this scan exists for.
+    { name: '/research/theses/[thesisId]', container: await snapshotResearchThesis(locale) },
   ];
 }
 
@@ -161,8 +165,11 @@ describe('bidi-isolated', () => {
     const pages = await allPages('he');
     // THE FLOOR, MOVED UP BY ONE AT UI-8 chunk 4 — and the page is NAMED, because a floor that only counts
     // says nothing about WHICH page joined the set.
-    expect(pages.length).toBeGreaterThanOrEqual(8);
+    expect(pages.length).toBeGreaterThanOrEqual(9);
     expect(pages.map(({ name }) => name)).toContain('/research');
+    // UI-8 chunk 7a, named for the same reason: the working view composes a date into „הפרסום בוטל ב־{date}"
+    // and carries the owed entries' „פתוח מ־{date}". Deleting its line left this case green until now.
+    expect(pages.map(({ name }) => name)).toContain('/research/theses/[thesisId]');
     for (const { name, container } of pages) {
       const nodes = textNodes(container);
       const hebrew = nodes.filter((node) => HEBREW.test(node.data));
