@@ -17,6 +17,12 @@ def d(iso):  # ISO or wayback → d.m.yyyy
     m = re.match(r'(\d{4})-(\d{2})-(\d{2})', iso) or re.match(r'(\d{4})(\d{2})(\d{2})', iso)
     return f'{int(m.group(3))}.{int(m.group(2))}.{m.group(1)}'
 
+# THE „טיוטה" ANNOTATION IS THE BOARD'S OWN MARK, NEVER A UI ELEMENT. It flags a word that is not yet
+# in the approved catalogue, so a reader of the board knows that word is not yet copy. It is NOT part of
+# any design, it is never built, and it is never graded (the researcher, 2026-09-21: „it is a mark of the
+# board, unrelated to the final design"). Every word it flagged on 2026-09-21 has since been approved and
+# landed — תמליל · כל העמודים · סינון · נפתח בלי סבב · התאמות · עצירות ממתינות — so no use of it remains.
+# A future board may annotate a genuinely unapproved word by appending DRAFT again.
 DRAFT = '<span class="draft">טיוטה</span>'
 NAME = 'צדק לעם - תיק הקורונה'
 AI = 'ניתוח AI — אינו מהווה קביעה שיפוטית'
@@ -185,7 +191,7 @@ def framing_row(f, proposal=False):
     latest = f['latest']
     if proposal and f['rounds'] == 0:
         return f'''<div class="card muted"><h3 class="s">השאלה</h3><div class="q">{E(f['question'])}</div>
-  <p class="meta"><span>{E(f['author'])}</span><span>·</span><span>{d(f['openedAt'])}</span><span>·</span><span>נפתח בלי סבב{DRAFT}</span></p></div>'''
+  <p class="meta"><span>{E(f['author'])}</span><span>·</span><span>{d(f['openedAt'])}</span><span>·</span><span>נפתח בלי סבב</span></p></div>'''
     parts = [E(f['author']), f"{f['rounds']} סבבים" if f['rounds'] != 1 else 'סבב אחד']
     if latest: parts.append({'PROPOSED': 'הסבב האחרון: הצעה', 'ASSESSED': 'הסבב האחרון: הערכה', 'CHOSEN': 'הסבב האחרון: נבחר'}[latest['type']])
     tail = ''
@@ -201,7 +207,7 @@ def corpus_numbers_today():
 
 def corpus_door():
     return f'''<div class="door"><div><div class="t">הארכיון של החוקרים</div>
-  <div class="s">{len(PG)} דפים נסקרו · {rows_per['ACQUIRED']} צילומים נרכשו · {rows_per['UNFETCHED']} לא נשלפו · {stops} עצירות ממתינות{DRAFT}</div></div><span class="go">{IC_CHEV}</span></div>'''
+  <div class="s">{len(PG)} דפים נסקרו · {rows_per['ACQUIRED']} צילומים נרכשו · {rows_per['UNFETCHED']} לא נשלפו · {stops} עצירות ממתינות</div></div><span class="go">{IC_CHEV}</span></div>'''
 
 def research_page(proposal=False):
     fr_rows = ''.join(framing_row(f, proposal) for f in FR)
@@ -317,7 +323,7 @@ TABS_B = ['תמליל', 'ציטוטים', 'פערים', 'ניתוח', 'מסגו�
 def tabs_b(on=0):
     out = []
     for i, t in enumerate(TABS_B):
-        out.append(f'<span class="tab {"on" if i == on else ""}">{t}{DRAFT if i == 0 else ""}</span>')
+        out.append(f'<span class="tab {"on" if i == on else ""}">{t}</span>')
     return '<div class="tabs">' + ''.join(out) + '</div>'
 
 def thesis_column_public_like():
@@ -386,7 +392,7 @@ def extraction_sheet():
     cap = next(c for c in B['captures'] if c['outcome'] == 'ACQUIRED' and c['comparedTo'])
     rules = B['rules']['rules']; hist = B['history']
     rule_rows = ''.join(f'<div class="rule"><div class="sel">{E(r["selector"])}</div><p class="meta"><span>בתוקף מ־{d(r["validFrom"])}</span>{"<span class=pill>כלל שנסמך</span>" if r["trusted"] else ""}</p></div>' for r in rules)
-    matches = ''.join(f'<div class="rule"><p class="meta"><span><b>{d(m["capture"])}</b></span><span>·</span><span>{OUTCOME[m["outcome"]]}</span><span>·</span><span>{m["matchedNodes"]} התאמות{DRAFT}</span></p>' + (f'<div class="rm">הטקסט שהוסר: {E(" · ".join(m["removed"][:3]))}</div>' if m['removed'] else '') + '</div>' for m in hist['matches'][:4])
+    matches = ''.join(f'<div class="rule"><p class="meta"><span><b>{d(m["capture"])}</b></span><span>·</span><span>{OUTCOME[m["outcome"]]}</span><span>·</span><span>{m["matchedNodes"]} התאמות</span></p>' + (f'<div class="rm">הטקסט שהוסר: {E(" · ".join(m["removed"][:3]))}</div>' if m['removed'] else '') + '</div>' for m in hist['matches'][:4])
     return f'''{topbar('הארכיון של החוקרים')}<div class="mpage" style="position:relative">
   <div class="tabs"><span class="tab on">כיצד חולץ הטקסט הזה</span><span class="tab">הכללים שהיו בתוקף בתאריך הצילום</span><span class="tab">ההיסטוריה של הכלל</span></div>
   <h3 class="s">השורה ברשימת העבודה</h3>
@@ -451,12 +457,12 @@ def single_page_current():
 def single_page_proposed():
     f = next(p for p in B['corpus']['pages'] if p['trackedUrlId'] == B['pid']); ents = _corona_entries()
     return f"""{topbar('הארכיון של החוקרים')}<div class="mpage">
-  <p class="meta"><a class="lnk">כל העמודים{DRAFT}</a></p>
+  <p class="meta"><a class="lnk">כל העמודים</a></p>
   <div class="card" style="gap:8px"><h2 class="t" style="font-size:16px;direction:ltr;text-align:right;word-break:break-all">{E(f['url'].replace('https://',''))}</h2>
     <p class="meta"><bdi dir="ltr">{d(f['first'])} – {d(f['last'])}</bdi><span>·</span><span>{f['entries']} רשומות</span></p>
     {_strip(ents, f['first'], f['last'])}
     <p class="meta"><a class="lnk">הטענות בדף הזה</a></p></div>
-  <div class="chips" style="align-items:center"><span class="meta">סינון{DRAFT}</span><span class="chip">צילומים</span><span class="chip">שינויים</span><span class="chip">מצוטטות</span><span class="chip">מתאריך</span></div>
+  <div class="chips" style="align-items:center"><span class="meta">סינון</span><span class="chip">צילומים</span><span class="chip">שינויים</span><span class="chip">מצוטטות</span><span class="chip">מתאריך</span></div>
   <p class="meta">{len(ents)} רשומות עד כה</p>
   {stream_rows_of(ents[:4])}</div>"""
 
@@ -470,8 +476,8 @@ def stream_rows_of(ents):
     return ''.join(out)
 
 # ---------- assemble ----------
-note_top = '''<div class="note"><b>מה זה.</b> שמונה לוחות של תצוגת הקריאה של החוקר (UI-8), מצוירים מהגופים האמיתיים ב־staging (ריצה B, 37 תורות · 3 מסגורים · 3 דפים · 51 רשומות · 5 כללים). כל מילה היא ערך מאושר מהקטלוג, אלא אם היא נושאת תג <span class="draft">טיוטה</span>. אישור לוח = אישור לבנות; מילה עם תג = שאלת ניסוח שלך.</div>'''
-note_research = f'''<div class="note"><b>שני שינויים בין א ל־ב.</b> (1) <b>מסגורים</b> — שני המסגורים בלי סבבים מצוירים כרשומות מושתקות עם „נפתח בלי סבב” <span class="draft">טיוטה</span> במקום „עדיין לא הוליד תזה”. <b>הנתון חסר:</b> לפלטפורמה אין שום רשומה שמסגור 3 נולד מ־1 ו־2 — `open_framing` לא מקבל „מחליף את”, ו־`fromRunId` שייך לתובע שלא נבנה. הדף אינו רשאי לגזור את הקשר מסמיכות בזמן; לצייר „תוקן ל־” דורש שדה חדש בכתיבה (שינוי backend, שלך). (2) <b>הארכיון במספרים</b> → <b>דלת אחת</b> לארכיון החוקרים עם שורת סיכום אחת (ההרכב לפי תוצאה עובר לרשימת העמודים ב־<code>/research/corpus</code>, לוח E, שם הוא לצד כל דף). ניסוח השורה <span class="draft">טיוטה</span>.</div>'''
+note_top = '''<div class="note"><b>מה זה.</b> שמונה לוחות של תצוגת הקריאה של החוקר (UI-8), מצוירים מהגופים האמיתיים ב־staging (ריצה B, 37 תורות · 3 מסגורים · 3 דפים · 51 רשומות · 5 כללים). כל מילה בלוחות היא ערך מאושר מהקטלוג. (תג „טיוטה” סימן את המילים שטרם אושרו כשהלוחות צוירו; כולן אושרו ונחתו מאז, ולכן הוסר. הוא סימן של הלוח בלבד — לעולם אינו חלק מהעיצוב, אינו נבנה ואינו נבדק.) אישור לוח = אישור לבנות.</div>'''
+note_research = f'''<div class="note"><b>שני שינויים בין א ל־ב.</b> (1) <b>מסגורים</b> — שני המסגורים בלי סבבים מצוירים כרשומות מושתקות עם „נפתח בלי סבב” במקום „עדיין לא הוליד תזה”. <b>הנתון חסר:</b> לפלטפורמה אין שום רשומה שמסגור 3 נולד מ־1 ו־2 — `open_framing` לא מקבל „מחליף את”, ו־`fromRunId` שייך לתובע שלא נבנה. הדף אינו רשאי לגזור את הקשר מסמיכות בזמן; לצייר „תוקן ל־” דורש שדה חדש בכתיבה (שינוי backend, שלך). (2) <b>הארכיון במספרים</b> → <b>דלת אחת</b> לארכיון החוקרים עם שורת סיכום אחת (ההרכב לפי תוצאה עובר לרשימת העמודים ב־<code>/research/corpus</code>, לוח E, שם הוא לצד כל דף). ניסוח השורה אושר.</div>'''
 
 boards = f'''<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>UI-8 boards</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700&family=Heebo:wght@400;500;600;700&display=swap"><style>{CSS}</style></head><body><div class="wrap">
@@ -479,7 +485,7 @@ boards = f'''<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8
 <div class="row-of">
 {frame_phone('ב · /research', research_page(True), tall=True, cap='<span>390 · גלילה מלאה</span>')}
 </div>{note_research}
-<div class="note"><b>נפסק 2026-09-21: אפשרות ב.</b> אפשרות א — התמליל במרכז והתזה כלשונית, כפי שאושר בקנבס (עמוד 1 לוח C; ui §14, תוכנית §10 :1224) — <b>בטלה</b>, ולוחותיה אינם מצוירים כאן: קובץ הלוחות מחזיק את התמונה המאושרת בלבד, וההיסטוריה שמורה ב-git ובקובץ הלוחות הקודם. <b>ב</b> שומר על עקביות עם דף התזה הציבורי שכבר נבנה: התזה היא תמיד המרכז (אותה עמודה: הטענה, הסעיף, שורת הצילומים, הטקסט, הקיפולים), ובתצוגת החוקר נוספים לה שורת המצב, „מה חייבים” והחלונית הימנית — שנפתחת כברירת מחדל על <b>התמליל</b> ומחזיקה גם ציטוטים · פערים · ניתוח · מסגור · פניות לציבור. המילה „תמליל” לא בקטלוג <span class="draft">טיוטה</span>.</div>
+<div class="note"><b>נפסק 2026-09-21: אפשרות ב.</b> אפשרות א — התמליל במרכז והתזה כלשונית, כפי שאושר בקנבס (עמוד 1 לוח C; ui §14, תוכנית §10 :1224) — <b>בטלה</b>, ולוחותיה אינם מצוירים כאן: קובץ הלוחות מחזיק את התמונה המאושרת בלבד, וההיסטוריה שמורה ב-git ובקובץ הלוחות הקודם. <b>ב</b> שומר על עקביות עם דף התזה הציבורי שכבר נבנה: התזה היא תמיד המרכז (אותה עמודה: הטענה, הסעיף, שורת הצילומים, הטקסט, הקיפולים), ובתצוגת החוקר נוספים לה שורת המצב, „מה חייבים” והחלונית הימנית — שנפתחת כברירת מחדל על <b>התמליל</b> ומחזיקה גם ציטוטים · פערים · ניתוח · מסגור · פניות לציבור. המילה „תמליל” אושרה ונחתה (research.thesis.openTranscript).</div>
 <div class="board"><div class="cap"><b>ד2 · תצוגת העבודה — 1440 — אפשרות ב (עקבי עם דף התזה הציבורי)</b><span>התזה במרכז · התמליל בחלונית הימנית, פתוח כברירת מחדל</span></div>{working_desktop_b()}</div>
 <div class="row-of">{frame_phone('ג2 · תצוגת העבודה בטלפון — אפשרות ב — הדף (אין תפריט בגוף הדף)', working_phone_b(), tall=True)}
 {frame_phone('ג3 · אותו דף, החלונית פתוחה (החלקה מהקצה או הקשה) — הלשוניות בראש השכבה, „תמליל” פתוח', working_phone_b_layer(), tall=True)}</div>
@@ -491,7 +497,7 @@ boards = f'''<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8
 {frame_phone('ח · גיליון המסגור — 7 תורות דרך אותן שורות', framing_sheet(), tall=True)}
 </div>
 <h1 class="pg">ט · תצוגת דף יחיד — הנושא ככותרת</h1>
-<div class="note"><b>השאלה (החוקר, 2026-09-21):</b> „לא ברור שמטרת הפאנל היא סינון; שמות דפים ו־צילומים/שינויים/מצוטטות אינם אותה חיה; רצועת הזמן מוצגת רק בהקשר של דף יחיד, אז כותרת צריכה להגיד בבירור שזה דף אחד." <b>ב</b> מפריד: <b>הנושא</b> (הדף: כתובת, מרווח, מספר רשומות, הרצועה, הטענות) הוא הכותרת של הדף; מתחתיו <b>סינון</b> של השורות בלבד (צילומים · שינויים · מצוטטות · תאריכים) עם תווית; בלי צ'יפים של דפים — החלפת דף נעשית ברשימת העמודים („כל העמודים"); בלי בורר תצוגה בתוך דף יחיד. תוויות הרצועה: שנים בלבד כשהטווח ארוך. מילים חדשות: <span class="draft">טיוטה</span>.</div>
+<div class="note"><b>השאלה (החוקר, 2026-09-21):</b> „לא ברור שמטרת הפאנל היא סינון; שמות דפים ו־צילומים/שינויים/מצוטטות אינם אותה חיה; רצועת הזמן מוצגת רק בהקשר של דף יחיד, אז כותרת צריכה להגיד בבירור שזה דף אחד." <b>ב</b> מפריד: <b>הנושא</b> (הדף: כתובת, מרווח, מספר רשומות, הרצועה, הטענות) הוא הכותרת של הדף; מתחתיו <b>סינון</b> של השורות בלבד (צילומים · שינויים · מצוטטות · תאריכים) עם תווית; בלי צ'יפים של דפים — החלפת דף נעשית ברשימת העמודים („כל העמודים"); בלי בורר תצוגה בתוך דף יחיד. תוויות הרצועה: שנים בלבד כשהטווח ארוך. המילים שהיו חדשות כאן אושרו ונחתו.</div>
 <div class="row-of">
 {frame_phone('ט·ב · /research/corpus?page= — כותרת של דף יחיד, ואז סינון', single_page_proposed(), tall=True)}
 </div>

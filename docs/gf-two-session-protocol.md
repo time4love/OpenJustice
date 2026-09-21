@@ -111,6 +111,13 @@ open it. **A grading standard no seat is told to OPEN is not a standard.** It is
 expensive class of the four, because its failure mode is asking the researcher to decide something
 they already decided, which spends the one resource the protocol exists to protect.
 
+**A BOARD'S OWN ANNOTATIONS ARE NOT THE DESIGN, AND ARE NEVER GRADED.** The `טיוטה` mark on the UI
+boards flagged a word not yet in the approved catalogue — a note to the reader, never an element. A seat
+read it as copy to build and asked the researcher to approve it; the researcher's answer was that it is a
+mark of the board, unrelated to the final design. Every word it flagged has since been approved and
+landed, so the marks were removed from the generator and the boards regenerated. **Grade the DRAWING, not
+the marginalia** — and where a board must annotate, the annotation says what it is, inside the file.
+
 **A board is prior to a design's prose about the same page.** A shape ON an approved board is
 DECIDED and is never re-asked. A shape not on one is a question. Where a board and a design's
 enumeration disagree, the board is what was approved and the disagreement is a finding — which is
