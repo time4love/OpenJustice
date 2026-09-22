@@ -160,7 +160,7 @@ SEALED   INTAKE, always. The browser strips the file's metadata, computes DOC_ID
          MEMORY, recomputes DOC_ID and refuses on mismatch, derives what §3 lets it derive, zeroes
          the plaintext, discards the key, and pins the CIPHERTEXT to IPFS. What the platform
          holds at rest: the name, the CID of the sealed copy, and the content (§3). Never the file
-HELD     RESEARCHER, always. The file arrives in plaintext through MCP, attributed; the server — **RULED 2026-09-22 (the researcher; `docs/gf-document-design-session-2026-09-22.md` §1–§2): the BYTES arrive through the researcher's UPLOAD DIALOG into the platform's private bucket, keyed by DOC_ID, because claude.ai cannot pass a file to an MCP tool; the TOOL CALL names the object and is the attributed act (§9 :998). A paste alone arrives as text in the call**
+HELD     RESEARCHER, always. The file arrives in plaintext through MCP, attributed; the server — **RULED 2026-09-22 (the researcher; `docs/gf-document-design-session-2026-09-22.md` §1–§2): the BYTES arrive through the researcher's UPLOAD DIALOG into the platform's private bucket, keyed by DOC_ID, because claude.ai cannot pass a file to an MCP tool; the TOOL CALL names the object and is the attributed act (§9 :998). A paste alone arrives as text in the call** — **RULED 2026-09-23 (the researcher): THERE IS NO PASTE. NOTHING ENTERS THE CORPUS DIRECTLY FROM THE CLAUDE.AI CHAT. Every document a researcher holds arrives as a FILE through the upload dialog, into the bucket, keyed by DOC_ID. A FOIA answer is received as a document and imported as one; a video's transcript is a PDF. The clause to the left is RETIRED.**
          computes DOC_ID and keeps the bytes. What it holds at rest: the name, the bytes, and the
          content
 ```
@@ -280,7 +280,7 @@ extractor can read the bytes, the bytes themselves.**
 ```
 PDF with a text layer   the extractor reads it                       deterministic
 image, scan, photo      an OCR ENGINE reads it                       deterministic at a version
-paste                   the bytes ARE the text — decoded as UTF-8; one version, by construction
+paste                   the bytes ARE the text — decoded as UTF-8; one version, by construction   ← **RULED 2026-09-23 (the researcher): THERE IS NO PASTE. THIS ROW IS RETIRED: the kinds are FOUR — a PDF with a text layer, a scan, a SPREADSHEET (:284), and a file no engine reads.**
 none of the above       no COMPUTED text exists; the content version IS the bytes, and its hash — **RULED 2026-09-22 (the researcher): a SPREADSHEET (XLSX, CSV) is NOT this row — its cells serialised deterministically, sheet by sheet, at a pinned version are COMPUTED text (`docs/gf-document-design-session-2026-09-22.md` §3)**
                         is the name — the researcher reads the image, and so does the assessor
 ```
@@ -348,7 +348,7 @@ cost stated, not hidden: a better OCR engine improves every HELD scan and no sea
 | `CURRENT_EXTRACTOR` moves | the derivation pass, over HELD bytes | a new version per HELD document whose text changed; the old kept | CURRENT moves → NEEDS_REVIEW → evidence Flow E3, unchanged |
 | the same, for a SEALED document | — | nothing; there are no bytes to read | nothing |
 | plaintext of a SEALED document arrives again, HELD (§2) | the receipt | derived under the current extractor; the AT_RECEIPT version is kept | if the hash differs, NEEDS_REVIEW; the researcher sees the receipt text beside the held text |
-| a paste | — | nothing, ever | nothing |
+| a paste | — | nothing, ever | nothing — **RULED 2026-09-23 (the researcher): THERE IS NO PASTE. the row is RETIRED with the kind; a text-layer PDF re-derives like any other file.** |
 | a model re-reads a document | a paid call, on a researcher's word | a new OPINION beside the version; the hash is untouched | nothing — an opinion moves no citation |
 
 **The citation pins `(name, contentVersionHash)` on the mention**, beside its argument, exactly
@@ -512,7 +512,7 @@ browser      the intake dialog, addressed to the thesis and, from an appeal, its
                          authorised for this investigation — accepted before anything else is
                          possible; the text shown is hashed and the hash travels with the arrival
              THE FILES   each one a document (§2). A written account, if the sender gives one,
-                         is a document too — a paste, sealed like the rest
+                         is a document too — a paste, sealed like the rest — **RULED 2026-09-23 (the researcher): THERE IS NO PASTE. THE WHISTLEBLOWER DOOR TAKES ONLY DOCUMENTS TOO, never pasted text: a written account is given as a FILE and sealed like the rest. A5 :1488's body already takes `files:` alone and needs no change.**
              SEALED      per file: strip metadata · DOC_ID over the plaintext · encrypt · show the
                          sender the name and the key, and after the receipt the salt and the CID
                          — ONCE, theirs to keep · send ciphertext, key and name
@@ -1010,7 +1010,7 @@ backend      REFUSES NO_RESEARCHER · NO_BYTES · UNSUPPORTED_TYPE · TOO_LARGE 
              HELD from now (§2)
              records the ASSERTIONS as the researcher's, attributed: assertedUrl — the page these
              bytes are said to show · assertedAt — when it is said to have shown them ·
-             derivedFrom — the document this one is said to be a redaction or a transcription of — **RULED 2026-09-22 (the researcher): a MEDIA file (audio, video) is a HELD document whose content is its bytes; its TRANSCRIPT is a second document, a paste, derivedFrom it, and is what a thesis cites; speech-to-text is an OPINION on the media's version, never an extractor, until a two-draw agreement measurement says otherwise (`docs/gf-document-design-session-2026-09-22.md` §4)**
+             derivedFrom — the document this one is said to be a redaction or a transcription of — **RULED 2026-09-22 (the researcher): a MEDIA file (audio, video) is a HELD document whose content is its bytes; its TRANSCRIPT is a second document, a paste, derivedFrom it — **RULED 2026-09-23 (the researcher): THERE IS NO PASTE. the transcript is a second document **as a PDF**, `derivedFrom` the media, not a paste; the two-document shape and what a thesis cites are unchanged —, and is what a thesis cites; speech-to-text is an OPINION on the media's version, never an extractor, until a two-draw agreement measurement says otherwise (`docs/gf-document-design-session-2026-09-22.md` §4)**
              (§7). None is verified; each is shown as whose it is
              ← { commitment, docId, custody: HELD, content: { contentVersionHash, text | null },
                  anchored: bool, equalsCapture: { url, capture } | null, existed: bool } — **`existed` CONFORMED 2026-09-22 to A4 :1409**
@@ -1401,7 +1401,7 @@ undefined the tool refuses `AWAITING_DERIVATION` (HELD, no version under the cur
 or `SHED` (naming cause and date), never a guess. Every paid call is named as one.
 
 ```
-add_document({ bytes, mimeType, assertedUrl?, assertedAt?, derivedFrom? })   WRITE · ⚠️ to build — **RULED 2026-09-22: the argument is `docId` (the bucket object the upload dialog wrote) OR `text` (a paste), exactly one; `NO_BYTES` covers a `docId` naming no object; `NAME_MISMATCH` when the object's bytes do not hash to it (§9 :998); `title` REQUIRED (A2), `NO_TITLE` refused**
+add_document({ bytes, mimeType, assertedUrl?, assertedAt?, derivedFrom? })   WRITE · ⚠️ to build — **RULED 2026-09-22: the argument is `docId` (the bucket object the upload dialog wrote) OR `text` (a paste), exactly one; **RULED 2026-09-23 (the researcher): THERE IS NO PASTE. THE `text` ARM IS RETIRED: the argument is `docId`, REQUIRED — the bucket object the upload dialog wrote — and there is no second arm, so `TOO_LARGE` is read from the object's size in every case and every HELD document has a bucket key.** `NO_BYTES` covers a `docId` naming no object; `NAME_MISMATCH` when the object's bytes do not hash to it (§9 :998); `title` REQUIRED (A2), `NO_TITLE` refused**
   does      §9: DOC_ID · HELD · content derived or owed · salt · commitment written or owed ·
             an Arrival(door = RESEARCHER) · the assertions recorded as the caller's
   returns   { commitment, docId, custody: 'HELD', content: { contentVersionHash, text | null } |
