@@ -161,6 +161,28 @@ h3.s{margin:0;font-size:13px;font-weight:600;color:#4E463F}
 .rule{display:flex;flex-direction:column;gap:3px;padding:8px 0;border-bottom:1px solid #E6E5E2}
 .sel{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;direction:ltr;text-align:right;color:#1F1B16;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rm{font-size:13px;color:#A8322A}
+/* the document door — 2026-09-22 */
+.tick.neutral::before{background:#E6E5E2;border:1px solid #4E463F;width:5px;height:5px}
+.tick.amber::before{background:#B7791F}
+.tick.doc{direction:rtl;font-family:Heebo,sans-serif}
+.tick.doc svg{width:11px;height:11px;color:#4E463F;flex:none}
+.drop{border:1.5px dashed #4E463F;border-radius:10px;padding:18px 14px;background:#FFF;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center;font-size:13px}
+.drop .s{font-size:12px;color:#4E463F}
+.file{display:flex;gap:10px;align-items:center;border:1px solid #E6E5E2;border-radius:8px;padding:8px 10px;background:#FFF}
+.file .nm{flex:1;min-width:0;font-size:13px;direction:ltr;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:12px;color:#4E463F}
+.field .in{border:1px solid #E6E5E2;border-radius:8px;padding:7px 10px;background:#FFF;font-size:13px;min-height:34px;display:flex;align-items:center;gap:8px}
+.field .in.ltr{direction:ltr;text-align:left;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.field .hint{font-size:11.5px;color:#4E463F}
+.pick{border:1px solid #E6E5E2;border-radius:8px;background:#FFF;overflow:hidden}
+.pick div{padding:7px 10px;font-size:13px;border-bottom:1px solid #E6E5E2}
+.pick div:last-child{border-bottom:0}
+.pick div.on{background:#F2F1EE;font-weight:500}
+.cmd{position:relative;direction:ltr;text-align:left;background:#1F1B16;color:#F2F1EE;border-radius:8px;padding:12px 44px 12px 12px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.55;word-break:break-all}
+.cmd .cp{position:absolute;top:8px;right:8px;border:1px solid #6B6259;border-radius:4px;padding:2px 6px;color:#F2F1EE;display:inline-flex;font-size:11px}
+.strip{display:flex;flex-direction:column;gap:10px;padding:16px 18px;width:560px;font-size:15px;line-height:1.8}
+.strip .lab{font-size:12px;color:#4E463F;font-family:Heebo,sans-serif}
 """
 
 # ---------- data ----------
@@ -475,13 +497,138 @@ def stream_rows_of(ents):
             out.append(f'<div class="srow"><span class="dt">{d(e["after"])}</span><div class="body"><div class="dcard">שינוי בעמוד בין {d(e["before"])} ל־{d(e["after"])}</div></div></div>')
     return ''.join(out)
 
+# ---------- the document door (2026-09-22): the upload DIALOG, the #doc_ chip, the documents register ----------
+# NO REAL DOCUMENT EXISTS YET (steps 27–30 are unbuilt), so these three boards are PROPOSALS drawn from the
+# design text — flows §9 :998 (the dialog), §12 :1185 (the bucket), A4 :1404 (docId | text), ui §1 :36–:39
+# (a DIALOG: reached by a link the chat hands over, in no navigation), thesis §2 :126–:132 (CACHE, then the
+# pasted command), ui §17 :539–:540 (the #doc_ chip), §4 :167 (no id as text) — and from the marking page,
+# the one dialog already built (MarkingClient.tsx: the handed-back state is ONE command in a dark block with
+# a copy icon). The sample values are illustrative and name no person: the supplementary dataset of an
+# open-licence paper, by its DOI.
+IC_DOC = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3"/></svg>'
+IC_DOC18 = IC_DOC.replace('viewBox', 'width="18" height="18" viewBox')
+DOC_ID = '0x3f9a7c1e0b2d4a6f8e1c3b5d7f9a2c4e6b8d0f1a3c5e7b9d1f3a5c7e9b1d3f5c1e2'
+DOC_URL = 'https://doi.org/10.17179/excli2026-9596'
+DOC_FILE = 'excli2026-9596-supplementary.xlsx'
+CMD = f'add_document docId={DOC_ID} mimeType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet title="מערך הנתונים המשלים למאמר על תקשורת סיכון לבבי, 2026" assertedUrl={DOC_URL} assertedAt=2026-09-03'
+
+def doc_tick(label, tone='neutral', glyph=True):
+    return f'<span class="tick doc {tone}">{IC_DOC if glyph else ""}{label}</span>'
+
+def cmd_block(text):
+    return f'<div class="cmd"><span class="cp">{IC_COPY}</span>{E(text)}</div>'
+
+TR_ID = '0x9b2e4d6f8a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d'
+MEDIA_ID = '0x7c1e5a3b9d2f4e6a8c0b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1a3c5e'
+DOC_TITLE = 'מערך הנתונים המשלים למאמר על תקשורת סיכון לבבי, 2026'
+TR_TITLE = 'תמליל הריאיון עם מנכ״ל המשרד, 12.9.2026'
+MEDIA_TITLE = 'הריאיון עם מנכ״ל המשרד, 12.9.2026 (וידאו)'
+MEDIA_TITLE_SHORT = 'הריאיון עם מנכ״ל המשרד'
+DOC_TITLE_SHORT = 'מערך הנתונים המשלים למאמר'
+CMD_TR = f'add_document docId={TR_ID} mimeType=text/plain title="{TR_TITLE}" derivedFrom={MEDIA_ID} assertedUrl=https://www.youtube.com/watch?v=… assertedAt=2026-09-12'
+
+def upload_body(case='page'):
+    # THE LINK CARRIES THE CONTEXT (the researcher, 2026-09-22): the backend composes the dialog's URL on the read the
+    # conversation came from — a page read prefills the page and the date, a document read prefills derived-from —
+    # and the dialog DRAWS WHAT THE LINK BROUGHT, editable, and nothing else. No picker. The marking page's pattern.
+    # THE TITLE COMES FROM THE CONVERSATION (the researcher, 2026-09-22): Claude proposes a name, the researcher
+    # approves it in the chat, the link carries it, and the dialog shows it as a LABEL, never a field — like every
+    # other fact the link brought. The dialog takes ONE thing: the file.
+    kv = lambda rows: '<dl class="kv" style="row-gap:6px">' + ''.join(f'<dt>{k}</dt><dd>{v}</dd>' for k, v in rows) + '</dl>'
+    if case == 'page':
+        facts = kv([('שם המסמך' + DRAFT, f'<b>{E(DOC_TITLE)}</b>'), ('הדף' + DRAFT, f'<span class="url" style="direction:ltr;text-align:left">{DOC_URL}</span>'), ('התאריך' + DRAFT, '3.9.2026')])
+        file_row = f'<div class="file"><span class="ic">{IC_DOC18}</span><span class="nm">{DOC_FILE}</span><span class="meta">1.2 MB</span></div>'
+        cmd = CMD
+    else:
+        facts = kv([('שם המסמך' + DRAFT, f'<b>{E(TR_TITLE)}</b>'), ('נגזר מ־' + DRAFT, f'{doc_tick(MEDIA_TITLE_SHORT, "neutral")} {E(MEDIA_TITLE)}'), ('הדף' + DRAFT, '<span class="url" style="direction:ltr;text-align:left">https://www.youtube.com/watch?v=…</span>'), ('התאריך' + DRAFT, '12.9.2026')])
+        file_row = f'<div class="file"><span class="ic">{IC_DOC18}</span><span class="nm">transcript-2026-09-12.txt</span><span class="meta">14 KB</span></div>'
+        cmd = CMD_TR
+    return f'''<h2 class="t">העלאת מסמך{DRAFT}</h2>
+  <p class="meta" style="display:block;line-height:1.55">הקובץ עולה מהדפדפן שלכם אל המחסן, תחת שם שחושב ממנו כאן. הוא נעשה מסמך רק כשהפקודה שלמטה נשלחת בשיחה.{DRAFT}</p>
+  <div class="card muted">{facts}</div>
+  <div class="drop"><div>גרור ושחרר קובץ כאן, או לחץ לבחירה</div><div class="s">קובץ אחד · PDF · XLSX · CSV · תמונה · שמע · וידאו · עד 50 MB{DRAFT}</div></div>
+  {file_row}
+  <p class="meta"><span class="pill dot">הועלה · ממתין לפקודה{DRAFT}</span></p>
+  <h3 class="s">הפקודה לשיחה{DRAFT}</h3>
+  {cmd_block(cmd)}
+  <p class="meta" style="display:block">אחרי שהפקודה תרוץ, המסמך יופיע במסמכים שלכם וניתן לצטט אותו בגרסה.{DRAFT}</p>'''
+
+def upload_phone(case='page'):
+    return f'''{topbar('העלאת מסמך')}<div class="mpage">{upload_body(case)}</div>'''
+
+def sidebar_none():
+    return sidebar().replace('<div class="item on">מחקר</div>', '<div class="item">מחקר</div>')
+
+def upload_desktop():
+    # NO SIDEBAR, NO RIGHT PANE — ruled by the researcher 2026-09-22 at the board: a dialog is reached by a link the
+    # conversation hands over and its user is not expected to navigate the site. The page is the dialog alone, with
+    # the site's name as a single line, at the reading measure the centre uses.
+    return f'''<div class="frame desk" style="flex-direction:column;direction:rtl">
+  <div class="topbar" style="padding-inline-start:24px"><span class="name">{E(NAME)}</span><span class="loc">העלאת מסמך</span></div>
+  <div class="centre"><div class="col" style="padding-top:20px">{upload_body('page')}</div></div></div>'''
+
+DOC_SENTENCE = 'מערך הנתונים שפורסם עם המאמר {chip} מתעד את הדיווחים שנאספו באותה תקופה.'
+def chip_strip():
+    # THE APPROVED FORM ONLY (2026-09-22). Two forms were drawn and cancelled at the page — the commitment's short form
+    # (an id as text, §4 :167) and the date (a date does not identify a document) — and are not emitted, per this file's rule.
+    g_n, g_v, g_f = doc_tick(DOC_TITLE_SHORT, 'neutral'), doc_tick(DOC_TITLE_SHORT, 'verified'), doc_tick(DOC_TITLE_SHORT, 'amber')
+    s = lambda chip: '<p class="serif" style="margin:0">' + DOC_SENTENCE.replace('{chip}', chip) + '</p>'
+    return f'''<div class="frame strip">
+  <div class="lab">נפסק 2026-09-22 (ui §17 :540): סימן המסמך + המילים הראשונות של <b>שם המסמך</b> (התקדים: צ׳יפ המסלול מראה את מילות הטענה), ונקודה אחת — מצוטט וטרם נטען · מאומת · מסומן</div>{s(g_n)}{s(g_v)}{s(g_f)}
+  <div class="lab">לחיצה פותחת את הרשומה בחלונית (שלב 34 — לא מצויר כאן); המילים של הסימנים ברשומה, לא בגוף הטקסט. הצ׳יפ קורא <code>dir</code> מהשם: עברית מימין לשמאל</div></div>'''
+
+def thesis_column_doc():
+    ticks = ''.join(f'<span class="tick">{d(t["body"]["record"]["capture"])}</span>' for t in H if t['kind'] == 'DEBATE_OPENED')
+    # the example sentence goes FIRST so the frame's visible height shows the chip in the body; it is the board's, not the thesis's
+    words = '<p>' + DOC_SENTENCE.replace('{chip}', doc_tick(DOC_TITLE_SHORT, 'neutral')) + DRAFT + '</p>' + ticks_text(HEAD['text'])
+    return f'''<div class="ctxline" style="border:0;padding:0">
+  <p class="meta"><span class="pill ink">{STATE[TH['state']['kind']]}</span><span>·</span><span>{E(handle)}</span><span>·</span><span>{d(TH['publishedAt'])}</span></p>
+  <h2 class="claim serif" style="font-size:24px">{E(HEAD['claim'])}</h2>
+  <p class="meta"><span>{PROV[TH['provision']]}</span></p>
+  <p class="meta"><span class="copy">{IC_COPY} מזהה התזה לשיחה חדשה</span></p></div>
+  <h3 class="s">מה חייבים על התזה הזו</h3><div class="card"><p class="meta"><span>ציטוט אחד שלא נטען</span><span>·</span><span class="copy">{IC_COPY} הפקודה</span></p></div>
+  <div class="card" style="flex-direction:row;align-items:center;gap:8px;padding:8px 12px"><span class="meta" style="direction:ltr">corona.health.gov.il</span><span style="flex:1;height:1px;background:#E6E5E2"></span>{ticks}{doc_tick(DOC_TITLE_SHORT, 'neutral')}</div>
+  <div class="words serif">{words}</div>
+  <p class="meta"><span class="pill">הגרסה שפורסמה</span><span class="pill">מה שונה ביניהן</span></p>'''
+
+def working_desktop_doc():
+    return f'''<div class="frame desk">{sidebar()}
+  <div class="centre"><div class="col">{thesis_column_doc()}</div></div>
+  <div class="split"></div>
+  <div class="right">{tabs_b(0)}<div class="pane" style="padding-top:8px">{transcript(H)}</div></div></div>'''
+
+def documents_rows():
+    r = lambda dt, body: f'<div class="srow"><span class="dt">{dt}</span><div class="body">{body}</div></div>'
+    return (r('3.9.2026', f'<div class="q" style="font-size:13px;font-weight:500">{E(DOC_TITLE)}</div><div class="u">doi.org/10.17179/excli2026-9596</div><p class="meta"><span>מוחזק{DRAFT}</span><span class="pill amber">ממתין לעיגון{DRAFT}</span><span>·</span><span>גיליון · 5 לשוניות{DRAFT}</span></p>')
+          + r('15.6.2021', f'<div class="q" style="font-size:13px;font-weight:500">פרוטוקול ועדת החיסונים, 15.6.2021</div><div class="u">www.gov.il/…/committee-protocol.pdf</div><p class="meta"><span>מוחזק{DRAFT}</span><span class="pill dot">{MARK["verified"]}</span><span>·</span><span>מצוטט בתזה{DRAFT}</span></p>')
+          + r('12.9.2026', f'<div class="q" style="font-size:13px;font-weight:500">{E(TR_TITLE)}</div><div class="u">youtube.com/watch?v=…</div><p class="meta"><span>נגזר מ־{DRAFT}</span>{doc_tick(MEDIA_TITLE_SHORT, "neutral")}<span>·</span><span>מוחזק{DRAFT}</span><span class="pill amber">ממתין לעיגון{DRAFT}</span></p>'))
+
+def corpus_documents_phone():
+    return f'''{topbar('הארכיון של החוקרים')}<div class="mpage">
+  <div class="chips"><span class="chip">של כולם</span><span class="chip on">שלי</span><span class="chip">דף</span><span class="chip">צילומים</span><span class="chip">שינויים</span><span class="chip">מצוטטות</span><span class="chip on">מסמכים{DRAFT}</span></div>
+  <h3 class="s">המסמכים שלי{DRAFT}</h3>{documents_rows()}
+  <p class="meta" style="display:block">מסמך נוסף? בקשו בשיחה את הקישור להעלאה — הדלת אינה בניווט.{DRAFT}</p></div>'''
+
+note_doc = f'''<div class="note"><b>דלת המסמכים (2026-09-22) — שלושה לוחות, כולם הצעות.</b> אין עדיין מסמך אמיתי בקורפוס (שלבים 27–30 טרם נבנו), ולכן הלוחות מצוירים מטקסט העיצוב ומדף הסימון — הדיאלוג היחיד שכבר בנוי — ולא מגופים. הערכים לדוגמה: מערך הנתונים המשלים של מאמר ברישיון פתוח, לפי ה־DOI שלו; שום שם של אדם. <b>ההכרעות שנפסקו כבר ומצוירות כאן:</b> הבייטים עולים מהדפדפן אל דלי פרטי תחת השם שחושב בדפדפן (flows §9 :998, §12 :1185); הקובץ הוא מטמון עד שהפקודה המודבקת רצה (thesis §2 :126–:132) — הדף אינו כותב דבר; <code>add_document</code> מקבל <code>docId</code> או <code>text</code>, אחד בדיוק (A4 :1404); הדיאלוג נפתח מקישור שהשיחה מוסרת ואינו בניווט (ui §1 :36–:39). <b>„טיוטה” מסמן מילה שאינה בקטלוג</b> — הסימן של הלוח, לא רכיב. „גרור ושחרר קובץ כאן, או לחץ לבחירה” הוא ערך קטלוג קיים (<code>submit.upload.dragDrop</code>) שמרחב השמות שלו נמחק ב־UI-10 — המפתח עובר. „עד 50 MB” הוא פרמטר תפעולי, מספר להצעה. <b>נפסק בלוח (2026-09-22), למעמד כולו:</b> דיאלוג נמשך בלי המעטפת — בלי תפריט צד ובלי חלונית — כי מי שהגיע מקישור אינו אמור לנווט; הפסיקה חלה על <b>שני הדיאלוגים</b>: דף הסימון הבנוי, שמצויר היום בתוך המעטפת (ל־<code>Shell.tsx</code> אין מקרה של דיאלוג), ודיאלוג ההעלאה. נכתב ב־ui §1 :39. <b>נפסק בלוח (2026-09-22):</b> כל העובדות על המסמך — <b>שם המסמך</b> (ההצהרה הרביעית, ui §4 :167: מה שאדם מזהה), הדף, התאריך, נגזר מ־ — נקבעות בשיחה, מגיעות בקישור ומצוירות כתוויות; הדיאלוג מקבל דבר אחד, את הקובץ; הצ׳יפ הוא סימן המסמך + מילות השם הראשונות (צורה ג). <b>נפסק (2026-09-22):</b> עדשת „מסמכים” ב־<code>/research/corpus</code> — בסבב הזה (ui §24 :719). <b>נשאר לדף:</b> המילים המסומנות „טיוטה”, לפי הצורך, צ׳אנק אחר צ׳אנק.</div>'''
+
+section_doc = f'''<h1 class="pg">י · דלת המסמכים — דיאלוג ההעלאה, צ'יפ המסמך, רישום המסמכים (2026-09-22)</h1>{note_doc}
+<div class="row-of">
+{frame_phone('י1 · דיאלוג ההעלאה — 390 — קובץ אחד; הקישור הגיע מקריאת דף, ולכן הדף והתאריך ממולאים', upload_phone('page'), tall=True, cap='<span>נפתח מקישור שהשיחה מוסרת</span>')}
+{frame_phone('י1ב · אותו דיאלוג, הקישור הגיע מקריאת מסמך (מדיה) — „נגזר מ־” ממולא, הדף ירש מהמדיה, והקובץ הוא תמליל', upload_phone('derived'), tall=True)}
+{frame_phone('י3 · /research/corpus — עדשת „מסמכים”: המסמכים של החוקר לפי שם, דף, תאריך, משמורת ועיגון (נפסק: בסבב הזה)', corpus_documents_phone(), tall=False)}
+<div class="board"><div class="cap"><b>י4 · הצ׳יפ #doc_ בגוף הטקסט — סימן המסמך ומילות השם הראשונות</b></div>{chip_strip()}</div>
+</div>
+<div class="board"><div class="cap"><b>י2 · דיאלוג ההעלאה — 1440 — בלי המעטפת: אין תפריט צד ואין חלונית, הדיאלוג לבדו</b><span>נפסק 2026-09-22 בלוח: מי שמגיע מקישור אינו אמור לנווט באתר</span></div>{upload_desktop()}</div>
+<div class="board"><div class="cap"><b>ד2·י · תצוגת העבודה — 1440 — עם ציטוט #doc_ במרכז (צורה ב), בשורת הצילומים ובמה חייבים</b><span>המשפט המסומן „טיוטה” הוא דוגמה של הלוח, לא טקסט של התזה</span></div>{working_desktop_doc()}</div>
+<div class="note"><b>מה לא מצויר בכוונה:</b> גיליון המסמך (שלב 34 — ui §18 :583–:584) · הדלת הציבורית של המודיע (שלב 32, סבב אחר) · דלת ההעלאה בניווט (דיאלוג אינו בניווט) · מזהה כטקסט (רק בפקודה ובכפתור ההעתקה). <b>פריט :237</b> (ספירת „לא נטענו” לפי גרסה) לא נסגר כאן: <code>bodies.json</code> מחזיק את הספירה של HEAD בלבד; ייסגר עם רענון הגופים.</div>'''
+
 # ---------- assemble ----------
 note_top = '''<div class="note"><b>מה זה.</b> שמונה לוחות של תצוגת הקריאה של החוקר (UI-8), מצוירים מהגופים האמיתיים ב־staging (ריצה B, 37 תורות · 3 מסגורים · 3 דפים · 51 רשומות · 5 כללים). כל מילה בלוחות היא ערך מאושר מהקטלוג. (תג „טיוטה” סימן את המילים שטרם אושרו כשהלוחות צוירו; כולן אושרו ונחתו מאז, ולכן הוסר. הוא סימן של הלוח בלבד — לעולם אינו חלק מהעיצוב, אינו נבנה ואינו נבדק.) אישור לוח = אישור לבנות.</div>'''
 note_research = f'''<div class="note"><b>שני שינויים בין א ל־ב.</b> (1) <b>מסגורים</b> — שני המסגורים בלי סבבים מצוירים כרשומות מושתקות עם „נפתח בלי סבב” במקום „עדיין לא הוליד תזה”. <b>הנתון חסר:</b> לפלטפורמה אין שום רשומה שמסגור 3 נולד מ־1 ו־2 — `open_framing` לא מקבל „מחליף את”, ו־`fromRunId` שייך לתובע שלא נבנה. הדף אינו רשאי לגזור את הקשר מסמיכות בזמן; לצייר „תוקן ל־” דורש שדה חדש בכתיבה (שינוי backend, שלך). (2) <b>הארכיון במספרים</b> → <b>דלת אחת</b> לארכיון החוקרים עם שורת סיכום אחת (ההרכב לפי תוצאה עובר לרשימת העמודים ב־<code>/research/corpus</code>, לוח E, שם הוא לצד כל דף). ניסוח השורה אושר.</div>'''
 
 boards = f'''<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>UI-8 boards</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700&family=Heebo:wght@400;500;600;700&display=swap"><style>{CSS}</style></head><body><div class="wrap">
-<h1 class="pg">UI-8 · תצוגת הקריאה של החוקר — לוחות מהגופים האמיתיים (2026-09-21)</h1>{note_top}
+<h1 class="pg">UI-8 · תצוגת הקריאה של החוקר — לוחות מהגופים האמיתיים (2026-09-21) · ודלת המסמכים (2026-09-22)</h1>{note_top}
 <div class="row-of">
 {frame_phone('ב · /research', research_page(True), tall=True, cap='<span>390 · גלילה מלאה</span>')}
 </div>{note_research}
@@ -502,6 +649,7 @@ boards = f'''<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8
 {frame_phone('ט·ב · /research/corpus?page= — כותרת של דף יחיד, ואז סינון', single_page_proposed(), tall=True)}
 </div>
 <div class="note"><b>מה לא מופיע כאן בכוונה:</b> הסתייגות משפטית (רק דפי תזה וקריאה, COMPLIANCE :92) · מזהה כטקסט (רק ב־URL ובכפתור ההעתקה) · קישור לדף הסימון (עצירה היא עובדה) · כל פעולת כתיבה. <b>בלוח ה:</b> שורה של דף „לא פתוח לציבור” מצוירת מושתקת, בלי קישור לרשומה ובלי קריאת טקסט — Q2 כפי שנפסק; גיליון החילוץ נפתח מכל שורה.</div>
+{section_doc}
 </div></body></html>'''
 OUT = os.environ.get('BOARDS_OUT', f'{S}/boards.html')
 open(OUT, 'w').write(boards)
