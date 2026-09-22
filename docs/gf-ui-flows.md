@@ -366,7 +366,7 @@ moved would put colleagues' theses and flags in front of a session with commands
 **One thesis, as it was shaped: the state now, and every act that led to it, each attributed, each opened to
 its material.** The read is `get_thesis_context` (thesis A4 :1476–:1479): the thesis · HEAD and PUBLISHED with
 their texts and resolved mentions · UNARGUED · GAP_LIST with decisions in force · CURRENT_ANALYSIS or STALE / NONE
-with the fingerprint · the framings · HISTORY(t). Two reads open on demand, one sheet each: `get_framing`
+with the fingerprint · the framings · HISTORY(t) · `owed` and this thesis's `reviews` (**ADDED 2026-09-22, the researcher, R71** — A4 :1476, the shape of A4 :1523; a FIELD on this read, never a read, so the closed list in the next sentence is untouched). Two reads open on demand, one sheet each: `get_framing`
 (:1457, every round with its verdicts) and `get_debate` (evidence A4 :1144, the argument's rounds). Nothing
 else is fetched; nothing is derived that the body does not carry, except the text diff between two versions
 (T6 :900's computation, applied here to any two versions of the chain — the same two immutable texts).
@@ -403,7 +403,7 @@ removed by shape is made visible, never dropped.
                       (record, why: withdrawn with reason · content moved, old beside new), STALE_TRAJECTORY,
                       UNARGUED (the mentions), ARRIVED (later, document flows) — each with its material and
                       ONE COMMAND TO PASTE, shown with a copy button (the marking page's precedent, MARKING
-                      :534–:535). Empty is a line saying so; "{ owed: 0 }" is an answer (A4 :1525).
+                      :534–:535). Empty is a line saying so; "{ owed: 0 }" is an answer (A4 :1525). **RULED 2026-09-22 (the researcher, R71): these entries are `get_thesis_context`'s OWN `owed` / `reviews` (A4 :1476, mirroring :1523), never a second read of /api/research/reviews. PER THESIS — not REVIEWS(researcher), which A3 :1408 scopes to theses the caller AUTHORS; the colleague case two lines below is exactly why.**
                       On a colleague's thesis the same entries show, and the command is labelled as the
                       author's (every write refuses NOT_AUTHOR, A7 :1685). **RULED 2026-09-21 (the researcher, R68): beneath WHAT IS OWED, ONE line is the transcript's DOOR — `research.thesis.openTranscript`, carrying the turn count — and opens the pane on „תמליל” (the pane's default tab, §14 as ruled); on the phone this is the visible way into the layer and the swipe stays a second way; at every width the line is drawn and activates that tab, so the page does not change by width. Its moment is defined: it exists whenever the thesis has a transcript, which is always (the FRAMING or VERSION that created it).**
 3  THE STATE NOW      one segmented control, one segment visible at a time:

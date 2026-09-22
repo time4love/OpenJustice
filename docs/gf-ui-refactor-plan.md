@@ -727,7 +727,7 @@ comes from the chat, never the marking link); A3 :1157–:1171. Frontend only (c
 - **`/research/theses/[id]`** — THE WORKING VIEW (§10–§14): one read, `GET /api/research/theses/:id` (`get_thesis_context`, A4
   :1476–:1479), and two sheets on demand, `…/framings/:id` and `…/debates/:sessionId`. §11 top to bottom: (1) the (NOT sticky — RULED 2026-09-20, R66 „Q9”, ui §11 :399)
   context line — the CLAIM verbatim as the heading, the provision, the handle with `mine` marked, the state DRAFT ONLY ·
-  PUBLISHED = HEAD · PUBLISHED ≠ HEAD (n) · WITHDRAWN on <date>; (2) WHAT IS OWED for this thesis, each entry with its material
+  PUBLISHED = HEAD · PUBLISHED ≠ HEAD (n) · WITHDRAWN on <date>; (2) WHAT IS OWED for this thesis, drawn from the ONE read's own `owed` / `reviews` (**RULED 2026-09-22, the researcher, R71**; A4 :1476, the shape of A4 :1523) and NOT from a second read — each entry with its material
   and ONE COMMAND to paste, labelled as the author's on a colleague's thesis; (3) THE STATE NOW, one segmented control: TEXT
   (HEAD's Markdown, every token a chip opening the CITATION sheet, PUBLISHED one toggle away with the diff between them —
   UI-5's `textDiff`, the same two-input function), CITATIONS (every mention of HEAD: kind, record, pin, ARGUED with the verdict
