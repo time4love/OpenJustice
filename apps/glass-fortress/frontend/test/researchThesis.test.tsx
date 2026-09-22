@@ -1,9 +1,9 @@
 jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>('./render').navigationDouble());
 
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { ancestorsOf, gatedFetchUrls, renderResearchThesis, textNodes, type Locale } from './render';
 import { requireSubjects } from './scan';
-import { fullTranscript, thesisContextColleague, thesisContextFull, thesisContextOwed } from './fixtures/research/thesisContext';
+import { fullTranscript, thesisContextColleague, thesisContextFull, thesisContextOwed, thesisContextWithdrawn } from './fixtures/research/thesisContext';
 import { thesisReviewsOwed } from './fixtures/research/reads';
 
 // ---------------------------------------------------------------------------
@@ -254,8 +254,22 @@ describe('the working view — what is owed, and the transcript`s door', () => {
     expect(tab.textContent).toBe('תמליל');
     // THE DEFAULT FOR FREE — `RightPane.tsx` :116 falls back to `tabs.at(0)` with no stored selection.
     expect(tab.getAttribute('aria-selected')).toBe('true');
-    // ONE TAB THIS CHUNK, and the floor says which: the other five arrive with their content.
-    expect([...container.querySelectorAll('[role="tab"]')].map((one) => one.id)).toEqual(['pane-tab-transcript']);
+
+    // RE-AIMED 2026-09-22 (R73 chunk 2), AND STRENGTHENED. This line read `toEqual(['pane-tab-transcript'])`
+    // — "ONE TAB THIS CHUNK" — which was true of chunk 7a and is false by design now: the centre's chips open
+    // RECORDS, and a record opens as a pane tab (§18 as amended 2026-09-16), so the citations' tabs are
+    // declared beside the transcript from ONE `DeclareTabs`. What the case held that still matters is that
+    // the TRANSCRIPT IS FIRST, because `RightPane.tsx` :116's fallback to `tabs.at(0)` is what makes it the
+    // default (§14 :486); that is asserted here explicitly rather than as a side effect of a length of one.
+    //
+    // AND IT ASSERTS MORE THAN THE OLD LINE: every tab after the first is a RECORD tab of a citation HEAD
+    // actually carries, so a page that declared a tab for a record it does not cite — or five dead tabs whose
+    // content does not exist — fails by naming them. The five remaining tabs of §14 :486 arrive with their
+    // content, and this case is what holds that.
+    const ids = [...container.querySelectorAll('[role="tab"]')].map((one) => one.id);
+    expect(ids.at(0)).toBe('pane-tab-transcript');
+    const cited = new Set((thesisContextOwed.head?.mentions ?? []).map((mention) => `pane-tab-record:${mention.kind}:${mention.name}`));
+    expect(ids.slice(1)).toEqual([...cited]);
   });
 
   it('WV-12 THE TRANSCRIPT RENDERS EVERY TURN OF THE BODY, oldest first, under one heading per thread', async () => {
@@ -295,5 +309,115 @@ describe('the working view — what is owed, and the transcript`s door', () => {
     // And the marker really is last, not merely ahead of this one control — a third element appended after
     // it later would be hidden by exactly the same defect.
     expect(end.nextElementSibling).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE CENTRE — R73 chunk 2. docs/gf-ui-refactor-plan.md :739 (i)–(ii) and :1205–:1206, read off APPROVED
+// BOARD ד2; docs/gf-thesis-flows.md A4 :1476 (the ONE citation shape, public and gated).
+//
+// WHAT THESE CASES CAN AND CANNOT HOLD. jsdom computes no layout and no pseudo-element, so nothing here
+// asserts the tick's COLOUR or the tick line's hairline rail — both are CSS and both are browser
+// measurements. What a case CAN hold is the DOM: which regions exist, which tone each tick carries as an
+// attribute, and which tab a press selects. The seam is stated in the chunk's report, not implied here.
+// ---------------------------------------------------------------------------
+describe('the working view — the centre', () => {
+  it('WV-C1 THE CENTRE DRAWS THE TICK LINE AND THE TEXT, in that order (plan :739 (i)–(ii); :1205–:1206)', async () => {
+    const container = await renderResearchThesis(LOCALE, { context: thesisContextFull });
+    const centre = container.querySelector('[data-region="centre"]');
+    if (centre === null) throw new Error('the centre drew nothing');
+
+    const line = centre.querySelector('[data-tick-line]');
+    const text = centre.querySelector('[data-thesis-text]');
+    if (line === null || text === null) throw new Error('the centre drew no tick line or no text');
+    // THE ORDER IS THE BOARD'S: the line heads the text, never follows it.
+    expect(line.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // THE DOMAIN ONCE, heading the line — HEAD cites two records of ONE page, so there is ONE line.
+    expect([...centre.querySelectorAll('[data-tick-line]')]).toHaveLength(1);
+    expect(line.textContent).toContain('example.gov.il');
+  });
+
+  it('WV-C2 EVERY CITATION IN THE TEXT IS A CHIP — a capture, a diff and a trajectory, each by its own face', async () => {
+    const container = await renderResearchThesis(LOCALE, { context: thesisContextFull });
+    const text = container.querySelector('[data-thesis-text]');
+    if (text === null) throw new Error('the centre drew no text');
+    const kinds = [...text.querySelectorAll('[data-chip]')].map((chip) => chip.getAttribute('data-chip-kind'));
+    // Three tokens stand in HEAD's text and three chips render, each knowing which kind it is. A renderer
+    // that drew one shape for all three would pass a count and fail here.
+    expect(kinds).toEqual(['capture', 'diff', 'trajectory']);
+
+    // THE STATUS DOT'S TONE, AND DELIBERATELY NOT ITS COLOUR (plan :1206, "one status dot"). `Tick.tsx` :82
+    // renders a real `<span>` under `[data-tick-tone]`, so WHICH tone a tick wears is a DOM fact a case may
+    // hold; that it is olive is CSS, which jsdom does not compute and no case here claims. The three differ
+    // by construction — the capture is VERIFIED, the diff's verdict is `notEvaluable` and so carries no
+    // colour rather than a fifth one (:14–:16), and the trajectory is current — so an instrument asserting
+    // that a dot was DRAWN without asserting WHICH would pass over a renderer that painted them all alike.
+    const tones = [...text.querySelectorAll('[data-tick]')].map((tick) => tick.getAttribute('data-tick-tone'));
+    expect(tones).toEqual(['verified', 'neutral', 'verified']);
+  });
+
+  it('WV-C3 A CHIP PRESS OPENS THAT RECORD, never the transcript (RightPane.tsx :114–:116)', async () => {
+    const container = await renderResearchThesis(LOCALE, { withPane: true, context: thesisContextFull });
+    const text = container.querySelector('[data-thesis-text]');
+    if (text === null) throw new Error('the centre drew no text');
+    const chip = text.querySelector('[data-chip-kind="capture"] button');
+    if (chip === null) throw new Error('the capture chip drew no control');
+
+    fireEvent.click(chip);
+
+    // THE ACCEPTANCE CRITERION OF THIS CHUNK. `useOpenRecord` selects `record:<kind>:<name>`; a page that
+    // declares only the transcript sends that selection to a tab it does not have, and RightPane falls back
+    // to `tabs.at(0)` — so the press would raise the layer and show the TRANSCRIPT. The reader would see a
+    // date that "works" and opens the wrong thing, which is the R59 · F3 defect the dated tick was unified
+    // to remove. Observed RED on the one-tab declaration before the lift landed.
+    const selected = [...container.querySelectorAll('[role="tab"][aria-selected="true"]')].map((tab) => tab.textContent ?? '');
+    expect(selected).toHaveLength(1);
+    expect(selected[0]).toContain('example.gov.il');
+    expect(selected[0]).not.toContain('תמליל');
+  });
+
+  it('WV-C4 A THESIS THAT CITES NOTHING DRAWS NO TICK LINE, and still draws its text (TickLine.tsx :37)', async () => {
+    const container = await renderResearchThesis(LOCALE, { context: thesisContextWithdrawn });
+    // An empty rail would be a region asserting "no citations" in a shape that looks like a broken one.
+    expect(container.querySelector('[data-tick-line]')).toBeNull();
+    expect(container.querySelector('[data-thesis-text]')).not.toBeNull();
+  });
+
+  it('WV-C5 THE CENTRE DRAWS NO PUBLIC-ONLY REGION — the disclaimer, the appeals, the case, the history, the pages, VERIFY', async () => {
+    const container = await renderResearchThesis(LOCALE, { context: thesisContextFull });
+    // plan :739 names each and its reason; COMPLIANCE.md :92 names the PUBLIC pages, and a gated working
+    // view is not one. A case that checked only the disclaimer would miss the other five.
+    expect(container.querySelector('[data-region="centre"] [data-preface]')).toBeNull();
+    expect(container.querySelector('[data-appeals]')).toBeNull();
+    expect(container.querySelector('[data-the-case]')).toBeNull();
+    expect(container.querySelector('[data-history]')).toBeNull();
+    expect(container.querySelector('[data-the-pages]')).toBeNull();
+    expect(container.querySelector('[data-verify]')).toBeNull();
+    expect(container.textContent).not.toContain('אינו מהווה ייעוץ משפטי');
+  });
+
+  it('WV-C6 THE PUBLISHED TOGGLE AND THE DIFF ARE ABSENT — below the freeze line (plan :739 (iii))', async () => {
+    const container = await renderResearchThesis(LOCALE, { context: thesisContextFull });
+    // NOT BUILT, NOT STUBBED, AND NO DEAD CONTROL WHERE THEY WILL GO. The fixture's PUBLISHED version
+    // differs from HEAD, so a renderer that drew the toggle would draw it here.
+    expect(container.textContent).not.toContain('הגרסה שפורסמה');
+    expect(container.textContent).not.toContain('מה שונה ביניהן');
+    // And the centre draws HEAD's text, not PUBLISHED's.
+    const text = container.querySelector('[data-thesis-text]');
+    expect(text?.textContent).toContain('הגרסה השנייה');
+    expect(text?.textContent).not.toContain('הגרסה הראשונה');
+  });
+
+  it('WV-C7 THE PARSER KEEPS THE RESOLVED FIELDS — the record, the verdict and the flag reach the pane', async () => {
+    const container = await renderResearchThesis(LOCALE, { withPane: true, context: thesisContextFull });
+    // The five fields the narrow reader used to drop are what a record tab is MADE of: without `record` a
+    // tab cannot be labelled by page and date at all. The labels are therefore the evidence that the parse
+    // is wide, read off the render rather than off the fixture literal.
+    const labels = [...container.querySelectorAll('[role="tab"]')].map((tab) => (tab.textContent ?? '').trim());
+    expect(labels.at(0)).toContain('תמליל');
+    expect(labels.some((label) => label.includes('example.gov.il'))).toBe(true);
+    // A DIFF's tab names the INTERVAL it spans, which only `record.before`/`record.after` can supply.
+    expect(labels.some((label) => label.includes('–'))).toBe(true);
   });
 });

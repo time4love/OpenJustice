@@ -1,5 +1,6 @@
 import type { ChunkSide } from '@/types/record';
 import type { RecordNames } from '@/types/corpus';
+import type { Citation } from '@/types/thesis';
 
 // ---------------------------------------------------------------------------
 // THE READ VIEW'S BODIES — hand-written from the appendices (docs/gf-ui-refactor-plan.md UI-8 :772–:773,
@@ -135,10 +136,25 @@ export interface ElementFill {
   records: string[] | 'MISSING';
 }
 
-/** A citation of HEAD or PUBLISHED, resolved (A4 :1476's `V.mentions`). */
-export type Mention =
-  | { kind: 'EVIDENCE'; name: string; pin: string | null; argued: boolean }
-  | { kind: 'TRAJECTORY'; name: string; pin: null; argued: false; resolves?: boolean; currency?: TrajectoryCurrency };
+/**
+ * A citation of HEAD or PUBLISHED — `A4 :1476`'s `V.mentions`, and it is the PUBLIC `Citation` and not a
+ * narrower cousin.
+ *
+ * RE-SHAPED 2026-09-22 (R73 chunk 2), and the appendix is not gaining a requirement — this file is catching
+ * up with one it already carried. A4 :1476 as amended 2026-09-21 ("option (a)") rules that `V.mentions` is
+ * RESOLVED, *"the `V` shape is now the ONE citation shape, public and gated, so the thesis column (ui §17,
+ * UI-5's `components/thesis/*`) is CALLED by the working view with no second read and no second chip"*.
+ * What stood here was `{ kind, name, pin, argued }` — the CODE's narrower sense of "resolved", which is the
+ * failure ui §6.1 :248 is the precedent for: an envelope read off an implementation states what is SERVED,
+ * never what is OWED. The backend has served the wide shape since R70 (`getThesisContext.ts` :71); only this
+ * reader was narrow, and it DROPPED `record`, `content`, `verified`, `flag` and `overObjection` in silence.
+ *
+ * `currency` IS ABSENT ON PURPOSE. A4 :1476 dropped it from the wire on 2026-09-21: it had been written onto
+ * the `resolves: false` arm, where a currency cannot exist, and no reader consumes a mention's currency —
+ * `OwedStrip.tsx` reads `review.state` from a thesis REVIEW, not from a mention. With it gone the gated
+ * TRAJECTORY arm is EXACTLY the public `TrajectoryCitation`, which is what one citation shape was meant to mean.
+ */
+export type Mention = Citation;
 
 /**
  * A cited trajectory's standing against the newest pass (`trajectoryCitation.ts` :54–:76).
@@ -376,6 +392,18 @@ export interface ThesisContext {
   };
   head: VersionView | null;
   published: VersionView | null;
+  /**
+   * THE CITED PAGES — the UNION of HEAD's and PUBLISHED's, DEDUPLICATED BY URL (A4 :1476, ruled 2026-09-21).
+   *
+   * It is the union and not HEAD's because the centre draws HEAD's text with PUBLISHED one toggle away, and
+   * BOTH texts' chips resolve their page from this one list: a list covering one version loses every link on
+   * the toggle. A page named here that the version on screen does not cite is harmless — the lookup is BY URL.
+   *
+   * WHO CONSUMES IT: `PaneTabs.tsx` :59, which hands `pageId` to `RecordPane` for the record's one link
+   * onward to `/corpus?page=`. `ThesisText.tsx` :49 also computes a `pageId` from it, and that value is
+   * discarded by `CitationChip` — recorded, measured and reported; it is not this parser's business.
+   */
+  pages: { trackedUrlId: string; url: string }[];
   unargued: string[];
   gapList: GapEntry[];
   analysis: AnalysisState;

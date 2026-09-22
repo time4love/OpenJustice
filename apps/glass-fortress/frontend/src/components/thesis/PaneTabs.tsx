@@ -47,9 +47,26 @@ export interface PaneTabsProps {
   call?: React.ReactNode;
 }
 
-export function PaneTabs({ citations, pages, locale, call }: PaneTabsProps) {
-  const t = useTranslations('theses.appeals');
-  const tabs: PaneTab[] = citations.map((citation) => ({
+/**
+ * THE RECORD TABS, AS A VALUE — a DECLARED KEEP EDIT, ruled 2026-09-22 (the researcher, R73 „option (a)”).
+ *
+ * WHY A VALUE AND NOT A SECOND COMPONENT. `RightPane.tsx`'s `declare(tabs)` REPLACES a page's registry; it
+ * does not merge, and unmounting clears it. So two `<DeclareTabs>` on one page clobber each other, and the
+ * working view — which must show the TRANSCRIPT and every citation's record from ONE declaration — cannot
+ * render `<PaneTabs>` beside its own. The shape it needs is an ARRAY, and the precedent is already in the
+ * tree: `components/corpus/Stream.tsx` :215 composes a record tab and the extraction slot's tabs into one
+ * `DeclareTabs`, with `useRecordTab` (`RecordSheet.tsx` :302) building a tab as a value exactly like this.
+ *
+ * THE TWO ALTERNATIVES WERE READ OUT AND REJECTED, on the documents rather than on taste: passing the
+ * transcript through `call` puts it LAST, and `RightPane.tsx` :116's fallback to `tabs.at(0)` is what makes
+ * the transcript §14 :486's default; mapping the citations in the working view would re-spell `labelOf` and
+ * the two record panes, which is the second-spelling defect this repository names as its dominant one.
+ *
+ * NOTHING ABOUT THE PUBLIC PAGE MOVES: `<PaneTabs>` below is the same component with the same props and the
+ * same output, now calling what it used to inline. The declared size is in the chunk's report.
+ */
+export function recordTabs({ citations, pages, locale }: Omit<PaneTabsProps, 'call'>): PaneTab[] {
+  return citations.map((citation) => ({
     id: recordTabId(citation),
     label: labelOf(citation, locale),
     content:
@@ -64,6 +81,11 @@ export function PaneTabs({ citations, pages, locale, call }: PaneTabsProps) {
         <TrajectoryRecordPane citation={citation} source={`#tr_${citation.name}`} />
       ),
   }));
+}
+
+export function PaneTabs({ citations, pages, locale, call }: PaneTabsProps) {
+  const t = useTranslations('theses.appeals');
+  const tabs = recordTabs({ citations, pages, locale });
   if (call !== undefined) tabs.push({ id: CALL_TAB_ID, label: t('heading'), content: call });
   return <DeclareTabs tabs={tabs} />;
 }
