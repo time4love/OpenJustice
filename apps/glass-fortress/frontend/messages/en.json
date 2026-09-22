@@ -2170,9 +2170,10 @@
       "owedHere": "What is owed on this thesis",
       "copyId": "The thesis id for a new conversation",
       "openTranscript": "{count, plural, one {Transcript · one turn} other {Transcript · # turns}}",
-      "jumpToNow": "Jump to now"
+      "jumpToStart": "Jump to the start"
     },
     "tab": {
+      "transcript": "Transcript",
       "citations": "Citations",
       "gaps": "Gaps",
       "analysis": "Analysis",

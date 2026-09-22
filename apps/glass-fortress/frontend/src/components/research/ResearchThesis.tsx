@@ -3,6 +3,7 @@
 import { useCallback } from 'react';
 import { useTranslations } from 'next-intl';
 import { CopyableCode } from '@/components/CopyableCode';
+import { DeclareTabs, usePaneLayer, usePaneSelection } from '@/components/shell/RightPane';
 import { ProvisionName } from '@/components/thesis/ProvisionName';
 import { useAsyncData } from '@/hooks/useAsyncData';
 import { researchFetch } from '@/lib/researchFetch';
@@ -10,6 +11,7 @@ import { parseThesisContext } from '@/lib/researchBody';
 import type { ThesisContext } from '@/types/research';
 import { OwedStrip } from './OwedStrip';
 import { ResearchDoor, ResearchFetchBoundary } from './ResearchFetchBoundary';
+import { Transcript } from './Transcript';
 import { ThesisState } from './ThesisRow';
 
 // ---------------------------------------------------------------------------
@@ -92,6 +94,42 @@ function ContextBlock({ context, locale }: { context: ThesisContext; locale: str
   );
 }
 
+/** The pane tab's id — one spelling, shared by the declaration and by the door that selects it. */
+const TRANSCRIPT_TAB_ID = 'transcript';
+
+/**
+ * THE DOOR — the line of §11 :408, now a control.
+ *
+ * IT CALLS THE SHELL'S HOOKS AND RE-SPELLS NEITHER. `usePaneSelection` and `usePaneLayer` are exported from
+ * `RightPane.tsx` precisely "so no two components can disagree about where the active tab lives" (:100–:102),
+ * and `SHELL_KEYS` is not reached from here. `PaneTabs.tsx`'s `useOpenRecord` :75–:82 is the PRECEDENT for the
+ * pair of acts — select the tab, then raise the phone's layer — and is not the caller: that hook selects a
+ * RECORD's tab, computed from a citation, where this one names a tab the page declared.
+ *
+ * BOTH ACTS, ALWAYS, AND THAT IS NOT A PHONE BRANCH. Raising the layer on a wide screen costs nothing — the
+ * pane is already beside the centre and `data-pane-open` only moves the phone's layer — while omitting it
+ * would leave a phone reader with a tab selected behind a layer they cannot see, which is the defect
+ * `useOpenRecord`'s own docblock names ("so a reader on a phone is not left with a tab they cannot see").
+ */
+function TranscriptDoor({ turns }: { turns: number }) {
+  const t = useTranslations('research');
+  const [, select] = usePaneSelection();
+  const [, setLayer] = usePaneLayer();
+  return (
+    <button
+      type="button"
+      data-open-transcript={turns}
+      onClick={() => {
+        select(TRANSCRIPT_TAB_ID);
+        setLayer(true);
+      }}
+      className="self-start text-start text-sm text-ink-muted underline"
+    >
+      {t('thesis.openTranscript', { count: turns })}
+    </button>
+  );
+}
+
 export function ResearchThesis({ thesisId, locale }: { thesisId: string; locale: string }) {
   const t = useTranslations('research');
 
@@ -127,16 +165,32 @@ export function ResearchThesis({ thesisId, locale }: { thesisId: string; locale:
               />
             </section>
 
-            {/* THE TRANSCRIPT'S DOOR — §11 :408 as ruled 2026-09-21: ONE line beneath WHAT IS OWED, carrying the
-                turn count. It is drawn at every width, so the page does not change by width.
+            {/* THE PANE'S TAB, DECLARED BY THE PAGE (§14 :486 as ruled 2026-09-21; board ג3). The page
+                declares, the shell draws — `RightPane.tsx` is KEEP and `DeclareTabs` is its exported door.
+                TRANSCRIPT is the pane's DEFAULT for free: `RightPane.tsx` :116 falls back to `tabs.at(0)`
+                when no stored tab is this page's.
 
-                IT IS A LINE AND NOT A CONTROL UNTIL THE PANE EXISTS. An actionable element needs a defined
-                moment, and a button that opens a tab no page declares yet is a dead control — which this
-                repository has ruled against more than once. The turn count is a FACT of the body either way,
-                and the line becomes the pane's door in the next chunk, where the tab is declared. */}
-            <p data-open-transcript={body.history.length} className="text-sm text-ink-muted">
-              {t('thesis.openTranscript', { count: body.history.length })}
-            </p>
+                ONE TAB, NOT SIX, AND THE REASON IS THIS STEP'S OWN RULE. §14 :486 and plan :739 fix the six —
+                TRANSCRIPT · CITATIONS · GAPS · ANALYSIS · FRAMING · APPEALS — as the END STATE, not as the
+                order they arrive in. Five tabs whose content does not exist would be five dead controls, which
+                is the very rule that kept the line below inert until this chunk. Each remaining tab arrives
+                with its content. */}
+            <DeclareTabs
+              tabs={[{ id: TRANSCRIPT_TAB_ID, label: t('tab.transcript'), content: <Transcript turns={body.history} locale={locale} /> }]}
+            />
+
+            {/* THE TRANSCRIPT'S DOOR — §11 :408 as ruled 2026-09-21: ONE line beneath WHAT IS OWED, carrying
+                the turn count, drawn at every width so the page does not change by width.
+
+                IT IS A CONTROL NOW, BECAUSE THE TAB ABOVE EXISTS. The condition its own comment named has
+                gone, so the comment goes with it: an actionable element needs a defined moment, and this one's
+                moment is the declaration three lines up.
+
+                IT IS ALSO THE ONLY WAY IN ON A DESKTOP. `Shell.tsx` :176–:178 opens the phone's layer on
+                `touchend` — a real touch swipe — so a mouse never reaches the pane by gesture at any width.
+                §11 :408 requires the line at EVERY width for that reason, and the swipe stays "a second way"
+                rather than the way. */}
+            <TranscriptDoor turns={body.history.length} />
           </>
         )}
       </ResearchFetchBoundary>

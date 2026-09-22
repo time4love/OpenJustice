@@ -2170,9 +2170,10 @@
       "owedHere": "מה חייבים על התזה הזו",
       "copyId": "מזהה התזה לשיחה חדשה",
       "openTranscript": "{count, plural, one {תמליל · תור אחד} other {תמליל · # תורות}}",
-      "jumpToNow": "לקפוץ לסוף"
+      "jumpToStart": "לקפוץ להתחלה"
     },
     "tab": {
+      "transcript": "תמליל",
       "citations": "ציטוטים",
       "gaps": "פערים",
       "analysis": "ניתוח",

@@ -1088,4 +1088,61 @@ html, body {
     box-shadow: 0 0 40px rgb(31 27 22 / 25%);
     z-index: 60;
   }
+
+  /* THE TRANSCRIPT'S GLYPH RAIL — docs/boards/gf-ui-boards-2026-09-21.html board ג3, whose generator holds
+     the measurements at `docs/boards/boards.py` :114-:118. Every LENGTH below is that file's, and every
+     COLOUR is the TOKEN whose value the board spells raw: the rail is `--line`, the model's glyph
+     `--ink-muted`, the publication's `--gold` ("the anchor · the seal · publication"), the withdrawal's
+     `--seal-red` ("removed · absent · withdrawal"), and every other glyph `--ink`. Each of those five is
+     byte-identical to the board's own value, which is why this is a MAPPING and not a re-decision.
+
+     THE VALUES ARE DELIBERATELY NOT REPEATED HERE, not even in prose: `tokens-only` holds that each colour
+     is defined EXACTLY ONCE in this file, and it reads comments too. Naming them cost that scan a red on
+     this block's first run — correctly, since a second copy of a colour is a second place to change it,
+     whether or not a browser ever reads it. */
+  .turn-row {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 0 10px;
+    padding: 7px 0;
+  }
+
+  .turn-rail {
+    width: 24px;
+    display: flex;
+    justify-content: center;
+    position: relative;
+  }
+
+  /* THE LINE THAT JOINS CONSECUTIVE ROWS INTO ONE RAIL. It over-hangs the row's own 7px padding at BOTH
+     ends, so two neighbouring rows' segments meet exactly and read as a single unbroken line. A heading is
+     a sibling OUTSIDE any row (§11 :431's thread grouping, board ג3's `li.th`), so the rail breaks there by
+     construction rather than by a rule anyone has to remember. */
+  .turn-rail::before {
+    content: '';
+    position: absolute;
+    top: -7px;
+    bottom: -7px;
+    width: 1px;
+    background: var(--line);
+  }
+
+  /* THE GLYPH SITS ON THE RAIL, and the line appears to pass BEHIND it: a circular knockout in the pane's
+     own background. `--surface` and not `--paper` because this draws inside the right pane, whose
+     background `.shell-pane` sets to `--surface` — and it is the same knockout `glyphs.tsx` :62 already
+     uses inside the publication glyph. */
+  .turn-rail svg {
+    width: 16px;
+    height: 16px;
+    margin-top: 3px;
+    position: relative;
+    z-index: 1;
+    background: var(--surface);
+    border-radius: 50%;
+    color: var(--ink);
+  }
+
+  .turn-rail-model svg { color: var(--ink-muted); }
+  .turn-rail-publication svg { color: var(--gold); }
+  .turn-rail-withdrawal svg { color: var(--seal-red); }
 }

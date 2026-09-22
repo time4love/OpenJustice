@@ -787,7 +787,11 @@ export async function snapshotResearchDashboard(...args: Parameters<typeof rende
  */
 export async function renderResearchThesis(
   locale: Locale = routing.defaultLocale,
-  { context = thesisContextOwed, answers = {} }: { context?: ThesisContext; answers?: Record<string, { status: number; body?: unknown }> } = {},
+  {
+    context = thesisContextOwed,
+    answers = {},
+    withPane = false,
+  }: { context?: ThesisContext; answers?: Record<string, { status: number; body?: unknown }>; withPane?: boolean } = {},
 ): Promise<HTMLElement> {
   const thesisPage = (await import('@/app/[locale]/research/theses/[thesisId]/page')).default;
   // THE URL NAMES THE BODY'S OWN THESIS, always. A helper whose path and whose body could disagree would let a
@@ -801,7 +805,24 @@ export async function renderResearchThesis(
   });
   gatedUrls.length = 0;
   try {
-    const rendered = await renderPage(thesisPage, { locale, thesisId }, { locale });
+    // WITH THE PANE MOUNTED, the page's declared tabs are DRAWN — the default wrapper provides `TabsProvider`
+    // and never `<RightPane/>`, so a case reading the pane without this would examine an unexercised property
+    // and pass. The precedent, and the same reason, is `noDoorBeforeItExists.test.tsx` :188–:194.
+    const rendered = await renderPage(
+      thesisPage,
+      { locale, thesisId },
+      withPane
+        ? {
+            locale,
+            wrapper: ({ children }) => (
+              <TabsProvider>
+                {children}
+                <RightPane />
+              </TabsProvider>
+            ),
+          }
+        : { locale },
+    );
     if (rendered.notFound) throw new Error('renderResearchThesis: the working view answered the one 404, not a body');
     await settle();
     return rendered.container;
