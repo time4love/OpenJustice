@@ -120,10 +120,16 @@ function ShellFrame({ children }: { children: ReactNode }) {
     };
   }, [drawerOpen]);
 
-  // THE PHONE'S SWIPE INTO THE PANE (docs/gf-ui-flows.md §18 :564, amended 2026-09-18; the researcher): "on mobile the thesis view gives no easy
+  // THE PHONE'S SWIPE INTO THE PANE (docs/gf-ui-flows.md §18 :567, amended 2026-09-18; the researcher): "on mobile the thesis view gives no easy
   // way to reach what the desktop shows in the right pane — today only pressing a document's date bubble
-  // gets you there." A swipe right opens the pane, a swipe left returns to the read. The decision itself is
+  // gets you there." A swipe LEFT opens the pane, a swipe RIGHT returns to the read. The decision itself is
   // `paneSwipe.ts`', which is pure; this effect only supplies the two points and applies the answer.
+  //
+  // TWO CONFORMING AMENDMENTS, 2026-09-22, neither of them a ruling: the section begins at :567 and not
+  // :564, and the DIRECTION above read backwards. §18 :567 CORRECTED it on the day it was written — "a swipe
+  // LEFT opens the pane; a swipe RIGHT returns to the read" — after the researcher held it on a phone, and
+  // `paneSwipe.ts` :89–:91 has been right all along ("LEFT (dx < 0) opens"). Only this docblock still named
+  // the destination where the clause names the GESTURE, which is the exact confusion that clause records.
   //
   // IT LIVES IN THE SHELL AND NOT ON THE THESIS PAGE, because the pane is the shell's and the call page has
   // one too — a page-level gesture would be one rule with two implementations. It is INERT wherever no tab

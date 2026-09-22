@@ -65,7 +65,23 @@ export const fullTranscript: Turn[] = [
     thread: { step: 'FRAMING', id: 'framing-1' },
     by: { voice: 'MODEL', ...RECORDED },
     line: null,
-    body: { malformed: false, content: { contradictions: [], elementsFilled: 1, recommended: 'המשרד ידע ולא מסר' } },
+    body: {
+      malformed: false,
+      // THE REAL ASSESSED SHAPE, corrected 2026-09-22 against run B's own body: `elements` is a LIST and
+      // each carries `filled`. The fixture held `elementsFilled: 1`, a field no assessment writes, so the
+      // row's composed count was measured against a shape the platform does not produce. Three of four
+      // filled is exactly what board ג3 draws („הוערך: 0 סתירות, 3 רכיבים שמולאו").
+      content: {
+        contradictions: [],
+        elements: [
+          { element: 'DUTY_HOLDER', filled: true, records: ['capture-one'] },
+          { element: 'MATERIAL_INFORMATION', filled: false, records: [] },
+          { element: 'DISCLOSURE_GIVEN', filled: true, records: ['capture-one'] },
+          { element: 'OMISSION_WINDOW', filled: true, records: ['capture-one'] },
+        ],
+        recommended: 'המשרד ידע ולא מסר',
+      },
+    },
   },
   {
     kind: 'ROUND_CHOSEN',
@@ -113,9 +129,16 @@ export const fullTranscript: Turn[] = [
       parentVersionId: 'version-1',
       mentions: [
         { versionId: 'version-2', kind: 'EVIDENCE', name: 'record-one', contentVersionHash: 'pin-two', debateSessionId: 'debate-1' },
+        // AN EVIDENCE CITATION NOBODY HAS ARGUED — added 2026-09-22 so the row's UNARGUED count DISCRIMINATES.
+        // Without it every version in this fixture scored 0 and a renderer answering a constant would have
+        // passed; run B's four VERSION rows read 1, 2, 0, 0, so a fixture flat at 0 was not the platform's
+        // shape either. The TRAJECTORY below keeps its null session deliberately: it is the guard that the
+        // EVIDENCE-only half of `thesisPredicates.ts` :152–:156 is really applied, and a renderer that
+        // dropped that test would count it and read 2.
+        { versionId: 'version-2', kind: 'EVIDENCE', name: 'record-three', contentVersionHash: 'pin-three', debateSessionId: null },
         { versionId: 'version-2', kind: 'TRAJECTORY', name: 'trajectory-one', contentVersionHash: null, debateSessionId: null },
       ],
-      citationsVsParent: { added: ['trajectory-one'], repinned: ['record-one'], dropped: [], carried: [] },
+      citationsVsParent: { added: ['trajectory-one', 'record-three'], repinned: ['record-one'], dropped: [], carried: [] },
     },
   },
   {

@@ -232,7 +232,7 @@ describe('the working view — what is owed, and the transcript`s door', () => {
     expect(container.querySelector('[data-owed-empty]')).not.toBeNull();
   });
 
-  it('WV-10 THE TRANSCRIPT`S DOOR CARRIES THE TURN COUNT, and is not a control until the pane exists', async () => {
+  it('WV-10 THE TRANSCRIPT`S DOOR CARRIES THE TURN COUNT, and IS a control now that the tab exists', async () => {
     const container = await renderResearchThesis(LOCALE);
     const door = container.querySelector('[data-open-transcript]');
     // THE FLOOR: the body really carries the seventeen kinds across twenty-seven turns, so the count is over
@@ -240,9 +240,43 @@ describe('the working view — what is owed, and the transcript`s door', () => {
     expect(fullTranscript.length).toBe(27);
     expect(door?.getAttribute('data-open-transcript')).toBe('27');
     expect(door?.textContent).toBe('תמליל · 27 תורות');
-    // AN ACTIONABLE ELEMENT NEEDS A DEFINED MOMENT (§12 :456–:459). The pane it opens is declared in the next
-    // chunk; until then the line states a fact and presses nothing — no button, no anchor.
-    expect(door?.tagName).toBe('P');
-    expect(door?.querySelector('button, a')).toBeNull();
+    // THE INVERSION OF THIS CASE IS THE CHUNK. It asserted „no button, no anchor" while the pane had no tab;
+    // the tab is declared now, so the moment §12 :456–:459 requires exists and the line is the door §11 :408
+    // rules it to be. It is a BUTTON and not an anchor: the pane is not a URL.
+    expect(door?.tagName).toBe('BUTTON');
+  });
+
+  it('WV-11 THE PAGE DECLARES THE TRANSCRIPT TAB, and the pane draws it as the default', async () => {
+    const container = await renderResearchThesis(LOCALE, { withPane: true });
+    const tab = container.querySelector('#pane-tab-transcript');
+    // Not a silent zero: a page that declared no tab has not been read by this case at all.
+    if (tab === null) throw new Error('the working view declared no transcript tab');
+    expect(tab.textContent).toBe('תמליל');
+    // THE DEFAULT FOR FREE — `RightPane.tsx` :116 falls back to `tabs.at(0)` with no stored selection.
+    expect(tab.getAttribute('aria-selected')).toBe('true');
+    // ONE TAB THIS CHUNK, and the floor says which: the other five arrive with their content.
+    expect([...container.querySelectorAll('[role="tab"]')].map((one) => one.id)).toEqual(['pane-tab-transcript']);
+  });
+
+  it('WV-12 THE TRANSCRIPT RENDERS EVERY TURN OF THE BODY, oldest first, under one heading per thread', async () => {
+    const container = await renderResearchThesis(LOCALE, { withPane: true });
+    const rows = [...container.querySelectorAll('[data-turn]')];
+    expect(rows.length).toBe(fullTranscript.length);
+    // ORDER IS THE BODY'S OWN (§11 :432, OLDEST FIRST) — asserted against the fixture's own sequence, never
+    // against the answer, so a component that sorted would be caught rather than agreed with.
+    expect(rows.map((row) => row.getAttribute('data-turn'))).toEqual(fullTranscript.map((turn) => turn.kind));
+    // A HEADING OPENS WHERE THE THREAD CHANGES — the count is derived from the fixture, not from the render.
+    const expectedHeadings = fullTranscript.filter((turn, index) => index === 0 || fullTranscript[index - 1]?.thread.id !== turn.thread.id);
+    expect(container.querySelectorAll('[data-thread]').length).toBe(expectedHeadings.length);
+    expect(expectedHeadings.length).toBeGreaterThan(1);
+  });
+
+  it('WV-13 THE CONTROL IS „לקפוץ להתחלה", because the pane opens at now (§11 :432)', async () => {
+    const container = await renderResearchThesis(LOCALE, { withPane: true });
+    const jump = container.querySelector('[data-jump-to-start]');
+    expect(jump?.textContent).toBe('לקפוץ להתחלה');
+    // THE SUPERSEDED WORD IS GONE FROM THE RENDER AND FROM THE CATALOGUE ALIKE — „לקפוץ לסוף" would be the
+    // R68 ruling read backwards, and a reader already at now being offered a jump to it.
+    expect(container.textContent).not.toContain('לקפוץ לסוף');
   });
 });

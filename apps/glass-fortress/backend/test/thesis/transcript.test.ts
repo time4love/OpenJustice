@@ -87,8 +87,8 @@ function seedEverything(): void {
   store.session = debate;
   // The STRENGTH grade is the critic's own word inside the opinion, and `line` for an ANALYSIS is exactly it.
   store.analyses = [
-    { ...ANALYSIS, id: 'analysis-stale', versionId: 'version-child', inputFingerprint: 'fp-old', opinion: { strength: 'WEAK' }, runAt: at(12) },
-    { ...ANALYSIS, id: 'analysis-current', versionId: 'version-child', inputFingerprint: 'fp-now', opinion: { strength: 'MODERATE' }, runAt: at(13) },
+    { ...ANALYSIS, id: 'analysis-stale', versionId: 'version-child', inputFingerprint: 'fp-old', opinion: { strength: { grade: 'WEAK', reasoning: 'הרשומות תומכות בחלק מהטענה בלבד' } }, runAt: at(12) },
+    { ...ANALYSIS, id: 'analysis-current', versionId: 'version-child', inputFingerprint: 'fp-now', opinion: { strength: { grade: 'MODERATE', reasoning: 'הרשומות תומכות בטענה' } }, runAt: at(13) },
   ];
   store.gapDecisions = [
     { ...OPEN_GAP, id: 'gap-open', gapId: '0xgap', sequence: 1, decision: 'OPEN', description: OPEN_GAP.description, reason: null, researcherId: AUTHOR, createdAt: at(14) },
@@ -298,7 +298,7 @@ describe('THE TRANSCRIPT, kind by kind — A4 :1476, every body pinned by its KE
       ['RESPONSE', null],
       ['DEBATE_CLOSED', null],
       // THE STRENGTH GRADE, read out of the opinion the critic returned.
-      ['ANALYSIS', lineOf('ANALYSIS')],
+      ['ANALYSIS', 'WEAK'],
       ['GAP_DECISION', OPEN_GAP.description],
       ['PUBLICATION_RATIONALE', null],
       ['PUBLICATION_ASSESSMENT', null],

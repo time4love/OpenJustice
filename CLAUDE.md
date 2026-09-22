@@ -65,10 +65,40 @@ lines are the imperative form, and they bind on their own.
 - **BEFORE A FAILING TEST PROVES A DEFECT, ASK WHETHER ITS WORLD IS REACHABLE.** Name the clause that
   creates that world and check whether one forbids it. No clause forbids it → the defect stands. One does →
   the FIXTURE is wrong. **FAIL OPEN:** cannot cite the forbidding clause, the defect stands.
+- **A RULING IS THE RESEARCHER'S. PROPAGATING ONE IS NOT.** A **CONFORMING AMENDMENT** — an edit that makes a
+  document agree with a ruling that ALREADY LANDED elsewhere, changing no meaning and no line count — is the
+  seat's to make, to RECORD, and for the researcher to overrule at the page. **The test is one question: can
+  you name the document AND LINE where this was already ruled?** Yes → conforming. No → it is a RULING and it
+  escalates. **FAIL OPEN**, as everywhere else. Ruled 2026-09-22, after a round sent the researcher two
+  one-line questions — a stale „jump to now" at plan :738 that ui §11 :432 had already superseded, and a
+  handoff threshold — in both of which the seat already knew the answer, could cite it, and was asking
+  permission to write it down. **The rule that design docs are the researcher's exists to stop an agent
+  DECIDING design; it was never meant to make the researcher the commit authority for consistency edits.**
+  **Batch what does escalate to chunk boundaries** unless it blocks.
 
 **This does NOT loosen Guided Execution above.** That rule governs a multi-step flow against real data —
 every step shown before it runs. This one governs which DESIGN QUESTIONS interrupt the researcher during
 development. A step in a flow is always shown; a question the page would answer is not asked.
+
+## UI work is FROZEN to what makes a CORPUS ACT visible — ruled 2026-09-22
+
+**Until corpus enrichment resumes, UI work that does not change what a researcher can SEE about a corpus act
+is DEFERRED.** A seat proposing such work **files an ISSUE with its design reference, not a chunk.**
+
+**Why, and it is this project's own history.** The MCP layer was built step by step against real data, with
+the dev plan written OUT of live runs — that method worked. The UI layer had no equivalent loop: it was
+validated against fixtures and approved boards, and **the first time a human opened the working view it
+returned a 500 inside a minute**, with three chunks already landed green and unlooked-at. A whole session was
+then spent on a read's cost and an owed strip whose ruling was INVISIBLE on the live page, because the one
+thesis in the corpus owes nothing. **When the artefact cannot show you the difference, you are building ahead
+of the material.**
+
+**THE BAR FOR "STABLE" IS THE TRANSCRIPT, NOT FEATURE COMPLETENESS** — a researcher working in claude.ai must
+see their own acts reflected back, because that is what makes the next act possible. Everything else waits.
+
+**DEFERRED IS NOT LOST.** Each item becomes an issue carrying its design reference, and the step closes on the
+REDUCED set with the deferral recorded in its `STATUS:`. **A step that closes honestly on less is worth more
+than one that stays open.**
 
 ## Code Quality Standard
 Above all else, code must be clean and written to the highest standards:
