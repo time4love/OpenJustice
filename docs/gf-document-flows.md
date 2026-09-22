@@ -845,7 +845,7 @@ three openings to both, and records which was chosen and by whom.
 document's to specify, in the shape of thesis T5's page:
 
 ```
-#doc_   kind DOCUMENT · custody HELD | SEALED · the commitment, its registry index and block
+#doc_   kind DOCUMENT · **the TITLE (A2, RULED 2026-09-22) — the researcher's name for it, the chip's face on the public page, checked by the gate like the version's text (A6)** · custody HELD | SEALED · the commitment, its registry index and block
         time · how the identity was last verified and when (§4's table, verbatim by mode) ·
         the second witness: NONE — stated, never implied by a shared word with captures ·
         the pinned content version's hash · the opening, and what it serves ·
@@ -995,7 +995,7 @@ at one weight would tell a reader the opposite of what it means — the rebuild 
 against `DIRECT` as a peer of `WAYBACK`. What a researcher holds of such a page is bytes with two
 assertions, and that is a document.
 
-**The researcher's door, one tool for every document a researcher holds:** **RULED 2026-09-22 (the researcher; `docs/gf-document-design-session-2026-09-22.md` §2): the door has TWO HALVES and ONE ACT. The UPLOAD DIALOG — a DIALOG under ui §1 :36–:38, opened by a link the chat hands over, gated, in no navigation — computes DOC_ID in the browser over the file as given (A1), obtains a SIGNED UPLOAD URL from a gated route for that key, uploads the file straight into the platform's private bucket (§12 :1185), and hands back the `add_document` command to paste; under thesis §2 :126–:132 the object is CACHE until the tool runs. The tool reads the object by `docId`, recomputes DOC_ID and refuses `NAME_MISMATCH`, and writes the Document and the Arrival — the one attributed act. An object no row names is swept after a lifetime, an operational parameter of flows A8's kind. A paste needs no dialog: its text rides the call. The dialog's link rides `list_documents`' envelope; A4 gains no tool.**
+**The researcher's door, one tool for every document a researcher holds:** **RULED 2026-09-22 (the researcher; `docs/gf-document-design-session-2026-09-22.md` §2): the door has TWO HALVES and ONE ACT. The UPLOAD DIALOG — a DIALOG under ui §1 :36–:38, opened by a link the chat hands over, gated, in no navigation — computes DOC_ID in the browser over the file as given (A1), obtains a SIGNED UPLOAD URL from a gated route for that key, uploads the file straight into the platform's private bucket (§12 :1185), and hands back the `add_document` command to paste; under thesis §2 :126–:132 the object is CACHE until the tool runs. The tool reads the object by `docId`, recomputes DOC_ID and refuses `NAME_MISMATCH`, and writes the Document and the Arrival — the one attributed act. An object no row names is swept after a lifetime, an operational parameter of flows A8's kind. A paste needs no dialog: its text rides the call. The dialog's link rides `list_documents`' envelope; A4 gains no tool. **THE LINK CARRIES THE CONTEXT (the researcher, 2026-09-22, at board י1): the backend composes the dialog's URL on the read the conversation came from — `list_documents({ url })` hands a link that prefills the page, `read_document(commitment)` hands a link that prefills derived-from and that document's assertions — and the dialog draws what the link brought AS LABELS, never as fields — the title Claude proposed and the researcher approved in the chat among them — and takes one thing, the file; to change a fact the researcher returns to the conversation for a new link. No picker, the marking page's pattern. ONE document per dialog.**
 
 ```
 Claude       → add_document({ bytes, mimeType, assertedUrl?, assertedAt?, derivedFrom? }) — **CORRECTED 2026-09-22 (a CONFORMING amendment to the block below; ruled at §9 :998 and A4 :1404): the argument is `docId` — the bucket object the upload dialog wrote — OR `text`, a paste, EXACTLY ONE, never `bytes`. `NO_BYTES` covers a `docId` naming no object; `NAME_MISMATCH` fires when the object's bytes do not hash to it. `DOC_ID := sha256(bytes)` at :1007 is UNCHANGED and still exactly true — the server hashes the object's bytes, whatever carried them.**
@@ -1268,7 +1268,7 @@ Document                                                                    ⚠�
   mimeType · byteLength
   receivedAt               the first arrival's moment
   verifiedAtReceipt        DateTime? — the SEALED stamp: DOC_ID recomputed in memory then (§2)
-  assertedUrl · assertedAt · derivedFromCommitment
+  assertedUrl · assertedAt · derivedFromCommitment · **title — RULED 2026-09-22 (the researcher): the FOURTH assertion, one line, REQUIRED at the researcher's door — the name a person recognises the document by (ui §4 :167), proposed by Claude and approved by the researcher in the conversation, carried by the dialog's link and by the command, never edited in the dialog; a sealed document has none at receipt (step 32's question)**
                            String? each — the researcher's door only; attributed through the
                            arrival's researcherId; derivedFromCommitment must name a Document
   custody                  DERIVED, never a column: HELD iff bytes present · SEALED iff cid
@@ -1401,7 +1401,7 @@ undefined the tool refuses `AWAITING_DERIVATION` (HELD, no version under the cur
 or `SHED` (naming cause and date), never a guess. Every paid call is named as one.
 
 ```
-add_document({ bytes, mimeType, assertedUrl?, assertedAt?, derivedFrom? })   WRITE · ⚠️ to build — **RULED 2026-09-22: the argument is `docId` (the bucket object the upload dialog wrote) OR `text` (a paste), exactly one; `NO_BYTES` covers a `docId` naming no object; `NAME_MISMATCH` when the object's bytes do not hash to it (§9 :998)**
+add_document({ bytes, mimeType, assertedUrl?, assertedAt?, derivedFrom? })   WRITE · ⚠️ to build — **RULED 2026-09-22: the argument is `docId` (the bucket object the upload dialog wrote) OR `text` (a paste), exactly one; `NO_BYTES` covers a `docId` naming no object; `NAME_MISMATCH` when the object's bytes do not hash to it (§9 :998); `title` REQUIRED (A2), `NO_TITLE` refused**
   does      §9: DOC_ID · HELD · content derived or owed · salt · commitment written or owed ·
             an Arrival(door = RESEARCHER) · the assertions recorded as the caller's
   returns   { commitment, docId, custody: 'HELD', content: { contentVersionHash, text | null } |
@@ -1425,13 +1425,13 @@ read_document({ commitment })                                                GAT
   returns   HELD:   { custody, docId, bytes, versions: [{ contentVersionHash, text, provenance,
                       opinion LABELLED }], current, anchored, equalsCapture, assertions }
             SEALED: { custody, verifiedAtReceipt, cid, version: the AT_RECEIPT one with its
-                      opinion LABELLED, anchored } — no bytes exist to return
+                      opinion LABELLED, anchored } — no bytes exist to return — **RULED 2026-09-22: the HELD shape also carries `uploadUrl`, the dialog's link with this document as derived-from and its assertions as defaults (§9 :998)**
             NONE:   { custody: 'NONE', shed: { cause, at }, hashes only }
   refuses   NOT_A_DOCUMENT
 
 list_documents({ url? })                                                     GATED · ⚠️ to build
   returns   every document, or every document asserting url, with custody, assertions,
-            current hash, anchored, citedBy, opening; oldest first
+            current hash, anchored, citedBy, opening; oldest first — **RULED 2026-09-22: and `uploadUrl`, the dialog's link, carrying `url` as the page to prefill when given (§9 :998)**
   refuses   NOT_SURVEYED (url given and unknown)
 
 describe_document({ commitment })                                     WRITE · paid · ⚠️ to build
@@ -1534,7 +1534,7 @@ here; two checks are added; one is amended.
 | `CITES_EVIDENCE` | **amended**: satisfied by an EVIDENCE or a DOCUMENT mention — a document is a corpus record, and a thesis resting on documents alone argues from what the corpus holds, with each citation's custody and absent second witness in view |
 | new `DOCUMENT_OPENING_DECIDED` | every `#doc_` mention of the head has a DocumentOpeningDecision, and none is BYTES on a sealed document; hard |
 | new `DOCUMENT_QUOTES_PRESENT` | every quoted span of every paragraph carrying a `#doc_` token is PRESENT or UNCHECKED by VERDICT; an ABSENT span names itself — the researcher quoted a document a phrase it does not contain; hard |
-| `NAMES_NO_PERSON` · the rest | unchanged; a document's content may name persons, the version may not |
+| `NAMES_NO_PERSON` · the rest | unchanged; a document's content may name persons, the version may not — **RULED 2026-09-22: and neither may a cited document's TITLE (A2), which the public block carries (§7 :848); the check examines every `#doc_` mention's title and names the one it examined** |
 
 **The verdict rule's third value is this document's amendment to thesis T1**: UNCHECKED, with its
 reason, wherever the content is bytes, for the assessors' and the critic's assertions and for the
