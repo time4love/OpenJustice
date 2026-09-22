@@ -18,6 +18,7 @@ import { currentVersionOf } from './evidencePredicates';
 import { resolveTrajectoryCitations } from './trajectoryCitation';
 import type { AssessedRecord, AssessedTrajectory } from './framingAssessor';
 import { refusal, type Refusal } from '../mcp/tools/thesisRefusals';
+import type { ChunkSide } from '../lib/diffChunking';
 
 // ---------------------------------------------------------------------------
 // THE FRAMING'S ROUNDS, AND WHAT THE ASSESSOR IS HANDED — thesis T1, A2 :1295–:1311.
@@ -41,8 +42,10 @@ const isPair = (r: NamedRecord): r is { url: string; before: string; after: stri
 /** A round, as `get_framing` and the audit read it. */
 export interface Round {
   id: string;
+  /** The framing this round belongs to — the thread the transcript's builder groups it under (A4 :1476). */
+  framingId: string;
   sequence: number;
-  type: string;
+  type: 'PROPOSED' | 'ASSESSED' | 'CHOSEN';
   content: Prisma.JsonValue;
   researcherId: string;
   createdAt: Date;
@@ -54,13 +57,15 @@ export interface LoadedFraming {
   provision: string | null;
   researcherId: string;
   thesisId: string | null;
+  /** The prosecution run it was opened from, if any (A2 :1298) — the FRAMING_OPENED turn's own field. */
+  fromRunId: string | null;
   createdAt: Date;
 }
 
 export async function loadFraming(framingId: string): Promise<LoadedFraming | null> {
   return prisma.framing.findUnique({
     where: { id: framingId },
-    select: { id: true, question: true, provision: true, researcherId: true, thesisId: true, createdAt: true },
+    select: { id: true, question: true, provision: true, researcherId: true, thesisId: true, fromRunId: true, createdAt: true },
   });
 }
 
@@ -254,7 +259,7 @@ export async function loadRecords(
 /** A record's CURRENT computed content — what an assessor, the critic and the drafter are handed. */
 export type ComputedContent =
   | { kind: 'CAPTURE'; url: string; capture: string; text: string }
-  | { kind: 'DIFF'; url: string; before: string; after: string; chunks: { side: string; text: string }[] };
+  | { kind: 'DIFF'; url: string; before: string; after: string; chunks: { side: ChunkSide; text: string }[] };
 
 /**
  * The CURRENT computed content of ONE record — a capture's current text, or a pair's CURRENT version's chunks — or

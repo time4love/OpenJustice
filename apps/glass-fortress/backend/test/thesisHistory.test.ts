@@ -6,7 +6,8 @@ jest.mock('../src/factories/LLMFactory', () => (require('./thesis/tools') as typ
 
 import { addNoteHandler } from '../src/mcp/tools/addNote';
 import { getThesisContextHandler } from '../src/mcp/tools/getThesisContext';
-import { CRITIC_PROMPT_VERSION, fingerprint, history } from '../src/services/thesisPredicates';
+import { CRITIC_PROMPT_VERSION, fingerprint, transcriptOf } from '../src/services/thesisPredicates';
+import { loadThesisRows } from '../src/services/thesisRows';
 import { DIFF_NAME } from './helpers/corpusFixture';
 import { resetDouble, store, written } from './helpers/evidenceDouble';
 import { ANALYSIS, AUTHOR, FRAMING, NOTE, THESIS, VERSION } from './thesis/fixtures';
@@ -33,6 +34,13 @@ beforeEach(() => {
 
 const at = (minute: number): Date => new Date(Date.UTC(2026, 8, 10, 9, minute));
 
+/** The seeded world as ROWS — the one query, so the composer under test is pure (UI-8 chunk A). */
+const rowsOf = async () => {
+  const rows = await loadThesisRows(THESIS.id);
+  if (rows === null) throw new Error('the world seeds a thesis and the loader answered none');
+  return rows;
+};
+
 describe('HISTORY(t) — the framing notes and the boundary', () => {
   it("a note on a framing ATTACHED to the thesis is a NOTE of its history; a note on an unattached framing is not (D11)", async () => {
     seedThesis();
@@ -41,8 +49,11 @@ describe('HISTORY(t) — the framing notes and the boundary', () => {
       { ...NOTE, id: 'note-on-the-framing', thesisId: null, framingId: FRAMING.id, createdAt: at(20) },
       { ...NOTE, id: 'note-on-another-framing', thesisId: null, framingId: 'framing-unattached', createdAt: at(21) },
     ];
-    const entries = await history(THESIS.id);
-    expect(entries.filter((e) => e.kind === 'NOTE').map((e) => [e.id, e.researcherId])).toEqual([['note-on-the-framing', AUTHOR]]);
+    // ATTRIBUTION IS NOW A VOICE, not an id (A4 :1476, R66): the assertion is the same fact — this note is the
+    // author's — read through the handle the transcript carries, because `handleOf` resolves AUTHOR to it.
+    const entries = transcriptOf(await rowsOf());
+    const notes = entries.flatMap((e) => (e.kind === 'NOTE' && e.by.voice === 'RESEARCHER' ? [[e.id, e.by.handle]] : []));
+    expect(notes).toEqual([['note-on-the-framing', 'חוקר_א']]);
   });
 
   it('an entry whose createdAt EQUALS `since` is excluded — `since` is strict (R6)', async () => {
@@ -51,7 +62,7 @@ describe('HISTORY(t) — the framing notes and the boundary', () => {
       { ...NOTE, id: 'note-at-since', createdAt: at(30) },
       { ...NOTE, id: 'note-after-since', createdAt: at(31) },
     ];
-    const ids = (await history(THESIS.id, at(30))).map((e) => e.id);
+    const ids = transcriptOf(await rowsOf(), { since: at(30) }).map((e) => e.id);
     expect(ids).toEqual(['note-after-since']);
   });
 });
@@ -103,7 +114,12 @@ describe("get_thesis_context — the analysis arm: CURRENT, STALE, AWAITING_DERI
 
   it('a cited diff the walk owes a version is AWAITING_DERIVATION, naming it — never NONE', async () => {
     seedThesis();
-    seedCorpus({ derived: false });
+    // `superseded`, NOT `derived: false`, and the difference is what the head CITES. This world's head pins
+    // CURRENT_VERSION, and a pin names a version the store holds (evidence :200–:204, :501) — a head citing a
+    // pair with NO version at all cannot exist, because T2 :414 refuses that write. The world is
+    // AWAITING_DERIVATION because the re-walk moved the endpoint's TEXT, which is what makes CURRENT
+    // undefined (evidence :1027–:1029), while every stored version stays where the citation left it.
+    seedCorpus({ superseded: true });
     expect(await analysisState()).toEqual({ state: 'AWAITING_DERIVATION', name: DIFF_NAME });
   });
 });

@@ -1,3 +1,5 @@
+import type { ChunkSide } from './record';
+
 // ---------------------------------------------------------------------------
 // THE CORPUS BODIES — hand-written from the appendix, never from a live response.
 //
@@ -64,13 +66,74 @@ export interface CorpusPage {
   public: boolean;
 }
 
+/**
+ * One DAY of the page's captures, merged (§24 :755) — `day` is `YYYYMMDD`, eight digits.
+ *
+ * THE UNIT IS THE DAY BECAUSE THE STRIP'S UNIT IS THE DAY: `timeStrip`'s own `dayOf` reads the first eight
+ * characters of a capture's 14-digit archive name and discards the rest, so an instant on the wire would be
+ * precision the instrument throws away.
+ */
+export interface CaptureBin {
+  day: string;
+  /** How many CAPTURES fell on that day — never how many bins, which is what a merged mark must still sum. */
+  count: number;
+  /** ANY capture in the bin carries its own `evidence` — ruling (c)'s reading, and (e)'s ring on a merge. */
+  cited: boolean;
+}
+
+/** One `(before-day, after-day)` pair's diffs, merged — both `YYYYMMDD`. */
+export interface DiffBin {
+  before: string;
+  after: string;
+  count: number;
+  /** THE BIN'S MAXIMUM chunk count, never their sum (ruling (e)): a sum draws a magnitude no change has. */
+  chunks: number;
+  /** ANY diff in the bin passed the significance gate — the tone mirrors the ring's ANY, for (g)'s reason. */
+  passed: boolean;
+}
+
+/**
+ * ONE PAGE'S WHOLE SHAPE OVER TIME — what region 3's strip is drawn from, and the page's, never the view's.
+ *
+ * IT CARRIES DAYS AND NEVER GEOMETRY (§24 :755). No pixels, no midpoint, no merge: those are the drawing's
+ * and they live in `lib/timeStrip.ts`. What the wire owns is WHAT HAPPENED; what the component owns is where
+ * it lands.
+ */
+export interface PageShape {
+  captures: CaptureBin[];
+  diffs: DiffBin[];
+}
+
 /** One row of the `pages` FACET (§28 :751–:753) — the pages list's only legal source at `public`. */
 export interface PagesFacetRow extends CorpusPage {
-  /** The first and last snapshot dates in scope — an INTERVAL, which is how a page is shown (§4 :169). */
-  first: string;
-  last: string;
+  /**
+   * The first and last snapshot dates in scope — an INTERVAL, which is how a page is shown (§4 :169).
+   *
+   * BOTH ARE NULLABLE AND ALWAYS WERE ON THE WIRE (`corpusReads.ts` :1070–:1071, :1307 `held.at(0) ?? null`).
+   * This type required `string` and `corpusBody`'s parser called `text()` on them, which THROWS — so ONE
+   * surveyed page with no captures yet would have taken region 0 of the gated door down, and it parses every
+   * surveyed page. That state is one survey away: `walk/tools/surveyWaybackCaptures.ts` :149 creates the
+   * `TrackedUrl` and its work-list rows, and a LATER step acquires the captures.
+   *
+   * THE BACKEND DOES NOT MOVE (ruled 2026-09-21). `null` is the true statement about a page with no captures;
+   * a `''` or a stand-in date would be a lie this side could not detect. What draws from them asks
+   * `lib/pageInterval.ts` first, and a row with no interval says the url and its record count and stops.
+   */
+  first: string | null;
+  last: string | null;
   /** How many records the scope holds for this page. */
   entries: number;
+  /**
+   * The page's shape over time, PRESENT ONLY ON THE PAGE A READ NAMES and `null` on every other row.
+   *
+   * IT IS THE STRIP'S ONLY SOURCE (§24 :755, ruled 2026-09-21). The card's text line was already the facet's
+   * while its strip was built from the FILTERED, cursor-windowed entries, so one element contradicted itself:
+   * measured on the real corpus, `?page=<corona>` drew „43 רשומות" over 16 dots and 16 bars, `&kind=DIFF`
+   * the same line over an empty half. The facet is computed BEFORE the filter and before the cursor's slice,
+   * so a shape read from here cannot be narrowed by either — and `null` draws NO strip rather than a partial
+   * one, which is a loud absence instead of a silent half.
+   */
+  shape: PageShape | null;
 }
 
 /** A capture's anchor (A4 :1083–:1084). `attributed` is the ATTRIBUTED mark; it is never a failure. */
@@ -98,7 +161,7 @@ export interface EvidenceLink {
  * what a card shows; `survival` is OPTIONAL because no clause in UI-7's contract requires it.
  */
 export interface DiffChunk {
-  side: 'REMOVED' | 'ADDED';
+  side: ChunkSide;
   text: string;
   survival?: string;
 }
@@ -177,61 +240,280 @@ export interface CorpusAnswer {
   nextCursor: string | null;
 }
 
-/** `get_diff_input`'s answer (A4 :1095–:1099): the pair's two texts and the CURRENT version's chunks. */
-export interface DiffInput {
-  before: string;
-  after: string;
-  beforeText: string;
-  afterText: string;
-  current: CurrentContent | null;
-  awaitingDerivation: boolean;
+/**
+ * ONE CAPTURE OF A CLAIM'S VECTOR (§6.1 :248) — where the claim stood at one capture.
+ *
+ * `waybackTimestamp` is a 14-digit archive name and is NEVER rendered as text (§4 :167): the strip carries
+ * it in a `data-` attribute and the sheet's link puts it in an href. `snapshotUrl` is deliberately NOT in
+ * this type — the read does not send it, and `lib/archiveUrl.ts` is where the archive's address is made.
+ */
+export interface TrajectoryCapture {
+  snapshotDate: string;
+  waybackTimestamp: string;
+  present: boolean;
+}
+
+/**
+ * ONE SPAN OF STATE (§6.1 :248) — a run of consecutive captures in which the claim held one state.
+ *
+ * IT NAMES ITS FIRST CAPTURE AND COUNTS THE REST, and that is why `TrajectoryCapture[]` exists beside it:
+ * a strip drawn from spans has one tick per FLIP (4 for the real page's 22 captures), and the diff a claim
+ * left in is the pair (last capture of span i, first capture of span i+1) — a capture no span names.
+ *
+ * `days` IS NULLABLE AND IS A BOUND, NOT A DURATION (the backend's own words): it measures to the capture
+ * that ENDED the state, and the true change point lies inside that window. `null` when a date will not
+ * parse — a missing figure, never a zero.
+ */
+export interface TrajectorySpan extends TrajectoryCapture {
+  snapshotUrl: string;
+  captures: number;
+  days: number | null;
+  openEnded: boolean;
+}
+
+/**
+ * ONE TRAJECTORY ROW of `list_trajectories` (§6.1 :248) — a group of claims that moved as one unit.
+ *
+ * `patternHash`, `sourceStateHash`, `claimHash` and `trajectoryId` are ids and NEVER text (§4 :167).
+ * `trajectoryId` has the one home §4 :171–:173 gives it: a COPY control carrying `#tr_<trajectoryId>`.
+ *
+ * `claimCount` IS `claims.length` ON THE WIRE and is carried anyway, because it is the read's own count and
+ * a page that recomputed it would be deriving a number it was handed. 13 of the real page's 26 rows are
+ * groups, from 2 to 45 claims.
+ */
+export interface TrajectoryEntry {
+  patternHash: string;
+  sourceStateHash: string;
+  transitions: number;
+  firstSeen: string;
+  lastSeen: string;
+  finalState: 'PRESENT' | 'REMOVED';
+  claimCount: number;
+  captures: TrajectoryCapture[];
+  changes: TrajectorySpan[];
+  claims: { trajectoryId: string; claimHash: string; claimText: string }[];
   page: CorpusPage;
 }
 
-/** One capture beneath a record, with its own attribution (A4 :1105–:1108, "per-capture attribution"). */
-export interface RecordCapture {
-  capture: string;
-  snapshotDate: string;
-  attributed: boolean;
+/**
+ * `list_trajectories`' answer at one page (§6.1 :248).
+ *
+ * THE ORDER IS THE READ'S — by the date the claim LAST LEFT, latest first — and it is NOT `lastSeen`:
+ * `corpusReads.ts`' `leftAt` takes the last absent span after the first, so five PRESENT rows of the real
+ * page sit in the middle of the list under their departure date. The page re-sorts nothing, which is why
+ * no sort key is derivable from this type.
+ *
+ * `undetected` NAMES a page in scope whose current state no stored pass describes, so an absence never
+ * reads as "nothing moved". A page with no trajectories arrives here, with `entries: []`.
+ */
+export interface TrajectoryAnswer {
+  entries: TrajectoryEntry[];
+  undetected: CorpusPage[];
+  nextCursor: string | null;
 }
 
-/** A published version citing a record, with its FLAGGED mark and its text (A4 :1108–:1109). */
-export interface CitingPublishedVersion {
-  thesisId: string;
-  versionId: string;
-  publishedAt: string;
-  flagged: boolean;
+/**
+ * ONE ENDPOINT OF A PAIR (A4 :1096) — an OBJECT carrying its own bytes, never a bare timestamp.
+ */
+export interface DiffSide {
+  capture: string;
+  textHash: string;
+  textExtractionVersion: string;
   text: string;
 }
 
-/** `resolve_record`'s answer (A4 :1105–:1109) — what a stranger holding a citation needs. */
+/**
+ * `get_diff_input`'s CURRENT version (A4 :1096) — ITS OWN TYPE, and not `CurrentContent`.
+ *
+ * The two are different bodies from different tools: `list_findings` sends `{ contentVersionHash, chunks }`
+ * for every diff row (A4 :1084) and `get_diff_input` sends `diffVersion` beside them. Widening one type to
+ * cover both would make `diffVersion` optional everywhere and assert nothing at either door.
+ *
+ * `diffVersion` is PROVENANCE — "the inputs" (evidence :237, :969). It is narrowed because the body carries
+ * it; no clause of §26 or the UI plan renders it, and nothing does.
+ */
+export interface DiffCurrent {
+  contentVersionHash: string;
+  diffVersion: string;
+  chunks: DiffChunk[];
+}
+
+/**
+ * `get_diff_input`'s answer for one pair (A4 :1096).
+ *
+ * `current` IS NOT NULLABLE AND THERE IS NO `awaitingDerivation` FIELD. An undefined CURRENT is the
+ * AWAITING_DERIVATION refusal — `{ error, code }` at 409 (ui §6 :267), an early return in `getDiffInput.ts`
+ * :114-:121 — and so a page state, never a value in a 200 body. The boolean this type used to carry was
+ * `list_findings`' diff row (A4 :1085), a neighbouring clause of a different tool.
+ */
+export interface DiffInput {
+  page: PageRef;
+  before: DiffSide;
+  after: DiffSide;
+  current: DiffCurrent;
+  /**
+   * THE DIFF ROW'S OWN THREE FIELDS — ruled 2026-09-20 (A4 :1096), so the diff page can draw what §26
+   * :852–:856 asks of it without a second read of the page's whole timeline (§8 :344).
+   *
+   * THEY ARE THE STREAM'S TYPES, not new ones: the backend builds them with `diffRow`, the one builder
+   * `list_findings` uses, so a second spelling on either side would let the corpus and the diff page show
+   * two accounts of one record. The intervening captures BEHIND `narrowed` are served by no read and stay
+   * owed — `narrowed` is the MARK, not the list.
+   */
+  opinion: ClassifierOpinion | null;
+  narrowed: boolean;
+  evidence: EvidenceLink | null;
+}
+
+/**
+ * THE PAGE A RECORD'S READ NAMES — `{ url, public }`, and deliberately NOT `CorpusPage`.
+ *
+ * `get_capture`, `get_diff_input` and `resolve_record` all send this and no `trackedUrlId` (evidence A4 :1082,
+ * :1096, :1106; confirmed on all three running routes). It is named once rather than spelled inline three
+ * times, and it is a DIFFERENT type from `CorpusPage` rather than a subset of it: the stream's rows carry the
+ * id because a list must link to each row, while these reads answer about a page the reader already named in
+ * the URL — "a page that read it back out of the body would be deriving an identity it was already handed".
+ */
+export interface PageRef {
+  url: string;
+  public: boolean;
+}
+
+/**
+ * `get_capture`'s answer (evidence A4 :1082) — ONE capture's row PLUS its bytes.
+ *
+ * THE ROW HERE CARRIES NO `kind` AND NO `page`, and that is the BODY's shape rather than an omission: the
+ * read answers one capture of one page, so the page is stated once at the top and the row is the timeline's
+ * row exactly. `trackedUrlId` is deliberately absent — the id is the one the READER asked with, in the URL,
+ * and a page that read it back out of the body would be deriving an identity it was already handed (§4).
+ */
+export interface CaptureRead {
+  page: PageRef;
+  capture: Omit<CaptureEntry, 'kind' | 'page'>;
+  text: string;
+  /** WHICH extraction the bytes are — stated by the read, never assumed by the page. */
+  textHash: string;
+  /** True when no extraction was asked for, so the bytes are the capture's CURRENT text. */
+  current: boolean;
+}
+
+/**
+ * ONE CAPTURE BENEATH A RECORD, and what the chain state stored about its anchor (A4 :1106).
+ *
+ * `checkedAt` IS A STRING HERE AND A `Date` ON THE BACKEND (`evidencePredicates.ts` :546). What crosses the
+ * wire is JSON, so the page reads the ISO text the route serialised and never a `Date` it did not receive.
+ */
+export interface RecordCaptureAttribution {
+  capture: string;
+  documentHash: string;
+  anchoredHash: string | null;
+  anchoredHashMatchesDocumentHash: boolean;
+  attributed: boolean | null;
+  verdict: string | null;
+  verifierVersion: string | null;
+  checkedAt: string | null;
+}
+
+/**
+ * FLAGGED'S REPORT (A3 :1054) — never a bit.
+ *
+ * `armsEvaluated` and `reasons` are `string[]` AND ARE NOT NARROWED TO A UNION, which is the opposite call
+ * from `notEvaluable` below, deliberately. Both are OPEN sets by construction: SHED joins the arms when the
+ * `Document` table lands (`evidencePredicates.ts` :755-:758), and A4 :1106 writes `[string]` for each. A page
+ * renders the report's own words; a frontend union would refuse a body the backend legitimately widened.
+ */
+export interface FlagReport {
+  flagged: boolean;
+  armsEvaluated: string[];
+  reasons: string[];
+}
+
+/** A published version citing a record, with its FLAGGED report and its text (A4 :1106). */
+export interface CitingPublishedVersion {
+  thesisId: string;
+  versionId: string;
+  contentHash: string;
+  pin: string | null;
+  flagged: FlagReport;
+  text: string;
+}
+
+/**
+ * VERIFIED, OR THE REASON IT CANNOT BE ASKED of this record (A4 :1106).
+ *
+ * The three reasons ARE narrowed — they are `evidencePredicates.ts` :566's closed union, reached through
+ * `resolveRecord.ts` :134 (`notEvaluable: report.reason`), and §18 :574 shows each as a reason rather than a
+ * failure. A fourth reason must reach the page as a loud parse failure and not as an unrendered string.
+ */
+export const NOT_EVALUABLE_REASONS = ['NOT_PROMOTED', 'MALFORMED_RECORD_KEY', 'DOCUMENT_CLASS_NOT_BUILT'] as const;
+
+export type NotEvaluableReason = (typeof NOT_EVALUABLE_REASONS)[number];
+
+export type RecordVerified =
+  | { verified: boolean; captures: RecordCaptureAttribution[] }
+  | { notEvaluable: NotEvaluableReason };
+
+/**
+ * THE RECORD'S ENDPOINTS BY THEIR ARCHIVE NAMES (A4 :1106) — "14-digit archive names, never dates".
+ *
+ * This replaced `first`/`last`, which the route has never sent: the frontend had read the clause's word
+ * "timestamps" as dates and invented two fields for them.
+ */
+export type RecordNames = { capture: string } | { before: string; after: string };
+
+/** `resolve_record`'s answer (A4 :1106) — what a stranger holding a citation needs. */
 export interface ResolvedRecord {
   fileHash: string;
   kind: EntryKind;
+  /**
+   * `CorpusPage` AND NOT `PageRef` — ruled 2026-09-20 (A4 :1106). This is the ONE record read whose page
+   * carries its id, because its reader arrived by the record's NAME and holds no page id: the link onward
+   * to the record's page (§26 :860) has no other source. The other two reads keep `PageRef`.
+   */
   page: CorpusPage;
-  first: string;
-  last: string;
+  record: RecordNames;
   recomputable: boolean;
-  verified: boolean;
-  captures: RecordCapture[];
+  verified: RecordVerified;
   citedBy: CitingPublishedVersion[];
+}
+
+/** One capture's chain verdict, as `check_on_chain_status` reports it (A4 :1111–:1114). */
+export interface CaptureChainStatus {
+  capture: string;
+  documentHash: string;
+  isRegistered: boolean;
+  /** The registry's own index for this hash — the VERIFY disclosure's fourth value (§26 :831). */
+  registryIndex: number | null;
+  submitter: string | null;
+  attributed: boolean;
+  anchoredHash: string | null;
+  anchoredHashMatchesDocumentHash: boolean;
+  /** The verdict the platform STORED at its last check, with the version that reached it — null if never checked. */
+  storedVerdict: { verdict: string; verifierVersion: string; checkedAt: string; attributed: boolean | null } | null;
 }
 
 /**
  * `check_on_chain_status`' answer (A4 :1111–:1115), or its one refusal.
  *
- * `CHAIN_UNAVAILABLE` IS A VERDICT ABOUT THE CHECK AND NEVER ABOUT THE RECORD (A4 :1115; §26 :715–:716).
- * It is modelled as a member of the union rather than as an error so that a renderer cannot reach it through
- * a `catch` and report it as a failed record.
+ * `CHAIN_UNAVAILABLE` IS A VERDICT ABOUT THE CHECK AND NEVER ABOUT THE RECORD (A4 :1115; §26). It is modelled
+ * as a member of the union rather than as an error so that a renderer cannot reach it through a `catch` and
+ * report it as a failed record.
+ *
+ * **RE-DERIVED 2026-09-19 FROM THE WIRE, and the shape it replaces was never served by anything.** This type
+ * and its two fixtures were hand-written as a FLAT, single-capture object carrying `verdict` and
+ * `verdictVersion` and a boolean `available` — fields the route does not send and the backend does not build.
+ * The route answers `{ page, captures: CaptureStatus[], registry }` at 200 and `{ error, code }` at 503;
+ * measured on the running body, `GET /api/pages/<id>/captures/<ts>/chain` returns a `captures` array. A4
+ * :1111–:1115 names the FIELDS and not the envelope, which is how the guess survived — the same shape as the
+ * `editorial`/`draws` defect A4 :1086 records, where a fixture written from the same wrong reading as the code
+ * left 273 cases green and the page 500'd on the first real body. **The ENVELOPE is owed an A4 amendment.**
  */
 export type ChainAnswer =
   | {
       available: true;
-      isRegistered: boolean;
-      attributed: boolean;
-      anchoredHash: string;
-      documentHash: string;
-      verdict: string;
-      verdictVersion: string;
+      page: PageRef;
+      captures: CaptureChainStatus[];
+      /** OBSERVED, never configured — a wrong environment records itself (the 2026-08-29 rule). */
+      registry: { chainId: number | null; registryAddress: string | null };
     }
   | { available: false; reason: 'CHAIN_UNAVAILABLE' };

@@ -1,6 +1,17 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
-import { loadDiffByPair, lookupCapture, pairName, type Page, type PageRef } from '../../services/corpusReads';
+import {
+  diffName,
+  diffRow,
+  loadCaptures,
+  loadDiffByPair,
+  loadEvidenceLinkage,
+  lookupCapture,
+  pairName,
+  type DiffEntry,
+  type Page,
+  type PageRef,
+} from '../../services/corpusReads';
 import { currentVersionOf } from '../../services/evidencePredicates';
 import { answer, refusal, notACapture, openPage, pageByUrl, type Refusal } from './evidenceRefusals';
 
@@ -45,6 +56,19 @@ interface DiffInput {
   before: Side;
   after: Side;
   current: { contentVersionHash: string; diffVersion: string; chunks: unknown };
+  /**
+   * THE DIFF ROW'S OWN THREE FIELDS — ruled 2026-09-20 (A4 :1096), as `get_capture` is the capture row
+   * plus its text (:1082).
+   *
+   * THEY ARE `diffRow`'S AND NEVER RE-SPELLED. `list_findings` reports the same three about the same diff
+   * through the same builder, so a page that read them here and a page that read them there cannot be
+   * shown two accounts of one record. Composing them again in this file is the "one rule, many
+   * implementations" shape this repository names as its dominant defect — and the copy that drifted would
+   * be the one nobody compared.
+   */
+  opinion: DiffEntry['opinion'];
+  narrowed: DiffEntry['narrowed'];
+  evidence: DiffEntry['evidence'];
 }
 
 /**
@@ -134,8 +158,18 @@ export async function diffInputOf(
     return row.text;
   };
 
+  // THE ROW, BUILT BY ITS OWN BUILDER. `acquired` is what NARROWED reads — a capture between the two
+  // endpoints narrows the pair only if the corpus holds its text (§7) — and the linkage is asked for this
+  // ONE name rather than the page's whole set, because this read answers about one pair.
+  const acquired = (await loadCaptures(page.id)).map((capture) => capture.capture);
+  const linkage = await loadEvidenceLinkage([diffName(page, diff)]);
+  const row = diffRow(page, diff, acquired, linkage);
+
   return {
     page: { url: page.url, public: access.public },
+    opinion: row.opinion,
+    narrowed: row.narrowed,
+    evidence: row.evidence,
     before: {
       capture: diff.before.capture,
       textHash: diff.before.textHash,

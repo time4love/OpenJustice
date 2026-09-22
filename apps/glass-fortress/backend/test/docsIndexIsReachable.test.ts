@@ -52,18 +52,30 @@ const DOCS = join(REPO, 'docs');
 const ARCHIVE = join(DOCS, 'archive');
 const INDEX = join(DOCS, 'README.md');
 
-const MARKDOWN_LINK = /\]\(([^)\s]+\.md)\)/g;
+const MARKDOWN_LINK = /\]\(([^)\s]+\.(?:md|html))\)/g;
 const BACKTICKED = /`([^`]+)`/g;
 const NO_SUCCESSOR = /no successor — (completed|abandoned|removed) \d{4}-\d{2}-\d{2}/;
 const ARCHIVED_BANNER = /^> \*\*ARCHIVED /;
 const BANNER_CLASS = /SUPERSEDED|ARCHIVED/;
 
-/** Every markdown file under `dir`, recursively, as paths relative to `docs/`. */
+/**
+ * Every DOCUMENT under `dir`, recursively, as paths relative to `docs/`.
+ *
+ * `.html` IS A DOCUMENT HERE, AND THAT IS 2026-09-21's CORRECTION (the researcher, R70). This reader
+ * collected `.md` alone, and `MARKDOWN_LINK` captured `.md` alone — so an approved UI BOARD file dropped
+ * into `docs/` was invisible to both halves: nothing required the index to name it, and a dangling link to
+ * it passed. The boards govern what every page is graded against, and the failure that moved them into git
+ * was precisely an artifact that existed, mattered, and had nothing pointing at it. A rule that reaches
+ * only the file type it was first written for is a rule with a hole in it.
+ *
+ * The generator and its bodies (`boards.py`, `bodies.json`) are TOOLS beside the document, not documents:
+ * they are named by the board file's own index line, and a reader reaches them through it.
+ */
 function markdownUnder(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) return markdownUnder(full);
-    return entry.endsWith('.md') ? [relative(DOCS, full)] : [];
+    return entry.endsWith('.md') || entry.endsWith('.html') ? [relative(DOCS, full)] : [];
   });
 }
 

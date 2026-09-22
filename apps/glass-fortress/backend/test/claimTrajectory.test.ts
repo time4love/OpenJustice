@@ -594,6 +594,46 @@ describe('groupByMovement', () => {
 
     expect(groups[0].changes.map((c) => c.present)).toEqual([false, true, false]);
   });
+
+  /**
+   * EVERY CAPTURE BESIDE THE FLIPS — docs/gf-ui-flows.md §6.1 :248 and §25 :791, ruled 2026-09-20.
+   *
+   * `changes` is the run of STATES the claim held: one span per state, each naming its FIRST capture and
+   * COUNTING the rest. That is enough to say how long a state lasted and not enough to draw the page's
+   * shape or to name a diff — a strip built from it drew 4 ticks for the real page's 22 captures, and the
+   * pair a claim left in is (last capture of span i, first capture of span i+1), which no span names: the
+   * composed non-adjacent pair is NO_SUCH_DIFF whenever a span held more than one capture, and the first
+   * real row holds 18.
+   *
+   * So the per-capture vector the pass ALREADY HELD is carried out. It is not computed here and it is not
+   * stored twice: `ClaimTrajectory.observations` is identical for every member of a group by construction
+   * — that identity is what `presencePatternHash` groups on — so the group states it once.
+   */
+  it('carries every capture, in capture order, and the spans account for exactly those captures', () => {
+    const groups = groupByMovement([traj('a', [false, false, true, true, false])]);
+    const group = groups[0];
+
+    // A VACUITY GUARD. This case says the captures are NOT the spans; a fixture with as many spans as
+    // captures would satisfy every assertion below while asserting nothing. Five captures, three spans.
+    expect(group.captures.length).toBeGreaterThan(group.changes.length);
+
+    expect(group.captures.map((c) => c.present)).toEqual([false, false, true, true, false]);
+    expect(group.captures.map((c) => c.snapshotDate)).toEqual(['2022-01-01', '2022-02-01', '2022-03-01', '2022-04-01', '2022-05-01']);
+    expect(group.captures.map((c) => c.waybackTimestamp)).toEqual([
+      '20220101000000',
+      '20220201000000',
+      '20220301000000',
+      '20220401000000',
+      '20220501000000',
+    ]);
+
+    // THE THREE FIELDS AND NO MORE. `snapshotUrl` is deliberately not repeated (§6.1 :248): it is a
+    // deterministic composition of the url and the timestamp, and `lib/archiveUrl.ts` is where it is made.
+    expect(Object.keys(group.captures[0]).sort()).toEqual(['present', 'snapshotDate', 'waybackTimestamp']);
+
+    // THE TWO ACCOUNTS OF ONE HISTORY AGREE, which is the invariant a reader of either one relies on.
+    expect(group.changes.reduce((total, span) => total + span.captures, 0)).toBe(group.captures.length);
+  });
 });
 
 describe('get_claim_trajectories grouping', () => {

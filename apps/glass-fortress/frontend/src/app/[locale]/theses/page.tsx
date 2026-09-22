@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 import { Link } from '@/i18n/navigation';
-import { readPublic } from '@/lib/api';
+import { readUnfiltered } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { parseThesisList } from '@/lib/thesisBody';
 import { ProvisionName } from '@/components/thesis/ProvisionName';
@@ -66,7 +66,7 @@ function newestFirst(rows: readonly ThesisListRow[]): ThesisListRow[] {
 
 /** THE ONE READ (§8): `GET /api/thesis`, `list_theses`' anonymous answer (A4 :1427), narrowed at the boundary. */
 async function publishedTheses(): Promise<ThesisListRow[]> {
-  const answer = await readPublic('/api/thesis', parseThesisList);
+  const answer = await readUnfiltered('/api/thesis', parseThesisList);
   // A list route has no 404 to answer — the one 404 belongs to a NAMED thesis (§6's table). If it ever answers
   // one, an empty catalogue is the honest reading: the page then says so in a sentence, which is a state, and
   // never an error a reader cannot act on.

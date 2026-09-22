@@ -53,11 +53,15 @@
         "kind": "DIFF",
         "chunks": [
           {
-            "side": "before",
+            "side": "REMOVED",
             "text": "הפסקה על תופעות הלוואי הופיעה כאן."
           },
           {
-            "side": "after",
+            "side": "REMOVED",
+            "text": "וגם ההפניה לדיווח עצמי הופיעה כאן."
+          },
+          {
+            "side": "ADDED",
             "text": "הפסקה אינה מופיעה עוד."
           }
         ]

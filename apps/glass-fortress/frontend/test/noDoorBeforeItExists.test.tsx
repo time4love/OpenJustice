@@ -18,7 +18,18 @@ jest.mock('../src/lib/doors', () => {
 
 import { join } from 'node:path';
 import { fireEvent } from '@testing-library/react';
-import { renderPage, setAuthState, setPathname, setPublicBodies, type Locale, type PageRender } from './render';
+import {
+  type Locale,
+  type PageRender,
+  renderClaimsWithSheet,
+  renderPage,
+  snapshotResearchClaims,
+  snapshotResearchCorpus,
+  snapshotResearchDashboard,
+  setAuthState,
+  setPathname,
+  setPublicBodies,
+} from './render';
 import { FRONTEND, jsxTagsIn, publicThesisModules, requireSubjects, stringsIn } from './scan';
 import { RightPane, TabsProvider } from '../src/components/shell/RightPane';
 import { CALL_TAB_ID } from '../src/components/thesis/PaneTabs';
@@ -26,6 +37,9 @@ import published from './fixtures/thesis/published.json';
 import callLive from './fixtures/thesis/call-live.json';
 import callRequestsOnly from './fixtures/thesis/call-requests-only.json';
 import versionPrevious from './fixtures/thesis/version-previous.json';
+import { captureRead } from './fixtures/corpus/capture';
+import { diffInput } from './fixtures/corpus/diffInput';
+import { resolvedCaptureRecord } from './fixtures/corpus/record';
 
 // ---------------------------------------------------------------------------
 // no-door-before-it-exists — docs/gf-ui-flows.md §17 :546–:548, §21 :622, §23 :644–:645;
@@ -63,6 +77,13 @@ afterEach(() => {
   mockDoorOverride = null;
 });
 
+const TRACKED = 'page-one';
+const CAPTURE = '20211223211940';
+const AFTER = '20220105090000';
+const capturePage = async () => import('@/app/[locale]/pages/[trackedUrlId]/captures/[capture]/page');
+const diffPage = async () => import('@/app/[locale]/pages/[trackedUrlId]/diffs/[before]/[after]/page');
+const recordsPage = async () => import('@/app/[locale]/records/[fileHash]/page');
+
 const unprefixed = (href: string): string => {
   const path = (href.split(/[?#]/)[0] ?? href).replace(/^\/(he|en)(?=\/|$)/, '');
   return path === '' ? '/' : path;
@@ -82,6 +103,9 @@ async function everyPublicPage(): Promise<{ name: string; hrefs: string[] }[]> {
     [`/api/thesis/${published.thesisId}`]: { status: 200, body: published },
     [`/api/thesis/${published.thesisId}/call`]: { status: 200, body: callLive },
     [`/api/thesis/${published.thesisId}/versions/${versionPrevious.versionId}`]: { status: 200, body: versionPrevious },
+    [`/api/pages/${TRACKED}/captures/${CAPTURE}`]: { status: 200, body: captureRead },
+    [`/api/pages/${TRACKED}/diffs/${CAPTURE}/${AFTER}`]: { status: 200, body: diffInput },
+    [`/api/records/${resolvedCaptureRecord.fileHash}`]: { status: 200, body: resolvedCaptureRecord },
   });
   const thesis = (await thesisPage()).default;
   const call = (await callPage()).default;
@@ -96,6 +120,53 @@ async function everyPublicPage(): Promise<{ name: string; hrefs: string[] }[]> {
         await renderPage(version, { locale: LOCALE, id: published.thesisId, v: versionPrevious.versionId }, { locale: LOCALE }),
       ),
     },
+    // THE TWO RECORD PAGES (UI-7 chunk (c)). Both carry anchors — the capture page its archive link, the
+    // diff page its two endpoint links — so both are real subjects of the door rule and neither was examined
+    // by this scan until now. A record page that ever grew a „הגישו עדות" anchor would have been invisible.
+    {
+      name: '/pages/[trackedUrlId]/captures/[capture]',
+      hrefs: anchorsOf(
+        '/pages/[trackedUrlId]/captures/[capture]',
+        await renderPage((await capturePage()).default, { locale: LOCALE, trackedUrlId: TRACKED, capture: CAPTURE }, { locale: LOCALE }),
+      ),
+    },
+    {
+      name: '/pages/[trackedUrlId]/diffs/[before]/[after]',
+      hrefs: anchorsOf(
+        '/pages/[trackedUrlId]/diffs/[before]/[after]',
+        await renderPage((await diffPage()).default, { locale: LOCALE, trackedUrlId: TRACKED, before: CAPTURE, after: AFTER }, { locale: LOCALE }),
+      ),
+    },
+    // THE RECORDS PAGE carries exactly ONE anchor — the link onward — so it is the page where a door would
+    // be most visible and, being the outsider's landing page, the one where it would do most harm.
+    {
+      name: '/records/[fileHash]',
+      hrefs: anchorsOf(
+        '/records/[fileHash]',
+        await renderPage((await recordsPage()).default, { locale: LOCALE, fileHash: resolvedCaptureRecord.fileHash }, { locale: LOCALE }),
+      ),
+    },
+    // UI-7 chunk 6: the CLAIMS view's sheet composes TWO anchors per flip — a capture page and a diff page —
+    // so it is the page in the app that mints the most hrefs from a body, and the one where a link to an
+    // unbuilt route would appear first.
+    //
+    // IT IS SCANNED WITH ITS SHEET OPEN, through the harness's one helper, and a decoy is why: an `/intake`
+    // anchor planted INSIDE the sheet reddened nothing at all while this scan rendered the list alone. The
+    // half of the view that mints the hrefs was the half nobody was reading.
+    { name: '/corpus/claims', hrefs: [...(await renderClaimsWithSheet(LOCALE)).querySelectorAll('a[href]')].map((a) => a.getAttribute('href') ?? '') },
+    // UI-8 chunk 4: `/research` is the first GATED page in this set, and it belongs here for the same reason
+    // the public ones do — the rule is about what the PLATFORM draws a door to before the door exists, not
+    // about who is reading. Its own anchors are the chrome's and the public thesis page's.
+    { name: '/research', hrefs: [...requireSubjects('anchors of /research', [...(await snapshotResearchDashboard('he')).querySelectorAll('a')].map((anchor) => anchor.getAttribute('href') ?? ''))] },
+    // UI-8 chunk 5: the gated corpus MINTS hrefs — a row per page, a chip per filter, the lens control, the
+    // claims entry on the page card — so it is the read view's richest source of a link to a route that may
+    // not exist. It is read at BOTH views, because region 0 and the stream draw different sets.
+    { name: '/research/corpus (region 0)', hrefs: [...requireSubjects('anchors of /research/corpus', [...(await snapshotResearchCorpus('he')).querySelectorAll('a')].map((anchor) => anchor.getAttribute('href') ?? ''))] },
+    {
+      name: '/research/corpus (the stream, the sheet three deep)',
+      hrefs: [...requireSubjects('anchors of the gated stream', [...(await snapshotResearchCorpus('he', { searchParams: { page: 'page-one' }, depth: 3 })).querySelectorAll('a')].map((anchor) => anchor.getAttribute('href') ?? ''))],
+    },
+    { name: '/research/corpus/claims', hrefs: [...requireSubjects('anchors of the gated claims lens', [...(await snapshotResearchClaims('he')).querySelectorAll('a')].map((anchor) => anchor.getAttribute('href') ?? ''))] },
   ];
 }
 
@@ -137,7 +208,14 @@ async function intakeCtaCount(): Promise<{ call: number; thesisTab: number }> {
 describe('no-door-before-it-exists', () => {
   it('while DOORS_OPEN is false, no rendered public page carries an anchor to an intake or withdrawal URL', async () => {
     expect(landedDoorFlag()).toBe(false);
-    const offenders = (await everyPublicPage()).flatMap(({ name, hrefs }) =>
+    const pages = await everyPublicPage();
+    // THE FLOOR, MOVED UP BY ONE AT UI-8 chunk 4 — and the page is NAMED, because a floor that only counts
+    // says nothing about WHICH page joined the set.
+    expect(pages.length).toBeGreaterThanOrEqual(10);
+    expect(pages.map(({ name }) => name)).toContain('/research');
+    expect(pages.map(({ name }) => name)).toContain('/research/corpus (region 0)');
+    expect(pages.map(({ name }) => name)).toContain('/research/corpus/claims');
+    const offenders = pages.flatMap(({ name, hrefs }) =>
       hrefs.filter((href) => DOOR_URLS.some((pattern) => pattern.test(unprefixed(href)))).map((href) => `${name}: ${href}`),
     );
     expect(offenders).toEqual([]);

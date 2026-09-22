@@ -3,7 +3,15 @@ jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>
 
 import { apiCallsMade, renderPage, setAuthState, setPathname, setPublicBodies, textNodes, type Locale, type PageRender } from './render';
 import { requireSubjects } from './scan';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import list from './fixtures/thesis/list.json';
+
+/** The disclaimer's own sentences, by value from the catalogue — see the re-pointing note in the case below. */
+const CATALOGUE = JSON.parse(readFileSync(join(__dirname, '..', 'messages', 'he.json'), 'utf8')) as {
+  common: { disclaimer: { short: string; full: string } };
+};
+const DISCLAIMERS = [CATALOGUE.common.disclaimer.short, CATALOGUE.common.disclaimer.full] as const;
 
 // ---------------------------------------------------------------------------
 // theses-list-is-the-catalogue — docs/gf-ui-flows.md §3 :145 (UN-RETIRED 2026-09-18: "every PUBLISHED thesis,
@@ -100,22 +108,42 @@ describe('theses-list-is-the-catalogue', () => {
     // THE POSITIVE CONTROL, in the same `expect()`: every selector below is run against a fragment that HAS the
     // thing, so a query blinded by a typo fails HERE instead of reporting a clean page. An absence is the
     // easiest assertion in the world to make by accident.
+    // RE-POINTED 2026-09-19 — from two PHRASES to the catalogue's two SENTENCES, by value.
+    //
+    // „קביעה שיפוטית" is not the disclaimer's alone: `common.disclaimer.short` and `.full` contain it, and so
+    // does `opinion.label`, the classifier's own container — „ניתוח AI — אינו מהווה קביעה שיפוטית". This case
+    // has only ever been right by accident of subject: `/theses` renders no model voice, so the phrase could
+    // not arrive from anywhere else. It would have gone red on correct code the day this page showed an
+    // opinion, and it did exactly that when the same shape was extended to `/corpus`'s stream, which draws
+    // eight. `no-disclaimer-off-the-thesis` was written against the sentences for that reason, and this file
+    // is brought to the same subject rather than left as the weaker twin.
+    //
+    // IT IS AT LEAST AS STRONG, and here is the accounting rather than the assurance. The phrases caught (i) a
+    // whole disclaimer rendered on the page and (ii) either half of one rendered alone. The sentences catch
+    // both, because each is a superstring of the phrase it contains: any render of `LegalDisclaimer` emits one
+    // sentence entire, and a partial render emitting only „קביעה שיפוטית" would be a different defect —
+    // a broken catalogue value — which `messagesParity` and the catalogue itself own, not this case. What the
+    // phrases ALSO caught was the classifier's label, which is not a disclaimer and never was; that is the
+    // false positive being removed, and it is the only thing lost.
     const control = document.createElement('div');
-    control.innerHTML = '<form><input /></form><span data-count>3</span><p>ניתוח משפטי בתום לב בעניין ציבורי. אינו קביעה שיפוטית.</p>';
+    control.innerHTML = '<form><input /></form><span data-count>3</span><p></p>';
+    // The sentences go in as TEXT, never as markup — they are catalogue values, and building the control by
+    // string concatenation would let a future value with an angle bracket in it quietly stop being the control.
+    (control.querySelector('p') as HTMLParagraphElement).textContent = DISCLAIMERS.join(' ');
     const shown = shownText(container);
     expect({
       searchBoxes: container.querySelectorAll('input, form').length,
       counts: container.querySelectorAll('[data-count]').length,
-      // COMPLIANCE.md :95–:96's own phrases. The disclaimer belongs to a thesis page and a call page; a list is
-      // neither, and the researcher ruled it off this page.
-      disclaimer: ['קביעה שיפוטית', 'ניתוח משפטי בתום לב'].filter((phrase) => shown.includes(phrase)),
+      // COMPLIANCE.md's own sentences, read from the catalogue. The disclaimer belongs to a thesis page and a
+      // call page; a list is neither, and the researcher ruled it off this page.
+      disclaimer: DISCLAIMERS.filter((sentence) => shown.includes(sentence)),
       // THE FLOOR: the page did render its rows, so "nothing found" is a fact about the chrome and not about a
       // render that failed.
       rows: container.querySelectorAll('[data-thesis-row]').length,
       controlFindsAll: [
         control.querySelectorAll('input, form').length,
         control.querySelectorAll('[data-count]').length,
-        ['קביעה שיפוטית', 'ניתוח משפטי בתום לב'].filter((phrase) => (control.textContent ?? '').includes(phrase)).length,
+        DISCLAIMERS.filter((sentence) => (control.textContent ?? '').includes(sentence)).length,
       ],
     }).toEqual({ searchBoxes: 0, counts: 0, disclaimer: [], rows: 3, controlFindsAll: [2, 1, 2] });
   });

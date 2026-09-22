@@ -1,8 +1,25 @@
 jest.mock('../src/lib/api', () => jest.requireActual<typeof import('./render')>('./render').apiDouble());
 jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>('./render').navigationDouble());
 
-import { ancestorsOf, renderPage, setAuthState, setPathname, setPublicBodies, textNodes, type Locale, type PageRender } from './render';
+import {
+  ancestorsOf,
+  renderClaimsWithSheet,
+  renderPage,
+  snapshotResearchClaims,
+  snapshotResearchCorpus,
+  snapshotResearchDashboard,
+  snapshotResearchThesis,
+  setAuthState,
+  setPathname,
+  setPublicBodies,
+  textNodes,
+  type Locale,
+  type PageRender,
+} from './render';
 import { ID_SHAPES, requireSubjects } from './scan';
+import { captureRead } from './fixtures/corpus/capture';
+import { diffInput } from './fixtures/corpus/diffInput';
+import { resolvedCaptureRecord } from './fixtures/corpus/record';
 import published from './fixtures/thesis/published.json';
 import callLive from './fixtures/thesis/call-live.json';
 import versionPrevious from './fixtures/thesis/version-previous.json';
@@ -39,6 +56,9 @@ afterEach(() => {
 
 function stage(): void {
   setPublicBodies({
+    [CAPTURE_PATH]: { status: 200, body: captureRead },
+    [PAIR_PATH]: { status: 200, body: diffInput },
+    [`/api/records/${resolvedCaptureRecord.fileHash}`]: { status: 200, body: resolvedCaptureRecord },
     [`/api/thesis/${published.thesisId}`]: { status: 200, body: published },
     [`/api/thesis/${published.thesisId}/call`]: { status: 200, body: callLive },
     [`/api/thesis/${published.thesisId}/versions/${versionPrevious.versionId}`]: { status: 200, body: versionPrevious },
@@ -49,6 +69,7 @@ function containerOf(name: string, rendered: PageRender): HTMLElement {
   if (rendered.notFound) throw new Error(`${name} answered the one 404, not a body`);
   return rendered.container;
 }
+
 
 async function allPages(locale: Locale): Promise<{ name: string; container: HTMLElement }[]> {
   stage();
@@ -65,6 +86,52 @@ async function allPages(locale: Locale): Promise<{ name: string; container: HTML
         await renderPage(version, { locale, id: published.thesisId, v: versionPrevious.versionId }, { locale }),
       ),
     },
+    // UI-7 chunk (c): the capture page puts a URL, a date and THREE hashes inside Hebrew on one screen —
+    // the archive line, the VERIFY rows and the raw address — so it is the densest subject this scan has.
+    {
+      name: '/pages/[trackedUrlId]/captures/[capture]',
+      container: containerOf(
+        '/pages/[trackedUrlId]/captures/[capture]',
+        await renderPage((await capturePage()).default, { locale, trackedUrlId: TRACKED, capture: CAPTURE }, { locale }),
+      ),
+    },
+    {
+      name: '/pages/[trackedUrlId]/diffs/[before]/[after]',
+      container: containerOf(
+        '/pages/[trackedUrlId]/diffs/[before]/[after]',
+        await renderPage((await diffPage()).default, { locale, trackedUrlId: TRACKED, before: CAPTURE, after: AFTER }, { locale }),
+      ),
+    },
+    {
+      name: '/records/[fileHash]',
+      container: containerOf(
+        '/records/[fileHash]',
+        await renderPage((await recordsPage()).default, { locale, fileHash: resolvedCaptureRecord.fileHash }, { locale }),
+      ),
+    },
+    // UI-7 chunk 6: the CLAIMS view puts the ARCHIVE'S OWN HEBREW SENTENCE beside a url, and its SHEET
+    // composes an interval and two hrefs per flip — so a Hebrew row carrying an unisolated date is likelier
+    // here than anywhere this scan already looked.
+    //
+    // IT IS EXAMINED WITH ITS SHEET OPEN, and that is not a convenience. The LIST alone carries no date and
+    // no url text node at all — the row is the claim's words, the page's label and two words — so the
+    // vacuity guard refused it, correctly. The dates and the composed links live in the sheet, which is
+    // half of this view rather than a separate page, and a reader reaches it in one tap.
+    { name: '/corpus/claims', container: await renderClaimsWithSheet(locale) },
+    // UI-8 chunk 4: `/research` composes a DATE into a Hebrew sentence in every owed entry („פתוח מ־{date}")
+    // and names each record by its capture dates — so it carries the shape this scan exists for, and it is
+    // the first GATED page to join the set.
+    { name: '/research', container: await snapshotResearchDashboard(locale) },
+    // UI-8 chunk 5: `/research/corpus` composes an INTERVAL of two formatted dates into a Hebrew row, and the
+    // extraction sheet composes „הושווה לצילום מ־{date}" — a Hebrew sentence with a date at its end, which is
+    // the exact shape R67's M5 was ruled on. The claims lens at `all` carries the same dated words its public
+    // twin does, on a page whose rows include one no reader may open.
+    { name: '/research/corpus', container: await snapshotResearchCorpus(locale) },
+    { name: '/research/corpus (the stream, the sheet three deep)', container: await snapshotResearchCorpus(locale, { searchParams: { page: 'page-one' }, depth: 3 }) },
+    { name: '/research/corpus/claims', container: await snapshotResearchClaims(locale) },
+    // UI-8 chunk 7a: the working view composes „מפורסם — גרסה אחת מאחור" and, on a withdrawn thesis,
+    // „הפרסום בוטל ב־{date}" — a Hebrew sentence carrying a date, which is the shape this scan exists for.
+    { name: '/research/theses/[thesisId]', container: await snapshotResearchThesis(locale) },
   ];
 }
 
@@ -73,10 +140,37 @@ function isolated(node: Text): boolean {
   return ancestorsOf(node).some((element) => element.tagName === 'BDI' || element.hasAttribute('dir'));
 }
 
+const TRACKED = 'page-one';
+const CAPTURE = '20211223211940';
+const CAPTURE_PATH = `/api/pages/${TRACKED}/captures/${CAPTURE}`;
+const capturePage = async () => import('@/app/[locale]/pages/[trackedUrlId]/captures/[capture]/page');
+const diffPage = async () => import('@/app/[locale]/pages/[trackedUrlId]/diffs/[before]/[after]/page');
+const recordsPage = async () => import('@/app/[locale]/records/[fileHash]/page');
+const AFTER = '20220105090000';
+const PAIR_PATH = `/api/pages/${TRACKED}/diffs/${CAPTURE}/${AFTER}`;
+
+/**
+ * THE PAGES THAT CARRY THE RESEARCHER'S OWN WORDS — a POSITIVE set, with the floor below.
+ *
+ * A RECORD PAGE CARRIES NONE, and that is the point of it: what it shows is the ARCHIVE's bytes, which
+ * `.record-captured` already renders under `dir="auto"` and which the first two cases of this file check.
+ * Requiring a `[data-researcher-words]` block of it would fail the PAGE for having no researcher text,
+ * which is not the property either case states.
+ */
+const RESEARCHER_PAGES = ['/theses/[id]', '/call/[thesisId]', '/theses/[id]/versions/[v]'] as const;
+
 describe('bidi-isolated', () => {
   it('every URL, date and hash rendered inside Hebrew text is inside an isolating element', async () => {
     const problems: string[] = [];
-    for (const { name, container } of await allPages('he')) {
+    const pages = await allPages('he');
+    // THE FLOOR, MOVED UP BY ONE AT UI-8 chunk 4 — and the page is NAMED, because a floor that only counts
+    // says nothing about WHICH page joined the set.
+    expect(pages.length).toBeGreaterThanOrEqual(9);
+    expect(pages.map(({ name }) => name)).toContain('/research');
+    // UI-8 chunk 7a, named for the same reason: the working view composes a date into „הפרסום בוטל ב־{date}"
+    // and carries the owed entries' „פתוח מ־{date}". Deleting its line left this case green until now.
+    expect(pages.map(({ name }) => name)).toContain('/research/theses/[thesisId]');
+    for (const { name, container } of pages) {
       const nodes = textNodes(container);
       const hebrew = nodes.filter((node) => HEBREW.test(node.data));
       requireSubjects(`Hebrew text nodes of ${name}`, hebrew);
@@ -91,12 +185,17 @@ describe('bidi-isolated', () => {
 
   it("the researcher's words render through one component that sets dir=\"auto\"", async () => {
     const problems: string[] = [];
+    const examined: string[] = [];
     for (const { name, container } of await allPages('he')) {
+      if (!RESEARCHER_PAGES.some((page) => page === name)) continue;
+      examined.push(name);
       const blocks = [...container.querySelectorAll('[data-researcher-words]')];
       requireSubjects(`the researcher's blocks on ${name}`, blocks);
       problems.push(...blocks.filter((block) => block.getAttribute('dir') !== 'auto').map((block) => `${name}: ${block.outerHTML.slice(0, 60)}`));
     }
     expect(problems).toEqual([]);
+    // THE FLOOR: the positive set above really matched, in this order, or the case passed over nothing.
+    expect(examined).toEqual([...RESEARCHER_PAGES]);
   });
 
   it("a chip's DATE or INTERVAL is isolated left-to-right — and a trajectory's words correctly are not", async () => {
@@ -131,7 +230,10 @@ describe('bidi-isolated', () => {
 
   it('under en, the Hebrew body text is isolated from the English page', async () => {
     const problems: string[] = [];
+    const examined: string[] = [];
     for (const { name, container } of await allPages('en')) {
+      if (!RESEARCHER_PAGES.some((page) => page === name)) continue;
+      examined.push(name);
       const blocks = [...container.querySelectorAll('[data-researcher-words]')];
       requireSubjects(`the researcher's blocks on ${name} (en)`, blocks);
       problems.push(
@@ -141,5 +243,6 @@ describe('bidi-isolated', () => {
       );
     }
     expect(problems).toEqual([]);
+    expect(examined).toEqual([...RESEARCHER_PAGES]);
   });
 });

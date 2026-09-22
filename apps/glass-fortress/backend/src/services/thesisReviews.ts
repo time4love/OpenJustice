@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma';
-import { resolveRecordByName, type ResolvedRecord } from './corpusReads';
+import { namedRecordOf, resolveRecordByName } from './corpusReads';
 import type { ContentUnit, Moved } from './evidencePredicates';
 import {
   latestDecisionOf,
@@ -161,13 +161,6 @@ function publishedAtOf(entry: ReviewEntry, at: ThesisInstants): Date {
 }
 
 const later = (a: Date, b: Date): Date => (a.getTime() >= b.getTime() ? a : b);
-
-/** A cited record as A1 names it — its page and its timestamps — from what the ONE resolver found. */
-function namedRecordOf(resolved: ResolvedRecord): NamedRecord {
-  if (resolved.capture !== null) return { url: resolved.page.url, capture: resolved.capture.capture };
-  if (resolved.pair !== null) return { url: resolved.page.url, before: resolved.pair.before.capture, after: resolved.pair.after.capture };
-  throw new Error(`thesisReviews: ${resolved.fileHash} resolved to neither a capture nor a pair (evidence A1).`);
-}
 
 /** The record a citation names, through the ONE resolver — a name the corpus no longer resolves is a malformed citation. */
 async function recordNamed(name: string, mentionId: string): Promise<NamedRecord> {

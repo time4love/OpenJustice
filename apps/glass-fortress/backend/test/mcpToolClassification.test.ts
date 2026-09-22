@@ -213,6 +213,9 @@ const DESIGNED_SURFACE: Readonly<Record<string, string>> = {
   list_pages: 'interaction A5 :1071 (2026-09-14)',
   // evidence flows A4
   list_findings: 'evidence A4 :1080',
+  // Ruled 2026-09-19 on the cold design review the researcher accepted whole — a RESOURCE beside
+  // list_findings, never an optional argument on it. The surface moves 45 -> 46, declared (UI plan :555).
+  get_capture: 'evidence A4 :1082',
   get_diff_input: 'evidence A4 :1095',
   verify_claim_text: 'evidence A4 :1101',
   get_claim_trajectories: 'evidence A4 :1103',

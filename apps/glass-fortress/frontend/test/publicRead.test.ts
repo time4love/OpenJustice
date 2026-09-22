@@ -101,6 +101,122 @@ describe('the public read: no identity, one parser', () => {
     }
   });
 
+  it('A 400 IS A STATE THE READ CARRIES, and it is the REAL module that carries it — not only the double', async () => {
+    // THE CASE A DECOY DEMANDED. Removing the 400 arm from `readPublic` reddened NOTHING: the page instruments
+    // all go through the api double in `render.tsx`, so the state they render was staged rather than read, and
+    // the real module's arm was held by no case at all. A decoy that reddens nothing has found an unexercised
+    // region, and this is the region. The module is REAL here and only the network is stubbed.
+    const { readPublic } = api();
+    const fetching = globalFetchDouble({ [`${BASE}${PATH}`]: { status: 400 } });
+    try {
+      await withEnv({ BACKEND_URL: BASE, NEXT_PUBLIC_STAGING_API_TOKEN: undefined }, async () => {
+        expect(await readPublic(PATH, (body: unknown) => body)).toEqual({ status: 400 });
+      });
+    } finally {
+      fetching.restore();
+    }
+  });
+
+  it('THE SERVER DOOR ANSWERS A NAMED STATUS TOO — a 409 only where the caller named it, and never by default', async () => {
+    // THE SAME RULING, THE OTHER DOOR (2026-09-19): "a caller names the statuses that are answers", stated for
+    // `fetchJson` at `api.ts` and applied here to `readPublic`. It is NOT a second door: one read, one wrapper,
+    // one cache decision, and the opt-in is per caller for the reason the browser door already records —
+    // "which failures are answers is a question about the READ and not about the door; a door deciding it for
+    // everyone would swallow a real outage on every one of them."
+    //
+    // THE 409 CARRIES NO BODY, exactly as `{ status: 400 }` and `{ status: 404 }` carry none. Its wire shape is
+    // `{ error, code }` (ui §6 :267) and `code` is AWAITING_DERIVATION — the only 409 any public route answers.
+    // The `error` is the backend's own English, and this module already rules that a value carried is a value
+    // rendered, so nothing is carried and the page draws its own approved sentence.
+    //
+    // THREE ARMS, and the third is the one that matters: a status the caller did NOT name must still throw, or
+    // the opt-in has quietly become the default and a real 503 outage renders as a state.
+    const { readPublic } = api();
+    const answering = globalFetchDouble({ [`${BASE}${PATH}`]: { status: 409, body: { error: 'not derived', code: 'AWAITING_DERIVATION' } } });
+    try {
+      await withEnv({ BACKEND_URL: BASE, NEXT_PUBLIC_STAGING_API_TOKEN: undefined }, async () => {
+        // WITHOUT the opt-in: a 409 is a failure, named by path and status.
+        await expect(readPublic(PATH, (body: unknown) => body)).rejects.toThrow(`readPublic: ${PATH} answered 409`);
+        // WITH it: the state, and no body.
+        expect(await readPublic(PATH, (body: unknown) => body, { answers: [409] })).toEqual({ status: 409 });
+      });
+    } finally {
+      answering.restore();
+    }
+
+    const failing = globalFetchDouble({ [`${BASE}${PATH}`]: { status: 503, body: { error: 'down', code: 'CHAIN_UNAVAILABLE' } } });
+    try {
+      await withEnv({ BACKEND_URL: BASE, NEXT_PUBLIC_STAGING_API_TOKEN: undefined }, async () => {
+        // A STATUS NOBODY NAMED, with the opt-in present for a DIFFERENT one: still a throw.
+        await expect(readPublic(PATH, (body: unknown) => body, { answers: [409] })).rejects.toThrow(`readPublic: ${PATH} answered 503`);
+      });
+    } finally {
+      failing.restore();
+    }
+  });
+
+  it('THE BROWSER DOOR ANSWERS A NAMED STATUS WITH ITS BODY, and still THROWS on one nobody named', async () => {
+    // THE OPT-IN, ruled 2026-09-19. `fetchJson` throws on every non-2xx, which is right for every caller it
+    // has: a read that failed is a failure. The CHAIN CHECK is the exception the design already names —
+    // CHAIN_UNAVAILABLE is "a verdict about the CHECK, never about the record" (evidence A4 :1115) and
+    // arrives as a 503 carrying `{ error, code }`. Thrown, that body is lost and the union
+    // `parseChainAnswer` exists to produce becomes unreachable, so a renderer would have to INVENT the
+    // refusal from a status — which is the thing the union was written to prevent.
+    //
+    // THE OPT-IN IS PER CALLER AND NAMES ITS STATUSES. Every other caller names none and is unchanged: a
+    // door that decided for itself which failures are answers would be deciding, centrally, a question that
+    // belongs to the read. `answers` is the caller saying "this status is data, and I will narrow it".
+    //
+    // THE REAL MODULE, only the network stubbed — the `readPublic` 400 case above records why that matters:
+    // a state staged through the double is a state nobody read.
+    const { fetchJson } = api();
+    // THE BROWSER DOOR COMPOSES ITS URL THROUGH `apiUrl`, from NEXT_PUBLIC_API_URL — not from BACKEND_URL,
+    // which is the SERVER read's. Stubbing the server's base left `fetch` unmapped and the case failed on
+    // the `offline` arm, which is a true reading of a wrong setup; the two doors have two bases and the
+    // case has to say which one it is exercising.
+    const fetching = globalFetchDouble({
+      '/api/pages/p/captures/c/chain': { status: 503, body: { error: 'The registry could not be reached.', code: 'CHAIN_UNAVAILABLE' } },
+      '/api/pages/p/captures/c': { status: 503, body: { error: 'nobody named this one', code: 'SOMETHING_ELSE' } },
+    });
+    try {
+      await withEnv({ NEXT_PUBLIC_API_URL: '', NEXT_PUBLIC_STAGING_API_TOKEN: undefined }, async () => {
+        // NAMED: the body arrives whole, so the caller can narrow `code` rather than guess from a status.
+        const answered = await fetchJson<{ error: string; code: string }>('/api/pages/p/captures/c/chain', {
+          offline: 'unreachable',
+          answers: [503],
+        });
+        expect(answered).toEqual({ error: 'The registry could not be reached.', code: 'CHAIN_UNAVAILABLE' });
+
+        // UNNAMED: the same status, from a caller that named nothing, still throws. Without this half the
+        // opt-in would read as "503 is never a failure", which would swallow a real outage on every read.
+        await expect(fetchJson('/api/pages/p/captures/c', { offline: 'unreachable' })).rejects.toThrow();
+
+        // AND NAMING A DIFFERENT STATUS DOES NOT WIDEN IT: 404 named, 503 arriving, still a throw.
+        await expect(fetchJson('/api/pages/p/captures/c', { offline: 'unreachable', answers: [404] })).rejects.toThrow();
+      });
+    } finally {
+      fetching.restore();
+    }
+  });
+
+  it('readUnfiltered REFUSES a 400 — a page that sends no filter cannot earn one, so it is a defect and not a state', async () => {
+    // The two halves of the same rule, and they must be asserted together: the read CARRIES the 400 (above) and
+    // the filterless caller REFUSES it (here). Holding only the first would let every page quietly render an
+    // empty state over a malformed URL it built itself.
+    const { readUnfiltered } = api();
+    const fetching = globalFetchDouble({ [`${BASE}${PATH}`]: { status: 400 }, [`${BASE}/api/thesis/ok`]: { status: 404 } });
+    try {
+      await withEnv({ BACKEND_URL: BASE, NEXT_PUBLIC_STAGING_API_TOKEN: undefined }, async () => {
+        await expect(readUnfiltered(PATH, (body: unknown) => body)).rejects.toThrow(/400.*no filters/);
+        // The positive control: the SAME function still passes the one 404 through as a state, so the case
+        // above is a refusal of the 400 and not of everything.
+        expect(await readUnfiltered('/api/thesis/ok', (body: unknown) => body)).toEqual({ status: 404 });
+      });
+    } finally {
+      fetching.restore();
+    }
+  });
+
   it('readPublic caches for 60 seconds — next.revalidate is 60 and no cache option is set (the researcher’s ruling R-1 a)', async () => {
     const { readPublic } = api();
     const fetching = globalFetchDouble({ [`${BASE}${PATH}`]: { status: 200, body: {} } });

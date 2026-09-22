@@ -23,7 +23,7 @@ corpus with holes, and every byte a page shows is a route's body it did not comp
 switch risks is a reader's view on staging, where there is no reader.
 
 What is not cheaper is the suite, and here it is worse than the thesis's: **the frontend has no test runner**
-(A5 :1053–:1055). Twenty-eight instruments are named and none exists, so the first step is the harness, and
+(A5 :1194–:1196). Twenty-eight instruments are named and none exists, so the first step is the harness, and
 every page step after it writes its instruments before its components, exactly as §4's rule 4 has the
 acceptance suite written first. Rule 4's second clause reads the other way here as it did at the switch: a
 page is done when its instruments are green, and no page is done before.
@@ -89,9 +89,9 @@ named in its `**STATUS:**` line; the plan carries the pointer and never the find
 
 ### UI-1 · The harness
 
-**Contract:** A5 :1052–:1055 ("the frontend has no test runner today … the plan's first step is the harness —
+**Contract:** A5 :1194–:1196 ("the frontend has no test runner today … the plan's first step is the harness —
 jest for the components and scans, a browser exercise for the pages — and no instrument below exists until it
-does"); §38 `name-never-glass-fortress`; §41 :963–:964 and A5 :1089–:1090 (the browser exercise); refactor plan
+does"); §38 `name-never-glass-fortress`; §41 :1102–:1103 and A5 :1230–:1231 (the browser exercise); refactor plan
 §4 :540–:545 (a scan carries a decoy; a scan that matches nothing is vacuity).
 
 **What lands.** A jest project in the frontend workspace and nothing in `src/`:
@@ -223,7 +223,7 @@ Findings: `docs/gf-ui-step-2-2026-09-15.md` (the `limit` default, the reads, the
 (the public routes, the status table, the retirements, "no route is paid"); §7 :278–:310 (the gated routes, the one
 mount-level gate, 401 and 403 FIRST with one body each, a 404 inside the prefix may say which); §6 :221–:224 (routes name
 a page by `trackedUrlId`, tools by `url`; "the one function takes the page's row"; `pages` on the thesis body gains the id);
-A2 :1004–:1014 (the states a route must answer); A4 :1041, :1044 (thesis A5 :1565 amended; `GET /api/forensics/*` and
+A2 :1141–:1156 (recomputed 2026-09-19; read :1004–:1014) (the states a route must answer); A4 :1041, :1044 (thesis A5 :1565 amended; `GET /api/forensics/*` and
 `GET /api/stats` RETIRED); A5 :1058–:1064 (the five instruments left to this step); interaction A6 :1229 as amended
 (`/api/article-rules` stays the marking page's only surface). Backend only; no migration.
 
@@ -373,7 +373,7 @@ until UI-7 and UI-8. Findings: `docs/gf-ui-step-4-2026-09-15.md`.
 
 **Contract:** §16–§23 :507–:649 (what the page is; §17's eight regions in T5's order; the sheets; the notice, the 404 and
 the version page; the call page; what the public pages never have; the six instruments); §4 :167–:178 (no hash and no id as
-text; the COPY control and the VERIFY disclosure); §8 :329–:342; A1 :976–:979; A2 :1004–:1014; thesis T5 :809–:829 and
+text; the COPY control and the VERIFY disclosure); §8 :329–:342; A1 :976–:979; A2 :1141–:1156 (recomputed 2026-09-19; read :1004–:1014); thesis T5 :809–:829 and
 A5 :1565–:1570 as amended (the bodies); T6 :898–:901 (the history's diff, the frontend's one computation) and :915–:918
 (the notice); COMPLIANCE.md :82–:99 (rule 5's statement; the disclaimer verbatim in both languages); document plan
 :506–:509 (the intake-down window — no door drawn); thesis plan :327 (the DoD line this step closes) and :331–:332 (the
@@ -452,7 +452,7 @@ imports the labelled container — a decoy import caught), `notice-only`, `no-do
 375 px, in the dated doc: run B's published thesis rendered whole from its live body — the statement and disclaimer first,
 the claim as heading, every chip resolved, the pages linked to `/corpus?page=` (a 404 until UI-7, recorded), the VERIFY
 disclosure's hashes equal to `list_findings`' through the connector; its call page; its version page; a made-up id the one
-sentence; **the three-voices reading test of §41 :961–:962 — the researcher reads the page and says whether the researcher's
+sentence; **the three-voices reading test of §41 :1100–:1101 — the researcher reads the page and says whether the researcher's
 words and the platform's marks read apart — recorded verbatim**; WITHDRAWN provoked in the fixture only, since a withdrawal
 on staging is the author's act and not this step's. **With the page rendered, thesis plan :327 is CLOSED and the thesis plan's
 DoD line gains the pointer.**
@@ -538,21 +538,21 @@ does not exist. UI-6 moves last because the door is the home page and **the rese
 after every other page is finished** — where `תזות` leads is part of that redesign and is decided there, not here.
 
 **THE BODY BELOW ABSORBS THIS STEP'S OWN RE-BRIEF (2026-09-18).** Its `STATUS:` claimed "RE-BRIEFED 2026-09-16
-against the design canvas, page 4", but the re-brief landed in §10 :1138 and in `gf-ui-flows.md` §24's header and
+against the design canvas, page 4", but the re-brief landed in §10 :1217–:1223 and in `gf-ui-flows.md` §24's header and
 was never folded in, so the body described a superseded design. Three deltas, now applied: the PAGE CARD with the
 TIME STRIP replaces the DATE AXIS and moves BELOW the filters (the context line stays); a record opened from a row
 is a RIGHT-PANE TAB, not a sheet; and a search page was named by the re-brief alone.
 
-**Contract:** §24–§28 :653–:753 (one stream, two doors; the two row weights; the corpus's one public model voice; the five
-regions; the lenses; the record sheet and the record pages; the gated additions are UI-8's; the `pages` facet); §31 :787–:798
+**Contract:** §24–§28 :653–:886 (one stream, two doors; the two row weights; the corpus's one public model voice; the five
+regions; the lenses; the record sheet and the record pages; the gated additions are UI-8's; the `pages` facet); §31 :917–:933
 (the instruments — three land here, `one-stream-two-doors` and `no-marking-link-from-research` complete at UI-8,
 `pages-facet-equals-scope` landed at UI-2); §10 :371–:387 (the three voices — the third, THE MODEL'S, is born here as the
 classifier's chip); §4 :167–:178 (a capture by its date and time, never its 14-digit timestamp; a page by its title and
-domain); §6 :207–:218 and §6.1 (the reads, all UI-3's); §8; A1 :980–:984; A2 :1004–:1013 (400 the filters shown for removal;
-404 one sentence; 409 the state with both capture links live; 503 a statement about the check); A6 :1095–:1097 (`limit`, the
-nesting depth of three, the date axis's granularity); §41 :956–:958 (the density and the chain-check press rate are MEASURED
+domain); §6 :207–:218 and §6.1 (the reads, all UI-3's); §8; A1 :1111–:1139; A2 :1141–:1156 (400 the filters shown for removal;
+404 one sentence; 409 the state with both capture links live; 503 a statement about the check); A6 :1234 (`limit`, the
+nesting depth of three, the date axis's granularity); §41 :1091–:1103 (the density and the chain-check press rate are MEASURED
 here, not designed); evidence §5 :428–:430 (the archive link composed deterministically); evidence A4 :1081–:1090, :1095–:1099,
-:1105–:1109, :1111–:1115 (the bodies); COMPLIANCE.md rule 3 (the label's text). Frontend only.
+:1105–:1109, :1111–:1115 (the bodies); COMPLIANCE.md rule 3 (the label's text). **Frontend only, WITH ONE DECLARED EXCEPTION ruled 2026-09-19 and re-shaped the same day by a cold design review the researcher commissioned and accepted whole: the step adds `get_capture({ url, capture, textHash? })` at `GET /api/pages/:trackedUrlId/captures/:capture` (evidence A4), a resource beside the mounted …/captures/:capture/chain. **THE MCP SURFACE MOVES 45 → 46 and the backend diff is that tool, its route and its core — larger than the "one field" first ruled, and stated here so the growth is declared and not discovered.** The step said "frontend only" and the researcher's clean-code rule overrode it — *„לא לשכפל קוד ולא לשכפל אלמנטים גרפיים"* — because the record's content is ALREADY drawn in the thesis page's right pane and a shared component cannot be fed by a read that carries nothing. **What is shared is `RecordContent`, not the pane** (ui flows §26): the two surfaces hold one domain object inside two context objects, and sharing the pane would make the corpus synthesise a citation it does not have. **AND THE STEP CARRIES A REPAIR IT DID NOT CREATE:** `RecordPane.tsx` labels a cited diff's chunks by `'before'` while the backend writes `'REMOVED' | 'ADDED'`, so every chunk reads „אחרי"; `publishedThesis.ts` widens `side` to `string`, which is why `tsc` cannot see it, and the thesis fixture carries the wrong vocabulary, which is why the suite is green. It is LATENT — the published thesis cites three captures and no diffs — and it fires on the first cited diff. The fix lands with `RecordContent`, which is the one place the vocabulary is mapped. Every piece of this is declared in the landing PR.**
 
 **What lands.**
 
@@ -578,10 +578,10 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
   filter chips — one horizontally scrolling row: PAGE (a picker from the read's own `pages` facet, §28), SINCE / UNTIL,
   KIND, CITED — every chip a query parameter of the one read, carried in the URL, so a filtered view is linkable and the
   thesis page's `/corpus?page=<trackedUrlId>` is one of them; the STREAM, cursor-paginated on the read's own cursor,
-  oldest first within the range, "load older" and "load newer" at the ends, a row tap opening the RECORD SHEET, a page label
+  oldest first within the range, "load older" and "load newer" at the ends, a row tap opening THE RECORD AS A RIGHT-PANE TAB — **CORRECTED 2026-09-19: this line said "the RECORD SHEET" and was the only one of five that did; :544, :663, §10 :1217–:1223 and `gf-ui-flows.md` :761 all say TAB, and §10 :1202 rules that where a body and its block disagree the block wins. §26's "sheet" is the CONTENT, presented through the `Sheet` primitive full-screen on the phone (`gf-ui-flows.md` §18, §22)** — a page label
   tap adding the PAGE filter; (5) EMPTY — "no page is open yet — a page opens when a published thesis cites it"; filtered —
   "nothing in this range" with the filters shown for removal, which is also the 400 state.
-- **Two weights of row** (§24 :660–:666): a CAPTURE is a thin row — the page's label, the date and time, the anchor mark
+- **Two weights of row** (§24 :663–:669): a CAPTURE is a thin row — the page's label, the date and time, the anchor mark
   (ATTRIBUTED or not yet), a COPY giving the citation token; a DIFF is a card — the page's label, the interval, the size of the
   change by side from `current`, **the classifier's opinion CLAMPED TO TWO LINES with **„קרא עוד" — approved 2026-09-19; this clause said „עוד" and the researcher chose the longer form** — not a chip; it runs 197
   characters and a chip shows forty (amended 2026-09-18, flows §24)** — and **the stream HIDES rows the classifier did
@@ -589,7 +589,7 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
   legally significant, so that gate would bury what it was meant to surface. A count line states how many are hidden and
   one tap reveals them.** The CITED mark with the published
   theses that cite it, the NARROWED mark, AWAITING DERIVATION as a state.
-- **The third voice is born here** (§10 :378–:381; §24 :668–:670): `components/opinion/LabelledOpinion.tsx`, the ONE container
+- **The third voice is born here** (§10 :378–:381; §24 :690–:692): `components/opinion/LabelledOpinion.tsx`, the ONE container
   carrying "ניתוח AI — אינו מהווה קביעה שיפוטית" with the model and version beside it — here the classifier's `classifierVersion`. **AMENDED 2026-09-19 (the researcher): the MODEL NAME is OWED and DEFERRED, never waived** — it matters to show, but is not worth delaying development for a server change at this stage, so UI-7 renders the version alone and invents no name; it arrives when a step opens the server. **The reveal control's word is „קרא עוד” (approved 2026-09-19)**; until chunk 5 draws it the tail is unreachable.
   The classifier's opinion on a diff is the only model voice on any public page; `opinion-labelled-on-corpus` holds that every
   rendered `opinion` field descends from it and that no other model field is rendered on a public corpus page. UI-5's public
@@ -608,7 +608,7 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
   **WHY IT SITS IN A CORPUS STEP:** it is the same shape as the pages list this step already builds — a public list with a
   gated twin — and building two list pages in one step is one implementation of one rule rather than two of it. The
   researcher may move it; nothing else depends on where it lands.
-- **THE SEARCH PAGE IS DEFERRED** (the researcher, 2026-09-18). §10 :1139's re-brief named `/corpus/search?phrase=`; this
+- **THE SEARCH PAGE IS DEFERRED** (the researcher, 2026-09-18). §10 :1217–:1223's re-brief named `/corpus/search?phrase=`; this
   body never listed it, so nothing is removed — only the re-brief is amended. The researcher's reason is the corpus's size:
   a list of what has been scanned is worth more than a search across it while the pages are few and grow slowly.
   `GET /api/corpus/search` stays mounted from UI-2 and unused. The sidebar's search icon beside הארכיון currently links to
@@ -627,22 +627,22 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
   order with the claim present or absent at each, each a link to its record, and the diffs in which it left or returned.
 - **The CITED lens** (§25, renamed from RECORDS 2026-09-18 — „רשומות” is the UNIT, every row is one) is `/corpus?cited=1`, not a page: the stream filtered to `evidence ≠ null`, each card
   showing the record's standing — PROMOTED or WITHDRAWN — and its citing published theses.
-- **The RECORD SHEET** (§26 :706–:709) over the stream: a capture's text or a diff's CURRENT chunks stacked by side; the marks
+- **The RECORD SHEET** (§26 :822–:825) over the stream: a capture's text or a diff's CURRENT chunks stacked by side; the marks
   in full — the anchor, VERIFIED per capture where the row is cited, the opinion's categories, editorial, classifier version
   and draws under the label, `narrowed` with what intervened; the citing theses as links; ONE link onward to the record's
   page. A sheet may open one further sheet, three deep at most (A6).
-- **`/pages/[id]/captures/[capture]`** (§26 :711–:718), from `GET /api/pages/:id/findings` (its row): the page and the date and
+- **`/pages/[id]/captures/[capture]`** (§26 :827–:834), from `GET /api/pages/:id/captures/:capture` — `get_capture`, ONE capture's row plus its text (evidence A4 :1082; A1 :1123; :555 above) — **RE-POINTED 2026-09-19: this bullet said "from `GET /api/pages/:id/findings` (its row)" after the same day's ruling had moved the read to a resource; found by the DEV seat's cold read of its own brief**: the page and the date and
   time as the heading; the text version in full; the anchor as a mark; the COPY of the citation token; the VERIFY disclosure
   holding document hash, text hash, extraction version and registry index; a CHAIN CHECK on demand — one button whose moment
   is the reader's doubt — calling `GET …/captures/:capture/chain` and showing isRegistered · ATTRIBUTED · anchored = document ·
   the stored verdict and its version, or CHAIN_UNAVAILABLE as a statement about the check; the SECOND WITNESS — the archive
   link composed deterministically from the url and the timestamp (`lib/archiveUrl.ts`, one function), with the one line on
-  how to verify: fetch, hash, compare. Nothing is fetched from the chain on render.
-- **`/pages/[id]/diffs/[before]/[after]`** (§26 :720–:724), from `GET /api/pages/:id/diffs/:b/:a`: the two texts as an inline
+  one line saying the archive holds this page at this date and the link opens it — **AND NO INSTRUCTION TO HASH ANYTHING. CORRECTED 2026-09-19: this bullet ordered "fetch, hash, compare", which `gf-ui-flows.md` §26 :834, :836–:850 RETIRED on 2026-09-18 on the researcher's words and on a measurement — the VIEWER form the reader is given returns 54,180 bytes hashing to `1b108bb2…`, the RAW form 47,731 bytes hashing to `5887afdf…`, which is the anchored `documentHash`, so a reader who obeyed the instruction got a MISMATCH and would conclude the evidence was fabricated. The RAW form belongs in the VERIFY disclosure beside the hash it matches (§26 :847; §4 :175–:179) and nowhere else.** Nothing is fetched from the chain on render.
+- **`/pages/[id]/diffs/[before]/[after]`** (§26 :852–:856), from `GET /api/pages/:id/diffs/:b/:a`: the two texts as an inline
   diff at phone width and side by side when wide (UI-5's `lib/textDiff.ts`, the same two-input function), the CURRENT chunks
   by side beneath, the opinion labelled, `narrowed` with the intervening captures as links, the citing theses; both endpoints
   linking to their capture pages; 409 AWAITING_DERIVATION rendered as the state with both capture links live.
-- **`/records/[fileHash]`** (§26 :726–:729), from `GET /api/records/:fileHash`: the record the name resolves to — kind, page,
+- **`/records/[fileHash]`** (§26 :858–:861), from `GET /api/records/:fileHash`: the record the name resolves to — kind, page,
   timestamps; RECOMPUTABLE and VERIFIED with per-capture attribution as marks; the published versions that cite it, each with
   FLAGGED and its text; one link to the record's page. A document commitment renders the RESERVED stub of UI-5 until the
   document plan's step 34; no anchor to any door.
@@ -650,7 +650,7 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
 - **Operational values, named once** (A6): the date axis opens at MONTH and the stream's `limit` is UI-2's default, both
   recorded in the dated doc as the initial values and moved by §41's measurement, never by this plan; the sheet nesting
   depth is three.
-- **What is measured from this step** (§41 :956–:958; §39): rows per page and per month on the real corpus, read from the
+- **What is measured from this step** (§41 :1091–:1103; §39): rows per page and per month on the real corpus, read from the
   staging exercise's bodies; the chain check's press rate, read from the backend's request log for the `…/chain` route —
   never from the page, which records nothing (§39 :925–:926).
 - **Copy**: the empty sentences, the chip labels, the mark names and the one verification line are drafted from §24–§26 and
@@ -660,7 +660,7 @@ here, not designed); evidence §5 :428–:430 (the archive link composed determi
 `pages/[trackedUrlId]/diffs/[before]/[after]/page.tsx`, `records/[fileHash]/page.tsx`; `components/corpus/` — the chronology,
 the context line, **the PAGES LIST row (one component, two scopes — UI-8 renders it at `all` with the NOT PUBLIC mark)**, the
 page card with the time strip (which replaces the date axis), the filter chips, the capture row, the diff card, the record
-**as a right-pane tab** (§10 :1138 — not a sheet), the claims row and sheet,
+**as a right-pane tab** (§10 :1217–:1223 — not a sheet), the claims row and sheet,
 the two stacked registers, the chain-check control; `components/opinion/LabelledOpinion.tsx`; `lib/archiveUrl.ts`,
 `lib/corpusQuery.ts` (chips ↔ URL ↔ the one read's parameters); `types/corpus.ts` (the bodies of A4 :1081–:1090, §6.1, §28, A4
 :1095, :1105, :1111, hand-written from the appendix); `messages/*.json` (`corpus`, new); `test/fixtures/corpus/` (a stream over
@@ -688,25 +688,25 @@ to the connector's; one diff page; `/records/<one cited fileHash>`; a surveyed p
 (`corona`, if still unopened — the id read from `list_pages` through the connector, never typed); no horizontal scroll on any
 of the five; the density of §41 recorded in rows per month.
 
-**STATUS:** OPEN. **RE-BRIEFED 2026-09-16** against the design canvas, page 4 (docs/gf-ui-design-session-2026-09-16.md
-§4), and **RE-BRIEFED AGAIN 2026-09-18** — the ten rulings above, folded into this body. Closes with
-`docs/gf-ui-step-7-<date>.md`: the stream's initial `limit`, the density measured, the composed page labels as
-they read, the exercise. *(This line was SPLICED — the 2026-09-16 marker had landed inside the closing sentence,
+**STATUS:** CLOSED 2026-09-20 — `docs/gf-ui-step-7-2026-09-20.md`. Ten landings (#522, #524, #525, #526, #528, #529, #539, #540, #541, #542; `staging` `f09c909`): the corpus types and the two pure libraries, the pages list, the provision lookup, the theses list with the CI type-check gate, the third voice's container, the stream with the page card and the time strip, the CITED lens, the three record pages with their two ruled envelopes, and the CLAIMS view per page with the read that gained `captures[]`. Recorded there: the stream's initial `limit` (100, UI-2's, unmoved), the density MEASURED (43 rows over 23.12.2021–3.1.2023 on the one staging page — 22 captures + 21 diffs, May 2022 the densest at nine captures; 26 trajectories, 22 captures each, 13 of them groups of 2–45), the composed page label as it reads (`corona.health.gov.il/vaccine-for-covid/`), the exercise on staging at 375 px for every page of the step, the chain check pressed TRUE at index 22 — and the press RATE this line's :678 asked for read as UNMEASURABLE from the backend's request log as Railway retains it, which holds the current deployment only. RE-BRIEFED 2026-09-16 (docs/gf-ui-design-session-2026-09-16.md
+§4) and RE-BRIEFED AGAIN 2026-09-18 — the ten rulings above, folded into this body. What the step does NOT close, each carried to its owner in the doc's
+§10: the sheet's height on a phone (a group of 45 lists every member and every capture, 6,626 px), the `notEvaluable` reason sentences, the one 404 naming a THESIS on a record page, §3 :92,
+the version page's `reading`, „טען ישנים יותר", the pill drawn twice, the `routeIsTool` flake. *(This line was SPLICED — the 2026-09-16 marker had landed inside the closing sentence,
 orphaning its second half. Found by a cold read, 2026-09-18; it pre-dates today's amendments.)*
 
 ### UI-8 · The read view — `/research`, the working view, the gated chronology
 
-**Contract:** §10–§15 :361–:504 (what the working view is; the three voices; §11's four regions and the eleven kinds; what
-the page never has; the states; widening; the five instruments); §27 :731–:744 (the gated door's three additions); §29
-:755–:776 (`/research`, four regions; the `mine`/`all` switch is navigation, not an act); §30; §7 :288–:303 and §7.1 (the
-routes, all UI-3's; the routes pass `all`, the page opens on `mine`); §13 :468–:477 and A2 :1009–:1011 (401 → `/login?returnTo=`;
-403 one sentence with `/researchers` linked; 404 the refusal named); §37 :898 (`returnTo` threading from any gated page); §4
-(the COPY controls: `thesis <id>`, the owed command, the citation token; no id as text); §12 :455–:459 (the one actionable
-element is the COPY of a command the owed list names); §39 :922 (the switch is browser-local); §41 :954–:955 (the history
+**Contract:** §10–§15 :364–:504 (what the working view is; the three voices; §11's four regions and the eleven rows → seventeen turn kinds (RULED 2026-09-20); what
+the page never has; the states; widening; the five instruments); §27 :863–:876 (the gated door's three additions); §29
+:887–:909 (`/research`, four regions; the `mine`/`all` switch is navigation, not an act); §30; §7 :288–:303 and §7.1 (the
+routes, all UI-3's; the routes pass `all`, the page opens on `mine`); §13 :469–:477 and A2 :1150–:1152 (401 → `/login?returnTo=`;
+403 one sentence with `/researchers` linked; 404 the refusal named); §37 :1035 (`returnTo` threading from any gated page); §4
+(the COPY controls: `thesis <id>`, the owed command, the citation token; no id as text); §12 :456–:459 (the one actionable
+element is the COPY of a command the owed list names); §39 :1055 (the switch is browser-local); §41 :1093 (the history
 loads whole until a measurement says otherwise); §31 (`one-stream-two-doors` and `no-marking-link-from-research` complete
 here); thesis §9 :974–:978 (HISTORY's rows); T6 :866–:882 (what is owed, one command per entry); A2 :1309, :1317 (the model
 and prompt version beside every opinion); interaction MARKING :534–:535 (the copy button) and :576–:578 (the instruction
-comes from the chat, never the marking link); A3 :1021–:1023. Frontend only.
+comes from the chat, never the marking link); A3 :1157–:1171. Frontend only (cites recomputed in place 2026-09-20, R66). **WIDENED 2026-09-21 (the researcher, R70 „approve (a)”): NO LONGER frontend only.** `get_thesis_context` gains the RESOLVED citations and `pages` of thesis A4 :1476 as amended today, because the CENTRE is the public thesis column CALLED (:739) and that column cannot be fed from the shape the read served — `V.mentions` carried `{ kind, name, pin, argued }` while §11 :410 and :413–:415 have always needed the record. **The change is `getThesisContext.ts`, which :779's lift already names BARE** (unlike `listPages.ts` and `listTheses.ts`, which carry their permitted fields in parentheses) — no new tool, **the surface stays 46**, no migration. The resolution is not written here: `publishedThesis.ts` already builds it for the public body at :302–:353 (`evidenceCitation` :406) and is CALLED for HEAD and PUBLISHED alike, so the `V` shape is ONE citation shape rather than two. **CORRECTED 2026-09-21, same day: this first cited :249, which builds the UNRESOLVED refs, not the citations; the resolver is inline and SINGLE-VERSION, so the reuse is a factoring and two calls, not one existing multi-version read.** **ui §10 :369–:371's CLOSED LIST OF READS is untouched** — a FIELD is added to the one read, never a read, which is ui §6.1 :241's own precedent (`list_corpus`' `page` gained `public: bool` so the gated door could mark a row „without a second read”). The alternative of reading the PUBLIC body for the centre was REFUSED: this step's own :739 says *„TEXT is the centre”*, TEXT is HEAD's Markdown (§11 :410–:412), and no public body carries HEAD.
 
 **What lands.**
 
@@ -720,14 +720,14 @@ comes from the chat, never the marking link); A3 :1021–:1023. Frontend only.
   is a line saying so; (2) THESES — `GET /api/research/theses?scope=all`, each row the claim · provision · author · state ·
   unargued n · open gaps n · framing attached, tap → `/research/theses/[id]`, the published ones linking the public page too;
   (3) FRAMINGS — `GET /api/research/framings`, oldest first, tap → the framing sheet; (4) THE CORPUS in numbers —
-  `GET /api/research/pages`: pages surveyed, rows by outcome, stops pending as a fact, and the link to `/research/corpus`.
-  **The `mine` / `all` switch** is one control setting one parameter on two lists (§29 :775–:776): the routes answer `all` with
+  `GET /api/research/pages`: pages surveyed, rows by outcome, stops pending as a fact, and the link to `/research/corpus`. **RULED 2026-09-21 (the researcher, R68 board ב): drawn as ONE door card with ONE summary line; the breakdown by outcome moves to `/research/corpus`'s page rows.**
+  **The `mine` / `all` switch** is one control setting one parameter on two lists (§29 :907–:908, recomputed 2026-09-20 R67): the routes answer `all` with
   `mine: bool` on every entry (§7.1 :322–:325), the page opens on `mine` by keeping the entries whose `mine` is true — a view
   over a field the body carries, not a derivation — and remembers the choice in the browser only (§39). Nothing on `/research` writes.
 - **`/research/theses/[id]`** — THE WORKING VIEW (§10–§14): one read, `GET /api/research/theses/:id` (`get_thesis_context`, A4
-  :1476–:1479), and two sheets on demand, `…/framings/:id` and `…/debates/:sessionId`. §11 top to bottom: (1) the sticky
+  :1476–:1479), and two sheets on demand, `…/framings/:id` and `…/debates/:sessionId`. §11 top to bottom: (1) the (NOT sticky — RULED 2026-09-20, R66 „Q9”, ui §11 :399)
   context line — the CLAIM verbatim as the heading, the provision, the handle with `mine` marked, the state DRAFT ONLY ·
-  PUBLISHED = HEAD · PUBLISHED ≠ HEAD (n) · WITHDRAWN on <date>; (2) WHAT IS OWED for this thesis, each entry with its material
+  PUBLISHED = HEAD · PUBLISHED ≠ HEAD (n) · WITHDRAWN on <date>; (2) WHAT IS OWED for this thesis, drawn from the ONE read's own `owed` / `reviews` (**RULED 2026-09-22, the researcher, R71**; A4 :1476, the shape of A4 :1523) and NOT from a second read — each entry with its material
   and ONE COMMAND to paste, labelled as the author's on a colleague's thesis; (3) THE STATE NOW, one segmented control: TEXT
   (HEAD's Markdown, every token a chip opening the CITATION sheet, PUBLISHED one toggle away with the diff between them —
   UI-5's `textDiff`, the same two-input function), CITATIONS (every mention of HEAD: kind, record, pin, ARGUED with the verdict
@@ -735,8 +735,8 @@ comes from the chat, never the marking link); A3 :1021–:1023. Frontend only.
   gap's decision in force, a CITED gap whose citation left the head reading OPEN as derived), ANALYSIS (CURRENT or STALE / NONE
   with the fingerprint; the opinion labelled, every mark beside its sentence), FRAMING (rounds in sequence; CHOSEN with whether
   HEAD restates it character for character); (4) THE STREAM — HISTORY(t) OLDEST FIRST, one row per act, tap → the sheet for
-  that kind; "jump to now" at the end. The eleven kinds and their sheets are §11's table :435–:447, nothing invented; the
-  WITHDRAWAL's reason shows here and never publicly (T6 :916).
+  that kind; **AMENDED 2026-09-22 — A CONFORMING AMENDMENT TO ui §11 :432 (RULED 2026-09-21, the researcher, R68 „אופציה ב”), which this line predates: the pane OPENS SCROLLED TO THE END, at now, as a chat does, so the control is „jump to the START” (`research.thesis.jumpToStart`), the THREAD HEADINGS are the anchors, and on a return the turns after `since` are marked. „jump to now” (`research.thesis.jumpToNow`) is SUPERSEDED, uncalled, and its catalogue row goes with this chunk (approved copy :359, :361). No meaning of this step changed and no line was added — the ruling it conforms to is elsewhere and older.** The eleven rows → seventeen turn kinds (RULED 2026-09-20) and their sheets are §11's table :435–:447, nothing invented; the
+  WITHDRAWAL's reason shows here and never publicly (T6 :916). **RULED 2026-09-21 (the researcher, R68 „אופציה ב”); supersedes canvas page 1 board C): (3) and (4) are RE-HOMED — the CENTRE is the public thesis column (§17, UI-5's components CALLED) under the context line and WHAT IS OWED, so TEXT is the centre and not a tab; **WHAT THE CENTRE DRAWS, RULED 2026-09-21 (the researcher, R70) — READ OFF APPROVED BOARD ד2, not enumerated from §17: above it the CONTEXT LINE (§11 row 1, in the order ruled the same day) and WHAT IS OWED (§11 row 2); then the centre itself, in this order — (i) THE TICK LINE (§10 :1121: the domain once, heading the text, with the cited captures as dated ticks); (ii) THE TEXT (§11 :410–:412, HEAD's Markdown, every citation token a dated tick chip); (iii) the PUBLISHED toggle and the DIFF, as two controls beneath the text (`הגרסה שפורסמה` · `מה שונה ביניהן`). **NOT DRAWN, and each for its own reason:** §17's region 1 (the public-interest statement and the LEGAL DISCLAIMER — COMPLIANCE.md :92 names the PUBLIC pages, and a gated working view is not one) · region 4 (THE APPEALS, already removed from §17 on 2026-09-16, R56) · regions 5 and 6 (THE CASE and HISTORY — post-publication regions whose GATED home is already the transcript, §11 :444's VERSION turns and :448's PUBLICATION ATTEMPT; drawing them in the centre would be one fact in two places on one page) · region 7 (THE PAGES) and region 8 (the VERIFY disclosure), which the approved board simply does not draw — VERIFY's gated home is the ANALYSIS tab (§11 :421), which is where `VerifyDisclosure.tsx`'s one declared KEEP edit belongs. **The board is the ground and §17 is not the index of it:** §17 orders the PUBLIC page, the working view reuses its components rather than its running order, and an earlier attempt to rule this as „§17 regions 2, 3, 7, 8" put the plan at odds with the board on two of the four.** the RIGHT PANE's tabs are TRANSCRIPT (§11 row 4, the default, OLDEST FIRST, opened at the end) · CITATIONS · GAPS · ANALYSIS · FRAMING · APPEALS at the pane's top; on the phone the pane is the layer.**
 - **Three voices, complete** (§10 :371–:391): the researcher's component and the platform's mark (UI-5), and the labelled
   container (UI-7) now wrapping every ASSESSED round, debate assessment, analysis and publication assessment with the model
   and prompt version beside it; a paraphrase shown as one — `researcherClaim` with `quoteVerified: false` rendered with the
@@ -745,7 +745,7 @@ comes from the chat, never the marking link); A3 :1021–:1023. Frontend only.
 - **What the page never has** (§12): no write control — no publish, save, editor, resolve or re-run; the one actionable element
   is the COPY of a command the owed list names, whose moment the list defines; no opinion outside its label; no second read
   for a filter — "since" is `get_thesis_context`'s own parameter, used to refresh the stream on return; the history loaded
-  whole, its size at phone width MEASURED on run B's thesis from this step (§41 :954–:955), a cursor added the day a
+  whole, its size at phone width MEASURED on run B's thesis from this step (§41 :1093–:1094, recomputed 2026-09-20 R67), a cursor added the day a
   measurement says so and not before.
 - **`/research/corpus`** (§27): UI-7's PAGES LIST and CHRONOLOGY at `scope: 'all'` — **the same two components, not second
   copies**. The pages list at `all` is `list_pages`' answer: every SURVEYED page, with the NOT PUBLIC mark on the rows no
@@ -768,17 +768,17 @@ comes from the chat, never the marking link); A3 :1021–:1023. Frontend only.
 **Files.** NEW: `app/[locale]/research/page.tsx`, `research/theses/[thesisId]/page.tsx`, `research/corpus/page.tsx`,
 `research/corpus/claims/page.tsx`; `components/research/` — the owed strip, the thesis rows (UI-6's card with the researcher
 fields), the framing rows and sheet, the corpus numbers, the working view's context line, the five state segments, the
-stream and the eleven sheets, the extraction sheets, the NOT PUBLIC mark, the `mine`/`all` switch; `lib/researchFetch.ts` (the
+stream and the seventeen kinds' rows and sheets (RULED 2026-09-20), the extraction sheets, the NOT PUBLIC mark (RULED 2026-09-20, R66 „Q7 extend”: NOT a new component — one more member of `components/thesis/PlatformMark.tsx`'s closed union, a DECLARED KEEP edit with its measured size, ui §21 :626's one-mark rule), the `mine`/`all` switch; `lib/researchFetch.ts` (the
 bearer, the 401 → `returnTo`, the 403 — one wrapper, no page composes it); `types/research.ts` (the bodies of thesis A4 :1476,
-:1458, :1432, :1523, evidence A4 :1144, :1146, interaction A5 :1071, :1199, :1208, :1214 — hand-written from the appendices);
-`messages/*.json` (`research`, new); `test/fixtures/research/` (a history carrying all eleven kinds; a colleague's thesis; a
+:1458, :1432, :1523, evidence A4 :1144, :1146, interaction A5 :1071, :1199, :1208, :1214 — hand-written from the appendices); `lib/researchBody.ts` (the parsers, one per read, to the same appendix lines — RULED 2026-09-20, R67 Q-A, the `corpusBody.ts` / `thesisBody.ts` precedent);
+`messages/*.json` (`research`, new); `test/fixtures/research/` (a transcript carrying all seventeen turn kinds (RULED 2026-09-20); a colleague's thesis; a
 withdrawn thesis; a thesis with one version and nothing else; an owed list; an empty owed list; a corpus at `all` with an
 unopened page; a work-list row, rules and a rule history); the six instrument files. REWRITE: `components/corpus/*` (the scope
 prop, the NOT PUBLIC mark, the extraction sheet's mount point — the same component, no second stream). KEEP, `git diff` empty:
 `context/AuthContext.tsx`, `lib/api.ts`, `lib/session.ts`, `components/AuthGuard.tsx` (profile and admin keep it), the public
-pages of UI-5 and UI-6, every backend file.
+pages of UI-5 and UI-6, every backend file — **LIFTED 2026-09-20 (the researcher, R66 „Q1 transcript approved · Q2 add fields”) for exactly: the transcript builders and `thesisPredicates.history` (thesis §9 :974, A4 :1476), `getThesisContext.ts`, `getDebate.ts` / `debateState.ts` (the record named, `turns` from the builder), `getFraming.ts` (its rounds through the builder), `listPages.ts` (`trackedUrlId`, `public`, `stopPending`, interaction A5 :1071), `listTheses.ts` (the state through `publicationState`), and their tests; the surface stays 46; no migration.** **WIDENED 2026-09-22 (the researcher, R71 „approve Q1”): the lift ALSO names `services/publishedThesis.ts`, `services/criticMaterial.ts`, `services/corpusReads.ts` and `services/thesisReviews.ts`.** The ground is the read's cost (`docs/gf-thesis-read-cost-2026-09-22.md`): PR #560 already edited the first three (`publishedThesis.ts` +155/−52, `criticMaterial.ts` +22/−10, `corpusReads.ts` +4/−2) and THIS LINE IS WHAT SHOULD HAVE MOVED WITH THEM — `:709`'s widening named only `getThesisContext.ts`, so three backend KEEP files were edited with no clause naming them, found by a cold read at R71. `criticMaterial.ts` is why the set cannot be smaller: it holds `headFingerprint` :98, the ONE loader `run_analysis` refuses on (`criticMaterial.ts` :33–:34), so the read and the refusal cannot share rows unless it is inside the lift. `thesisReviews.ts` joins for its own corpus walk per entry (:173–:174). **RULED 2026-09-22 (the researcher, R71): the lift ALSO permits the NEW module `services/thesisRows.ts`** — the one loader of the thesis read, holding the only `prisma` for it, over which `transcriptOf`, `headFrom`, `fingerprintOf` and `citationsFrom` become pure functions of rows. It is named because KEEP here reads *every backend file* and a sweep counts an ADDITION as a row, so an unnamed new module would go red every round; and because UI-8 owning chunk A while forbidding the module chunk A is defined as would be a step that cannot be executed. **It shares ROWS and never a verdict** — thesis A3 :1413–:1414, *„every predicate is computed on read and none is stored … this document adds no cache”*, which `corpusReads.ts` :522–:525 already states of itself. **No OTHER new backend file is lifted by this clause**; the surface stays 46; no migration.
 
-*Verified by:* the six instruments green, each observed to fail first — `every-kind-renders` (the eleven-kind fixture renders one
+*Verified by:* the six instruments green, each observed to fail first — `every-kind-renders` (the eleven-kind fixture — **RULED 2026-09-20 (R66): the SEVENTEEN-TURN transcript fixture of A4 :1476, every kind at least once, held exhaustively over the closed union** — renders one
 row and one sheet per kind; a kind removed from the renderer fails it by name), `opinion-under-label` (every field of an ASSESSED
 round, a debate assessment, an analysis or a publication assessment a descendant of the labelled container; a decoy rendering
 one outside caught), `three-voices` (a decoy verdict rendered through the researcher's component caught), `no-write-from-research`
@@ -796,7 +796,7 @@ the extraction sheet opened three deep on one capture, its rules equal to `get_a
 provoked signed out and `returnTo` bringing the reader back; the 403 provoked in the fixture only (no unapproved account is
 created for it); the history's size at phone width recorded (§41). Nothing written, nothing paid.
 
-**STATUS:** OPEN. Closes with `docs/gf-ui-step-8-<date>.md`: the history size measured, the library chosen if any, the exercise. **RE-BRIEFED 2026-09-16** against the design canvas, pages 1 and 5 — docs/gf-ui-design-session-2026-09-16.md §4.
+**STATUS:** OPEN. Closes with `docs/gf-ui-step-8-<date>.md`: the history size measured, the library chosen if any, the exercise. **The read's COST is measured and recorded in `docs/gf-thesis-read-cost-2026-09-22.md`** — 39 delegate calls, the body assembled three times, a ~550 ms per-query floor from a laptop and ~2 s deployed; it carries the target shape and two rulings it left open, **BOTH NOW CLOSED (the researcher, R71, 2026-09-22)**. The working view's second read (`/api/research/reviews`, unlisted by §10 :370–:371) is RESOLVED as a FIELD, not a read: A4 :1476's envelope gains `owed: number` and `reviews: E[]`, **mirroring A4 :1523 so one name keeps one meaning**, and `ResearchThesis.tsx` :99 is deleted in chunk B; §10's CLOSED LIST OF READS is unchanged. See §10 :369 and §11 :406. **This line itself was stale for one commit** — it was amended earlier the same day to say the question REMAINED open, and the ruling followed within the hour: a plan line that tracks open questions goes stale the moment one is answered, which is the CHECKPOINT rule's own case and is recorded here rather than quietly overwritten. **RULED 2026-09-22 (the researcher, R71): THE LOADER REBUILD (chunk A) IS THIS STEP'S WORK and its record closes HERE, inside UI-8 — not beside #547.** The cold read had recommended the opposite (a backend cost change filed beside #547); the researcher ruled it back into UI-8, so `gate:ui-8` stays the gate for it, no issue is filed for it, and `docs/gf-ui-step-8-<date>.md` closes on the loader as well as on the history size and the exercise. #547 (`list_corpus`/`list_pages` load the whole scope) is a SEPARATE defect and is untouched by this ruling. The dated doc is not edited to match — a findings record is never edited, and the plan is what decides. **The history SIZE measurement this line already owes was NOT taken.** **RE-BRIEFED 2026-09-16** against the design canvas, pages 1 and 5 — docs/gf-ui-design-session-2026-09-16.md §4.
 
 ### UI-9 · `/about` rewritten, `/safety` interim, `/researchers` corrected
 
@@ -994,7 +994,7 @@ touch, tagged as the thesis plan's §5 tags them. **Instruments, by file** (the 
 | `opinion-labelled-on-corpus` | `opinionLabelledOnCorpus.test.tsx` | UI-7 | every `opinion` field under the label; no other model field on a public corpus page |
 | `record-page-witnesses` | `recordPageWitnesses.test.tsx` | UI-7 | the archive link composed; the chain fetch only on the press; `CHAIN_UNAVAILABLE` as a statement |
 | `filter-is-a-query` | `filterIsAQuery.test.ts` | UI-7 | no corpus page fetches a second read for a filter |
-| `every-kind-renders` | `everyKindRenders.test.tsx` | UI-8 | all eleven history kinds render a row and a sheet |
+| `every-kind-renders` | `everyKindRenders.test.tsx` | UI-8 | all seventeen turn kinds (A4 :1476, RULED 2026-09-20) render a row and a sheet |
 | `opinion-under-label` | `opinionUnderLabel.test.tsx` | UI-8 | every assessed round, debate assessment, analysis, publication assessment under the label |
 | `three-voices` | `threeVoices.test.tsx` | UI-8 | one component per voice; no opinion or verdict through the researcher's |
 | `no-write-from-research` | `noWriteFromResearch.test.ts` | UI-8 | nothing under the research pages issues a non-GET or posts a form |
@@ -1034,7 +1034,7 @@ check, runs at UI-2 and UI-3 as at every backend step and is expected to say "No
 migration. A frontend step's `LAND` is not done until the staging FRONTEND deploy reads `SUCCESS` — the service the backend's
 deploy polls never name — and the exercise runs against that deploy.
 
-**The browser exercise, defined once** (A5 :1089–:1090; §41 :963–:964; the document plan's precedent :491–:493). A session's
+**The browser exercise, defined once** (A5 :1230–:1231; §41 :1102–:1103; the document plan's precedent :491–:493). A session's
 browser tools against the staging frontend, the staging cookie set through `/unlock`, the viewport 375 × 812. For every page
 the step lands, in the order A1 lists them:
 
@@ -1054,7 +1054,7 @@ the step lands, in the order A1 lists them:
    of this step. Nothing on staging is written by the exercise; a research act needed for a state (a withdrawal, a second
    publication) is the researcher's, asked for and recorded as theirs.
 
-**The reading test** (§41 :961–:962) is part of UI-5's exercise and is the researcher's: the public thesis page is read once
+**The reading test** (§41 :1100–:1101) is part of UI-5's exercise and is the researcher's: the public thesis page is read once
 by them, before it ships, and their answer — whether the researcher's words and the platform's marks read apart — is
 recorded verbatim. **The measurements** — the chronology's density (UI-7), the history's size at phone width (UI-8), the
 chain check's press rate (from UI-7, read from the backend's request log) and the copy controls' use (read from the next
@@ -1217,13 +1217,13 @@ something is opened. No animation anywhere but here. **AMENDED 2026-09-17:** the
 **UI-7, page 4.** The chronology opens on the PAGE CARD with the TIME STRIP — captures as dots, cited captures ringed, diffs as bars
 by chunk count — which is also the scrubber; the stream oldest-first under month headers, a capture a thin row, a diff a card with
 removed/added bars and the labelled opinion clamped; a record opened from a row is a right-pane tab. A SEARCH page
-`/corpus/search?phrase=` over the existing route, one row per capture, present or absent in the stored text. The claims lens with a
+`/corpus/search?phrase=` over the existing route, one row per capture, present or absent in the stored text. The CLAIMS view — PER PAGE, `page` REQUIRED, no top-level lens (§25, ruled 2026-09-18; this re-brief had said "the claims lens", corrected in place 2026-09-19) — with a
 run strip per claim and the claim's sheet on the right. The capture page whole with the second witness and the chain check; the diff
 page with the two texts side by side and the chunks marked where they stand. Hebrew names for the classifier's `categories`. Copy to
 approve first: the lens names, the filter chips, the six drafted sentences of page 4.
 
-**UI-8, page 1 board C and page 5.** The event stream is the centre; §11's state segments are the RIGHT-PANE TABS (התזה · ציטוטים ·
-פערים · ניתוח · מסגור · פניות לציבור); the eleven kinds render with the eight glyphs of UI-4b, the gap decision in both shapes, every
+**UI-8, page 1 board C and page 5.** The thesis column is the centre (RULED 2026-09-21 (the researcher, R68 „אופציה ב”), superseding board C); the RIGHT-PANE TABS are (תמליל · ציטוטים ·
+פערים · ניתוח · מסגור · פניות לציבור); the seventeen turn kinds (RULED 2026-09-20) render with the eight glyphs of UI-4b, the gap decision in both shapes, every
 model field inside the labelled container with the model and prompt version beside the label, every verdict a mark beside its
 sentence; the owed strip above the stream. Copy to approve first: the owed line, the tab names.
 

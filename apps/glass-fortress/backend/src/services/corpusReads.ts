@@ -1,10 +1,15 @@
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import type { ChunkSide } from '../lib/diffChunking';
 import { prisma } from '../lib/prisma';
 import { recordId, isWaybackTimestamp, type RecordId } from '../lib/evidenceIdentity';
 import { phrasePresent } from '../lib/htmlText';
-import type { ComputeResult, ChangeSpan } from './claimTrajectory';
+import { flaggedByClassifier } from '../lib/investigativeCategories';
+import type { ComputeResult, ChangeSpan, TrajectoryGroup } from './claimTrajectory';
 import { CLASSIFICATION_KEYS } from './recordDiff';
+// TYPE-ONLY, and it must stay that way: `evidenceReviews` imports THIS module for its loaders, so a value
+// import here would close a runtime cycle. A type import is erased.
+import type { NamedRecord } from './evidenceReviews';
 import {
   currentVersionOf,
   narrowed,
@@ -406,14 +411,20 @@ export function opinionOf(classification: Prisma.JsonValue, diffName: string): O
  * "chunks Json — [ { side, text, survival: SURVIVES|CONTRADICTED|UNCHECKABLE } … ]".
  */
 export interface StoredChunk {
-  side: string;
+  /**
+   * NARROWED 2026-09-19 from `string`, and the widening is what the repair was FOR. While this said
+   * `string`, any word at all type-checked from this column out to a reader — which is how the frontend came
+   * to compare a side against „before", a word `diffChunking.ts` has never emitted, and mislabel every chunk
+   * of a cited diff with `tsc` unable to see it (UI plan :555). `chunksOf` below makes the type a FACT.
+   */
+  side: ChunkSide;
   text: string;
   survival: string;
 }
 
 /**
  * The chunks of a stored version — WHOLE, or a walk defect that THROWS, naming
- * the pair.
+ * the pair, the index and, for a side outside the union, the value itself.
  *
  * The first draft of this function dropped anything that did not match the shape,
  * and that is the silent filter CLAUDE.md forbids: "a subject quietly dropped
@@ -453,6 +464,13 @@ export function chunksOf(stored: Prisma.JsonValue, pair: string): StoredChunk[] 
     if (typeof side !== 'string' || typeof text !== 'string' || typeof survival !== 'string') {
       return defect(`holds a HALF chunk at index ${String(i)}`);
     }
+    // THE SIDE IS THE WALK'S OWN UNION, and a word outside it is refused BY NAME rather than passed on as a
+    // `string` for a reader to guess at. It is the same rule as the two arms above — absent is a fact, whole
+    // is a derivation, and between them is nothing the design names — applied to the ONE field whose
+    // widening reached a reader as a confident wrong word about the archive's bytes.
+    if (side !== 'REMOVED' && side !== 'ADDED') {
+      return defect(`holds a chunk at index ${String(i)} whose side is ${JSON.stringify(side)}`);
+    }
     return { side, text, survival };
   });
 }
@@ -474,6 +492,24 @@ export interface ResolvedRecord {
   capture: TimelineCapture | null;
   pair: { before: TimelineCapture; after: TimelineCapture } | null;
   diff: TimelineDiff | null;
+}
+
+/**
+ * THE RECORD AS EVIDENCE A1 NAMES IT — its page and its timestamps — from what the ONE resolver found.
+ *
+ * LIFTED HERE 2026-09-22 (UI-8 chunk B round 2) from `thesisReviews.ts` :166–:170, verbatim and behaviour for
+ * behaviour. It was private there, and the gated thesis read now needs the same naming for `reviews[].record`
+ * (thesis A4 :1476 as amended). Importing it from `thesisReviews` would have closed a runtime cycle — that
+ * module imports `thesisPredicates`, which is the caller — and writing it a second time is the defect this
+ * repository names most often. It belongs beside `ResolvedRecord`, which is this module's own type.
+ *
+ * `debateState.namedRecordOf` is NOT this function: it names a record from a DEBATE ROW's two relations. Two
+ * loaders, one naming rule, each over the rows it holds.
+ */
+export function namedRecordOf(resolved: ResolvedRecord): NamedRecord {
+  if (resolved.capture !== null) return { url: resolved.page.url, capture: resolved.capture.capture };
+  if (resolved.pair !== null) return { url: resolved.page.url, before: resolved.pair.before.capture, after: resolved.pair.after.capture };
+  throw new Error(`corpusReads: ${resolved.fileHash} resolved to neither a capture nor a pair (evidence A1).`);
 }
 
 /**
@@ -517,44 +553,92 @@ export async function recordsByName(fileHashes: readonly string[]): Promise<Map<
   const resolved = new Map<string, ResolvedRecord | null>(wanted.map((name) => [name, null]));
   if (wanted.length === 0) return resolved;
 
-  // The promoted names' own pages first — one indexed lookup for the whole set rather than one each.
+  // The promoted names' own pages first — one indexed lookup for the whole set rather than one each. The page's
+  // URL rides this select because the narrowed pass below searches those pages and `matchInPage` needs it; it
+  // is the same row under one more column, not another query.
   const promoted = await prisma.evidence.findMany({
     where: { fileHash: { in: wanted } },
     select: {
       fileHash: true,
       kind: true,
-      snapshot: { select: { trackedUrlId: true } },
-      urlVersionDiff: { select: { trackedUrlId: true } },
+      snapshot: { select: { trackedUrl: { select: { id: true, url: true } } } },
+      urlVersionDiff: { select: { trackedUrl: { select: { id: true, url: true } } } },
     },
   });
-  const promotedPage = new Map<string, string>();
+  const promotedPage = new Map<string, SearchablePage>();
   for (const row of promoted) {
-    const pageId = row.snapshot?.trackedUrlId ?? row.urlVersionDiff?.trackedUrlId ?? null;
-    if (pageId !== null) promotedPage.set(row.fileHash, pageId);
+    const page = row.snapshot?.trackedUrl ?? row.urlVersionDiff?.trackedUrl ?? null;
+    if (page !== null) promotedPage.set(row.fileHash, page);
   }
 
-  // Every page the set could resolve against. A promoted name's page is already among them, so the corpus is
-  // walked ONCE and not once per name: the pass is linear in the corpus, and it now runs a single time.
-  const pages = await prisma.trackedUrl.findMany({ select: { id: true, url: true } });
-  const searchable = pages.length === 0 ? [] : pages;
-  const ids = searchable.map((page) => page.id);
-  const captures = await capturesByPage(ids);
-  const diffs = await diffsByPage(ids);
+  // THE WALK IS NARROWED TO THE CITED PAGES WHEN EVERY NAME IS PROMOTED, and skipped entirely otherwise it is
+  // not (`docs/gf-thesis-read-cost-2026-09-22.md`; the source's §2). `Evidence.snapshotId` and
+  // `Evidence.urlVersionDiffId` are `@unique` FKs, so a promoted name's record lives on that name's own page
+  // and the other pages' captures and diffs were loaded and never examined.
+  //
+  // THE PREDICATE IS `promotedPage.size`, NOT `promoted.length`. An Evidence row whose page cannot be read
+  // (neither relation present) adds no entry above, so counting the ROWS would narrow the walk on a name whose
+  // page is unknown and answer `null` for it — `NOT_A_RECORD` on the public `resolve_record`, for a record the
+  // corpus holds.
+  //
+  // AND THE NARROW PASS FALLS BACK RATHER THAN REFUSING. The `@unique` argument above is sound but it is
+  // ASSERTED, not held by anything here: if a promoted name does not match on the pages this narrowing
+  // searched, the full walk runs and answers exactly what it answered before. A false `NOT_A_RECORD` on a
+  // public read is not a cost worth one saved query, and the fallback costs nothing in the case that happens.
+  const everyNamePromoted = promotedPage.size === wanted.length;
+  const cited = [...new Map([...promotedPage.values()].map((page) => [page.id, page])).values()];
 
+  if (everyNamePromoted) {
+    const missed = await resolveOverPages(wanted, cited, promotedPage, resolved);
+    if (missed.length === 0) return resolved;
+  }
+  // Every page the set could resolve against — the pass that is linear in the corpus, and it runs once.
+  const pages = await prisma.trackedUrl.findMany({ select: { id: true, url: true } });
+  await resolveOverPages(wanted, pages, promotedPage, resolved);
+  return resolved;
+}
+
+/** A page a name can be resolved against — its id and its url, which is all `matchInPage` reads. */
+interface SearchablePage {
+  id: string;
+  url: string;
+}
+
+/**
+ * Resolve every name against a page set, writing into `resolved` — and return the names it could NOT answer.
+ *
+ * ONE PASS FOR THE WHOLE SET, whichever page set it is given, so the narrowed pass and the full walk cannot
+ * disagree about what a name resolves to: they are the same code over a different page list.
+ */
+async function resolveOverPages(
+  wanted: readonly string[],
+  searchable: readonly SearchablePage[],
+  promotedPage: ReadonlyMap<string, SearchablePage>,
+  resolved: Map<string, ResolvedRecord | null>,
+): Promise<string[]> {
+  const ids = searchable.map((page) => page.id);
+  // SIBLINGS, NOT A SEQUENCE: both key on `ids` and neither reads the other's answer. Measured 2026-09-21,
+  // they ran one after the other inside an eleven-call chain that was the whole critical path of the public
+  // thesis read.
+  const [captures, diffs] = await Promise.all([capturesByPage(ids), diffsByPage(ids)]);
+
+  const missed: string[] = [];
   for (const name of wanted) {
     // The promoted name's own page first, then the rest — the order the singular read had, preserved because
     // a name is answered by the FIRST page whose record satisfies RECOMPUTABLE.
-    const first = promotedPage.get(name);
+    const first = promotedPage.get(name)?.id;
     const order = first === undefined ? searchable : [...searchable.filter((p) => p.id === first), ...searchable.filter((p) => p.id !== first)];
+    let found: ResolvedRecord | null = null;
     for (const page of order) {
-      const found = matchInPage(name, page, captures.get(page.id) ?? [], diffs.get(page.id) ?? []);
+      found = matchInPage(name, page, captures.get(page.id) ?? [], diffs.get(page.id) ?? []);
       if (found !== null) {
         resolved.set(name, found);
         break;
       }
     }
+    if (found === null) missed.push(name);
   }
-  return resolved;
+  return missed;
 }
 
 /**
@@ -889,6 +973,13 @@ export interface TrajectoryFinding {
   finalState: 'PRESENT' | 'REMOVED';
   claimCount: number;
   changes: ChangeSpan[];
+  /**
+   * One entry per capture examined, in capture order — the group's own vector, carried through unchanged
+   * (`TrajectoryGroup.captures`; docs/gf-ui-flows.md §6.1 :248, ruled 2026-09-20). `changes` says what the
+   * claim did; this says where. A reader marking each capture, or naming the diff a claim left in, needs
+   * the capture a span ENDS on, and a span carries only the one it starts on.
+   */
+  captures: TrajectoryGroup['captures'];
   /** trajectoryId is the citable identity; a group has none of its own, so every member is cited. */
   claims: { trajectoryId: string; claimHash: string; claimText: string }[];
 }
@@ -904,6 +995,7 @@ export function trajectoryFindings(result: ComputeResult): TrajectoryFinding[] {
     finalState: g.finalState,
     claimCount: g.claims.length,
     changes: g.changes,
+    captures: g.captures,
     claims: g.claims.map((c) => ({
       trajectoryId: c.id,
       claimHash: c.claimHash,
@@ -967,11 +1059,160 @@ export interface EntryPage {
 /** One entry of the corpus: a capture row or a diff row (A4 :1081–:1090), its kind, and its page. */
 export type CorpusEntry = (({ kind: 'CAPTURE' } & CaptureEntry) | ({ kind: 'DIFF' } & DiffEntry)) & { page: EntryPage };
 
+// ---------------------------------------------------------------------------
+// ONE PAGE'S SHAPE OVER TIME — docs/gf-ui-flows.md §24 region 3, RULED
+// 2026-09-21 (the researcher): the time strip's source is the `pages` facet's
+// own `shape`, NEVER the entries the view renders.
+//
+// WHAT IT FIXES, MEASURED ON THE REAL CORPUS. The card's text line was already
+// the facet's while its strip was drawn from the FILTERED, cursor-windowed
+// array, so one element contradicted itself: `?page=<corona>` drew „43 רשומות"
+// over 16 dots and 16 bars, `&kind=CAPTURE` the same line over 16 dots and NO
+// bars, `&kind=DIFF&cited=1` the same line over an empty strip. Ruling (g)
+// already forbids narrowing the strip by the significance gate; a FILTER is that
+// mistake one level up and a WINDOW is it a second time.
+//
+// IT COSTS NOTHING, WHICH IS WHY THIS IS THE MECHANISM AND NOT A SECOND READ.
+// `loadCorpus`' loop already holds that page's captures and diffs when it builds
+// the facet row, so the bins are folded out of rows that are in memory: no new
+// query, no new route, no migration, and the MCP surface does not move because a
+// field is not a tool. Three alternatives were considered and rejected — a
+// second unfiltered read, client-side filtering (which duplicates `corpusOf`'s
+// predicate across the workspace boundary and does not compose with paging), and
+// a shape endpoint of its own.
+//
+// DAYS, AND NEVER GEOMETRY. No pixels: the 5px merge threshold and the viewBox
+// width are the COMPONENT's and this module must not learn them. No midpoint: "a
+// diff sits at its interval's midpoint" is ruling (b), a DRAWING rule that lives
+// in the frontend's `timeStrip.ts` and nowhere else — the bin carries `before`
+// and `after` and the component halves them. No sum where (e) says max.
+//
+// IT IS BOUNDED BY DAYS AND NOT BY RECORDS, which is the whole point: worst case
+// two bins per day of the page's span, CONSTANT in the number of records, so the
+// strip stops depending on `CORPUS_READ_LIMIT`.
+// ---------------------------------------------------------------------------
+
+/**
+ * The captures of one day, merged — `day` is `YYYYMMDD`.
+ *
+ * THE UNIT IS THE DAY AND THE CONSUMER IS WHY: `timeStrip.dayOf` reads exactly
+ * the first eight characters of the 14-digit wayback timestamp and discards the
+ * rest, because a day is the strip's unit. Emitting the instant would be
+ * emitting precision the instrument throws away.
+ */
+export interface CaptureBin {
+  day: string;
+  count: number;
+  /** ANY capture under the bin carries its own `evidence` — ruling (e)'s ring, and (c): the capture's own, never a diff touching it. */
+  cited: boolean;
+}
+
+/** The diffs of one `(before-day, after-day)` pair, merged — both `YYYYMMDD`. */
+export interface DiffBin {
+  before: string;
+  after: string;
+  count: number;
+  /**
+   * THE BIN'S MAXIMUM CHUNK COUNT, NEVER THEIR SUM (ruling (e)), and the reason
+   * is measured: May's three diffs are 50, 52 and 52, and summing gives 154
+   * against the page's largest real change of 125 — so the tallest mark on the
+   * strip would correspond to nothing that happened. A diff still awaiting
+   * derivation counts 0 and is still a bin.
+   */
+  chunks: number;
+  /**
+   * ANY diff under the bin passed the significance gate (ruling (e)'s tone
+   * rule). Dimming a mark that contains a flagged change would hide the flagged
+   * one behind its quiet neighbours, which is the suppression (g) refuses.
+   */
+  passed: boolean;
+}
+
+/** One page's whole shape over time, in days: what region 3's strip is drawn from. */
+export interface PageShape {
+  captures: CaptureBin[];
+  diffs: DiffBin[];
+}
+
 /** The `pages` facet (§28 :750): every page of the SCOPE, its held span and its entry count, never the call's filters. */
 export interface PageFacet extends EntryPage {
   first: string | null;
   last: string | null;
   entries: number;
+  /**
+   * The page's whole shape over time — PRESENT ONLY ON THE PAGE THE READ NAMES,
+   * and `null` on every other row.
+   *
+   * THAT IS THE CONTRACT AND NOT AN OPTIMISATION. Region 0 — the pages list at
+   * `/corpus` and `/research/corpus` with no parameter — draws NO strip: §24
+   * :695–:701 is "one row per page url — the url, the interval, the record count
+   * — and NOTHING else. NO time strip on a row", because a strip is ONE page's
+   * shape and therefore reads as a heading. So a read that names no page must
+   * not grow by one byte.
+   */
+  shape: PageShape | null;
+}
+
+/** A 14-digit wayback timestamp as the day it fell on — the first eight characters, which is the strip's unit. */
+function dayOf(timestamp: string): string {
+  return timestamp.slice(0, 8);
+}
+
+/**
+ * ONE PAGE'S SHAPE, folded out of the rows the read has already composed.
+ *
+ * It bins the ENTRY ROWS and never the database rows, so `chunks`, `evidence`
+ * and `opinion` are read here exactly as the read publishes them — a shape
+ * computed from the raw columns would be a second reading of the same three
+ * registers, free to drift from the one the stream shows.
+ *
+ * Bins come out in day order, which is `byCodeUnit` over `YYYYMMDD`: fixed-width
+ * digits, so string order IS chronological order and no date is parsed.
+ */
+export function shapeOf(captures: readonly CaptureEntry[], diffs: readonly DiffEntry[]): PageShape {
+  const captureBins = new Map<string, CaptureBin>();
+  for (const capture of captures) {
+    const day = dayOf(capture.capture);
+    const bin = captureBins.get(day) ?? { day, count: 0, cited: false };
+    bin.count += 1;
+    bin.cited = bin.cited || capture.evidence !== null;
+    captureBins.set(day, bin);
+  }
+
+  const diffBins = new Map<string, DiffBin>();
+  for (const diff of diffs) {
+    const before = dayOf(diff.before);
+    const after = dayOf(diff.after);
+    const key = `${before}-${after}`;
+    const bin = diffBins.get(key) ?? { before, after, count: 0, chunks: 0, passed: false };
+    bin.count += 1;
+    bin.chunks = Math.max(bin.chunks, chunkCountOf(diff));
+    // THE GATE IS CALLED, NEVER RE-SPELLED, and `deriveSignificance` is NOT the gate: its null arm is what keeps
+    // an AWAITING DERIVATION pair full-toned, and this page has one.
+    bin.passed = bin.passed || flaggedByClassifier({ kind: 'DIFF', opinion: diff.opinion });
+    diffBins.set(key, bin);
+  }
+
+  return {
+    captures: [...captureBins.values()].sort((a, b) => byCodeUnit(a.day, b.day)),
+    diffs: [...diffBins.values()].sort((a, b) => byCodeUnit(a.before, b.before) || byCodeUnit(a.after, b.after)),
+  };
+}
+
+/**
+ * How many chunks a diff row carries — 0 while it awaits derivation, which is a
+ * STATE and not an error (§24 region 4), and 0 for a version whose `chunks` is
+ * not a list.
+ *
+ * It does NOT call `chunksOf`, and the difference is deliberate: `chunksOf`
+ * THROWS on a malformed stored version, which is right where the content is
+ * about to be published and wrong here, where a whole page's shape would be lost
+ * to one bad row. It counts without reading a chunk's fields, so there is no
+ * second spelling of what a chunk IS.
+ */
+function chunkCountOf(diff: DiffEntry): number {
+  const chunks = diff.current?.chunks;
+  return Array.isArray(chunks) ? chunks.length : 0;
 }
 
 /** A diff's instant on the chronology is its `after` — the capture at which the page is seen to have moved. */
@@ -1097,8 +1338,16 @@ export function pageAfter<T, K extends Record<string, string>>(
  * THE ONE LOADER of the corpus across pages: per page the captures, the diffs and the stored anchor verdicts, ONE
  * linkage query over every name, the rows composed by `captureRow` / `diffRow` — the per-page read's own — and the
  * facet computed from the same rows (§28: "a facet on the one read, not a second read"). Entries in the total order.
+ *
+ * `named` IS THE PAGE THE CALL NAMED, or null, and it decides ONE thing: which facet row carries a `shape` (§24
+ * region 3, ruled 2026-09-21). It is a parameter rather than something inferred here because the loader is given a
+ * SET of pages and cannot tell a scope of one from a call that named one — and region 0 draws no strip, so the
+ * difference has to be stated by the caller that knows it.
  */
-export async function loadCorpus(pages: readonly ScopedPage[]): Promise<{ entries: CorpusEntry[]; pages: PageFacet[] }> {
+export async function loadCorpus(
+  pages: readonly ScopedPage[],
+  named: string | null,
+): Promise<{ entries: CorpusEntry[]; pages: PageFacet[] }> {
   const loaded: { page: ScopedPage; captures: TimelineCapture[]; diffs: TimelineDiff[]; attribution: Map<string, StoredAttribution> }[] = [];
   const names: string[] = [];
   for (const page of pages) {
@@ -1115,10 +1364,22 @@ export async function loadCorpus(pages: readonly ScopedPage[]): Promise<{ entrie
   for (const { page, captures, diffs, attribution } of loaded) {
     const entryPage: EntryPage = { trackedUrlId: page.id, url: page.url, public: page.public };
     const acquired = captures.map((c) => c.capture);
-    for (const capture of captures) entries.push({ kind: 'CAPTURE', ...captureRow(page, capture, attribution, linkage), page: entryPage });
-    for (const diff of diffs) entries.push({ kind: 'DIFF', ...diffRow(page, diff, acquired, linkage), page: entryPage });
+    // COMPOSED ONCE AND READ TWICE — the entries the stream returns and the shape the facet carries are the SAME
+    // rows, so the strip can never disagree with the records under it about a chunk count, a citation or an opinion.
+    const captureRows = captures.map((capture) => captureRow(page, capture, attribution, linkage));
+    const diffRows = diffs.map((diff) => diffRow(page, diff, acquired, linkage));
+    for (const row of captureRows) entries.push({ kind: 'CAPTURE', ...row, page: entryPage });
+    for (const row of diffRows) entries.push({ kind: 'DIFF', ...row, page: entryPage });
     const held = [...acquired].sort(byCodeUnit);
-    facet.push({ ...entryPage, first: held.at(0) ?? null, last: held.at(-1) ?? null, entries: captures.length + diffs.length });
+    facet.push({
+      ...entryPage,
+      first: held.at(0) ?? null,
+      last: held.at(-1) ?? null,
+      entries: captures.length + diffs.length,
+      // The shape rides these rows, which are loaded BEFORE any filter and BEFORE the cursor's slice — that is the
+      // whole fix. `null` on every other row: region 0 draws no strip and must not pay for one.
+      shape: page.id === named ? shapeOf(captureRows, diffRows) : null,
+    });
   }
   return { entries: entries.sort(compareEntries), pages: facet };
 }

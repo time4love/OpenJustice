@@ -626,7 +626,12 @@
       "publishedOverObjection": "Published over the assessor's objection",
       "trajectoryCurrent": "The newest pass agrees",
       "trajectoryStale": "The newest pass disagrees",
-      "trajectoryUnresolved": "A trajectory that does not resolve"
+      "trajectoryUnresolved": "A trajectory that does not resolve",
+      "notPublic": "Not public",
+      "promoted": "Promoted to evidence",
+      "abandoned": "Abandoned",
+      "refused": "Refused",
+      "published": "Published"
     },
     "chip": {
       "unresolved": "A citation that does not resolve",
@@ -637,25 +642,20 @@
     },
     "sheet": {
       "close": "Close",
-      "capture": "The page as captured on {date}",
-      "diff": "A change to the page between {before} and {after}",
-      "before": "Before",
-      "after": "After",
       "attributed": "Anchored by the platform",
-      "hashMatches": "The anchored hash equals the document hash",
       "attributionUnread": "The anchor has not been checked yet",
       "notEvaluable": "Cannot be checked: {reason}",
       "flag": {
         "WITHDRAWN": "The record was withdrawn",
         "NOT_CITATION_CURRENT": "The cited content moved and was not re-affirmed",
-        "SHED": "The platform no longer holds this record's content"
+        "SHED": "The platform no longer holds this record's content",
+        "AWAITING_DERIVATION": "The record awaits derivation"
       },
       "argued": "Argued: yes",
       "overObjection": "Over the assessor's objection: {answer}",
       "yes": "yes",
       "no": "no",
       "openPage": "Everything kept from this page",
-      "openRecord": "The record's page",
       "copyToken": "Copy the citation for a conversation",
       "transitions": "{count, plural, one {one transition} other {# transitions}}",
       "andMore": "…and {count} more"
@@ -700,7 +700,8 @@
       "trajectoryId": "The trajectory's identifier",
       "pin": "The cited content version",
       "copyValue": "Copy to check",
-      "how": "The version's hash is SHA-256 over the version's text and is not recorded on any chain. A record's name and its cited content version identify what was cited; the record's page shows how to check it against the Internet Archive and the chain."
+      "how": "The version's hash is SHA-256 over the version's text and is not recorded on any chain. A record's name and its cited content version identify what was cited; the record's page shows how to check it against the Internet Archive and the chain.",
+      "fingerprint": "The analysis input's fingerprint"
     },
     "version": {
       "banner": "This is a previous published version.",
@@ -1974,6 +1975,7 @@
     },
     "changeSize": "{removed} removed · {added} added",
     "awaitingDerivation": "The difference is not computed yet",
+    "textUnread": "The capture's text could not be read",
     "narrowed": "Narrowed",
     "cited": "Cited by a published thesis",
     "copyToken": "Copy the citation token",
@@ -1993,11 +1995,28 @@
     "emptyFiltered": "Nothing in this range",
     "hiddenCount": "{count} changes classified as non-material are hidden — show",
     "readMore": "Read more",
+    "loadNewer": "Load newer",
     "lenses": "Views",
     "lens": {
       "pages": "Pages",
       "cited": "Cited records"
-    }
+    },
+    "claims": {
+      "entry": "This page's claims",
+      "title": "The page's claims",
+      "empty": "No tracked claims were found on this page",
+      "present": "Present in the latest capture",
+      "absent": "Absent from the latest capture",
+      "strip": "The claim's presence across the captures, {first} – {last}",
+      "alsoMoved": "{count, plural, one {and one more claim that moved with it} other {and # more claims that moved with it}}",
+      "overTime": "The claim over time",
+      "capturePresent": "Present",
+      "captureAbsent": "Absent",
+      "leftIn": "The change in which it was removed",
+      "returnedIn": "The change in which it returned"
+    },
+    "filtersLabel": "Filter",
+    "allPages": "All pages"
   },
   "opinion": {
     "label": "AI Analysis — does not constitute a judicial finding"
@@ -2015,5 +2034,235 @@
     "NUREMBERG_10": "Nuremberg Code, article 10",
     "PATIENT_RIGHTS_13": "Patients' Rights Law, section 13",
     "ADMIN_DISCLOSURE_DUTY": "Administrative duty of disclosure"
+  },
+  "record": {
+    "capture": "The page as captured on {date}",
+    "diff": "A change to the page between {before} and {after}",
+    "before": "Before",
+    "after": "After",
+    "hashMatches": "The anchored hash equals the document hash",
+    "openRecord": "The record's page",
+    "verify": {
+      "documentHash": "The document's hash",
+      "textHash": "The text's hash",
+      "registryIndex": "The registry index",
+      "rawArchive": "The archive's raw-bytes address",
+      "how": "The document's hash is computed over the bytes as the archive served them at the raw address above — not over the page as it opens for reading.",
+      "extraction": "The extraction version"
+    },
+    "archive": {
+      "line": "The archive holds this page at this date, and the link opens it.",
+      "link": "Open the page in the archive"
+    },
+    "chain": {
+      "press": "Check the registration on the chain",
+      "registered": "The hash is registered",
+      "notRegistered": "The hash is not registered",
+      "differs": "The anchored hash differs from the document's hash",
+      "stored": "The stored verdict: {verdict} ({version})",
+      "neverChecked": "No verdict has been stored yet",
+      "unavailable": "The registry could not be reached"
+    },
+    "record": {
+      "heading": "The record this name resolves to",
+      "kindCapture": "A capture",
+      "kindDiff": "A change",
+      "recomputable": "Recomputable",
+      "notRecomputable": "Not recomputable",
+      "notVerified": "Not verified against the anchor",
+      "citedBy": "Published theses citing this record",
+      "flagged": "The citation is flagged",
+      "documentReserved": "A document commitment — reserved for a later stage."
+    },
+    "pair": {
+      "inline": "The text before and after",
+      "chunks": "The changed passages",
+      "openBefore": "The earlier capture",
+      "openAfter": "The later capture",
+      "narrowedWith": "Captures added between the two"
+    }
+  },
+  "research": {
+    "state": {
+      "forbidden": "This account is not an approved researcher.",
+      "forbiddenLink": "Request research access",
+      "noThesis": "No such thesis.",
+      "noFraming": "No such framing.",
+      "noDebate": "No such debate.",
+      "notSurveyed": "This page was not surveyed.",
+      "noRule": "No such rule."
+    },
+    "scope": {
+      "label": "Scope",
+      "mine": "Mine",
+      "all": "Everyone's"
+    },
+    "owed": {
+      "heading": "What I owe",
+      "empty": "Nothing is owed right now.",
+      "command": "The command to paste into the chat",
+      "since": "Open since {date}",
+      "byAuthor": "The command is {handle}'s, the thesis's author",
+      "affirmed": "The chunks affirmed",
+      "current": "The chunks now",
+      "entered": "Entered",
+      "left": "Left",
+      "citedBy": "Theses citing the record",
+      "notEvaluable": "Not evaluable right now",
+      "kind": {
+        "FLAGGED": "A flagged citation",
+        "STALE_TRAJECTORY": "A trajectory the newest pass contradicts",
+        "UNARGUED": "A citation with no argument",
+        "CONTENT_MOVED": "Cited content that moved"
+      },
+      "notEvaluableReason": {
+        "AWAITING_DERIVATION": "The record awaits derivation — there is no content version to judge by yet",
+        "AFFIRMED_VERSION_MISSING": "The affirmed version is not among the record's content versions — old cannot be shown beside new"
+      }
+    },
+    "theses": {
+      "empty": "No theses yet.",
+      "publicPage": "The public page",
+      "framingAttached": "A framing attached",
+      "noFraming": "No framing",
+      "unargued": "{count, plural, one {one unargued citation} other {# unargued citations}}",
+      "openGaps": "{count, plural, one {one open gap} other {# open gaps}}"
+    },
+    "thesisState": {
+      "DRAFT_ONLY": "Draft only",
+      "PUBLISHED_IS_HEAD": "Published = head",
+      "PUBLISHED_BEHIND": "Published — {count, plural, one {one version behind} other {# versions behind}}",
+      "WITHDRAWN": "Withdrawn on {date}"
+    },
+    "framings": {
+      "heading": "Framings",
+      "empty": "No framings yet.",
+      "question": "The question",
+      "noThesis": "Has produced no thesis yet",
+      "chosenClaim": "The claim chosen",
+      "malformed": "The round's content could not be read",
+      "rounds": "{count, plural, one {one round} other {# rounds}}",
+      "latest": {
+        "PROPOSED": "Latest round: proposed",
+        "ASSESSED": "Latest round: assessed",
+        "CHOSEN": "Latest round: chosen"
+      },
+      "openedNoRound": "Opened without a round"
+    },
+    "corpus": {
+      "open": "The researchers' archive",
+      "surveyed": "{count, plural, one {one page surveyed} other {# pages surveyed}}",
+      "rows": "{count, plural, one {one row} other {# rows}}",
+      "stopsPending": "{count, plural, one {one stop pending} other {# stops pending}}",
+      "acquired": "{count, plural, one {one capture acquired} other {# captures acquired}}",
+      "unfetched": "{count, plural, one {one row not fetched} other {# not fetched}}"
+    },
+    "outcome": {
+      "UNFETCHED": "Not fetched",
+      "UNSERVABLE": "The archive would not serve it",
+      "IDENTICAL": "Identical to the one before",
+      "DUPLICATE": "A duplicate",
+      "ACQUIRED": "Acquired",
+      "PENDING_JUDGEMENT": "Pending judgement",
+      "SKIPPED": "Skipped"
+    },
+    "thesis": {
+      "owedHere": "What is owed on this thesis",
+      "copyId": "The thesis id for a new conversation",
+      "openTranscript": "{count, plural, one {Transcript · one turn} other {Transcript · # turns}}",
+      "jumpToStart": "Jump to the start"
+    },
+    "tab": {
+      "transcript": "Transcript",
+      "citations": "Citations",
+      "gaps": "Gaps",
+      "analysis": "Analysis",
+      "framing": "Framing"
+    },
+    "text": {
+      "published": "The published version",
+      "diffToggle": "What differs between them",
+      "noPublished": "No version has been published"
+    },
+    "citations": {
+      "unargued": "Not argued",
+      "openDebate": "The debate",
+      "pin": "The version cited"
+    },
+    "gaps": {
+      "decision": {
+        "OPEN": "Open",
+        "CITED": "Cited",
+        "REQUESTED": "Requested",
+        "CALLED": "Called",
+        "CONCEDED": "Conceded",
+        "DISMISSED": "Dismissed"
+      },
+      "derivedOpen": "The citation left the head — the gap reads OPEN",
+      "earlier": "Earlier decisions on the same gap"
+    },
+    "analysis": {
+      "NONE": "No analysis has been run",
+      "AWAITING_DERIVATION": "The analysis awaits derivation",
+      "CURRENT": "The analysis is current",
+      "STALE": "The analysis is stale",
+      "spentBy": "The call was spent by {handle}"
+    },
+    "thread": {
+      "VERSION": "Version",
+      "DEBATE": "Debate",
+      "GAP": "Gap",
+      "PUBLICATION": "Publication attempt",
+      "WITHDRAWAL": "Withdrawal"
+    },
+    "model": {
+      "unrecorded": "The model and prompt version were not recorded"
+    },
+    "turn": {
+      "material": "The material",
+      "FRAMING_OPENED": "The framing was opened",
+      "ROUND_PROPOSED": "A framing was proposed",
+      "ROUND_ASSESSED": "The framing was assessed",
+      "ROUND_CHOSEN": "The claim was chosen",
+      "VERSION": "A version was written",
+      "DEBATE_OPENED": "A debate was opened",
+      "RATIONALE": "The rationale",
+      "ASSESSMENT": "The assessment",
+      "RESPONSE": "The answer",
+      "DEBATE_CLOSED": "The debate was closed",
+      "ANALYSIS": "An analysis was run",
+      "GAP_DECISION": "A gap was decided",
+      "PUBLICATION_RATIONALE": "The publication rationale",
+      "PUBLICATION_ASSESSMENT": "The publication assessment",
+      "PUBLICATION_VERDICT": "The publication verdict",
+      "NOTE": "A note was written"
+    },
+    "mark": {
+      "refusedBy": "Refused by: {checks}"
+    },
+    "stop": {
+      "pending": "A stop is pending; it is resolved in the chat"
+    },
+    "extraction": {
+      "open": "How this text was extracted",
+      "workRow": "The work-list row",
+      "rulesInForce": "The rules in force at this capture's date",
+      "ruleHistory": "The rule's history",
+      "removed": "The text removed",
+      "trusted": "A trusted rule",
+      "stale": "Stale against the rules",
+      "comparedTo": "Compared to the capture of {date}",
+      "stopGates": "The stop's gates"
+    },
+    "line": {
+      "assessed": "assessed: {contradictions} contradictions, {elements} elements filled",
+      "versionCitations": "+{added} citations, {unargued} unargued",
+      "debateVerdict": "{record} · {verdict}",
+      "analysisState": "analysis: {strength}"
+    },
+    "verdict": {
+      "SUPPORTS": "the assessor agreed",
+      "DISPUTES": "the assessor objected"
+    }
   }
 }

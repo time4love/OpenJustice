@@ -1068,7 +1068,7 @@ gate, only on a fresh fetch.
 Every write tool: REFUSES with no researcher in context (`NO_RESEARCHER`); REFUSES a URL that has no
 TrackedUrl (`NOT_SURVEYED`, except `survey_wayback_captures`, which creates it). Every refusal is a
 JSON `{ error, code }`, never a throw. `REASON_REQUIRED` for a missing or blank reason wherever one
-is required. The three reads — and list_pages({}), every surveyed page by URL with its work-list rows counted per outcome (2026-09-14, thesis step 20's record §2) — are GATED in WRITE_TOOLS by the standing precedent — a researcher's
+is required. The three reads — and list_pages({}), every surveyed page by URL with its work-list rows counted per outcome (2026-09-14, thesis step 20's record §2) — **THE ENVELOPE, RULED 2026-09-20 (the researcher, R66 „Q2 add fields”; read from `listPages.ts` `PageEntry` :29 and the ruling, a real body OWED): `[{ trackedUrlId, url, public: bool, title: string | null, surveyedAt: ISO, total: number, outcomes: { UNFETCHED, UNSERVABLE, IDENTICAL, DUPLICATE, ACQUIRED, PENDING_JUDGEMENT, SKIPPED: number }, stopPending: bool }]` — a bare ARRAY, oldest surveyed first then URL; `trackedUrlId` because the read view's routes take the id (the #488 precedent), `public` as ui §28 defines it, `stopPending` through the one function `pendingStopOf` (ui §29 :908's fact; the page derives nothing); refuses nothing** — are GATED in WRITE_TOOLS by the standing precedent — a researcher's
 working state is not published evidence — while their handlers answer without an identity.
 
 ```
@@ -1196,7 +1196,7 @@ reset_article_calibration({ url, reason })
   refuses   NOTHING_TO_RETIRE (no rule in force and no decision under AUTHORITY) · REASON_REQUIRED ·
             STALE_SEQUENCE
 
-get_article_rules({ url })                                                 read, GATED
+get_article_rules({ url })                                                 read, GATED — **THE ENVELOPE, WRITTEN 2026-09-20 (R66) because this clause named FIELDS and not the SHAPE — the A4 :1112 / ui §6.1 :248 precedent; from the interface named and ONE real body per route, read 2026-09-20 on staging through the researcher’s own signed-in session in the pane (the local sign-in cannot complete: the auth redirect names staging): read from `getArticleRules.ts` `ArticleRules` :38, `PendingStop` :33, `walk/stop.ts` `Stop` :19:** `{ rules: [{ ruleId, selector, validFrom, validTo: string | null, trusted: bool, lastMatched: string | null }], pendingStop: { capture, gates: [{ gate: 0 | 1 | 2 | 4 | 5 | 'DIGEST', material: unknown }], markingUrl } | null, counts: { the seven outcomes: number }, stale: number, decisions: number, lastDecisionAt: ISO | null }` — **`decisions` is a COUNT on the wire, where the `returns` below says „every decision on the page”; `markingUrl` IS sent and the read view renders it as no anchor (ui §31 :925)**; the route names the page by `:trackedUrlId`; refuses NOT_SURVEYED as `{ error, code }` at 404 inside the prefix **RULED 2026-09-21 (the researcher, R68): `validFrom`, `validTo` and `lastMatched` are 14-DIGIT CAPTURE INSTANTS (the wayback timestamp of the capture the rule was marked against — `schema.prisma`'s `Rule.validFrom`, "a rule marked against the 14:00 capture must not govern 09:00 of the same day"), never a `YYYY-MM-DD` day; "the rules in force at a capture's date" (ui §27 :869) is decided on the capture's own instant. Found when a derivation written to a day-shaped fixture drew zero rules on the whole corpus.**
   returns   { rules: every rule under AUTHORITY — in force or ended, with validTo; retired and
               pre-RESET rules absent — each { ruleId, selector, validFrom, validTo, trusted,
               lastMatched: timestamp|null },
@@ -1205,13 +1205,13 @@ get_article_rules({ url })                                                 read,
               decisions: every decision on the page, lastDecisionAt }
   refuses   NOT_SURVEYED
 
-list_captures({ url, outcome? })                                           read, GATED
+list_captures({ url, outcome? })                                           read, GATED — **THE ENVELOPE, WRITTEN 2026-09-20 (R66) because this clause named FIELDS and not the SHAPE — the A4 :1112 / ui §6.1 :248 precedent; from the interface named and ONE real body per route, read 2026-09-20 on staging through the researcher’s own signed-in session in the pane (the local sign-in cannot complete: the auth redirect names staging): read from `listCaptures.ts` `CaptureListed` :22:** `[{ capture, snapshotDate: 'YYYY-MM-DD', outcome, digest, comparedTo: string | null, rulesetId: string | null, snapshotId: string | null, stale: bool, stopGates: (0 | 1 | 2 | 4 | 5 | 'DIGEST')[] | null }]` — a bare ARRAY in timestamp order, the shape below field for field; refuses INVALID_OUTCOME at 400 and NOT_SURVEYED at 404, both `{ error, code }` inside the prefix**
   returns   one entry per row in timestamp order: [{ capture, snapshotDate, outcome, digest,
               comparedTo, rulesetId, snapshotId, stale: bool, stopGates: gate[] | null }]
             — never the held bytes
   refuses   NOT_SURVEYED · INVALID_OUTCOME
 
-get_rule_history({ url, ruleId })                                          read, GATED · amended 2026-09-07
+get_rule_history({ url, ruleId })                                          read, GATED · amended 2026-09-07 — **THE ENVELOPE, WRITTEN 2026-09-20 (R66) because this clause named FIELDS and not the SHAPE — the A4 :1112 / ui §6.1 :248 precedent; from the interface named and ONE real body per route, read 2026-09-20 on staging through the researcher’s own signed-in session in the pane (the local sign-in cannot complete: the auth redirect names staging): read from `getRuleHistory.ts` `RuleHistory` :79, `RuleDecision` :63, `MatchEntry` :70:** `{ rule: { ruleId, selector, validFrom, validTo: string | null, trusted: bool, createdAt: ISO, createdById, decisions: [{ type, waybackTimestamp: string | null, researcherId, createdAt: ISO }] }, matches: [{ capture, outcome, matchedNodes: number, removed: string[] | null, removedCount: number | null }] }` — the shape below field for field; the ROUTE passes no `maxCaptures`, so it answers every match; refuses NOT_SURVEYED · NO_SUCH_RULE as `{ error, code }` at 404 inside the prefix**
   returns   { rule: { ruleId, selector, validFrom, validTo, trusted, createdAt, createdById,
                       decisions: [{ type, waybackTimestamp, researcherId, createdAt }] },
               matches: [{ capture, outcome, matchedNodes,

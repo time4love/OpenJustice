@@ -112,8 +112,10 @@ describe('pages-list-reads-public-only', () => {
     // would never return at `public`, and the component must drop it anyway: a renderer that trusted its input
     // would publish whatever a future refactor handed it.
     const facet = [
-      { trackedUrlId: 'open-one', url: 'https://example.gov/one/', public: true, first: '20211223211940', last: '20220211120000', entries: 4 },
-      { trackedUrlId: 'surveyed-not-open', url: 'https://example.gov/secret/', public: false, first: '20220101090000', last: '20220301090000', entries: 9 },
+      // `shape: null` on both, which is what region 0's read answers: no page is named, so no row carries one
+      // and the list draws no strip — §28's own rule, and the reason `timeStrips: 0` below is not a coincidence.
+      { trackedUrlId: 'open-one', url: 'https://example.gov/one/', public: true, first: '20211223211940', last: '20220211120000', entries: 4, shape: null },
+      { trackedUrlId: 'surveyed-not-open', url: 'https://example.gov/secret/', public: false, first: '20220101090000', last: '20220301090000', entries: 9, shape: null },
     ];
     const container = await renderCorpus(facet);
     const shown = textNodes(container)
@@ -156,6 +158,41 @@ describe('the pages list itself', () => {
     }).toEqual({ rows: 2, url: true, interval: true, rawTimestampShown: false, timeStrips: 0, searchBoxes: 0 });
   });
 
+  it('A PAGE WITH NO CAPTURES DRAWS ITS URL AND ITS COUNT AND NO INTERVAL — and does not take the door down', async () => {
+    // THE DEFECT, RULED 2026-09-21. The facet's `first` and `last` are `string | null` on the wire
+    // (`backend/src/services/corpusReads.ts` :1070–:1071, `held.at(0) ?? null`); this side required `string`
+    // and the parser called `text()`, which THROWS. One such row and region 0 goes down — on the GATED door
+    // first, because it parses EVERY surveyed page. It is one survey away: `surveyWaybackCaptures.ts` :149
+    // creates the `TrackedUrl` and its work-list rows, and a LATER step acquires the captures.
+    //
+    // WHAT THE ROW SAYS INSTEAD is the truth it has: the url, and „0 רשומות" through the catalogue's existing
+    // `corpus.records`. NO INTERVAL — a page with no captures has no two dates, and drawing one from nothing
+    // would put a day on the screen that this page never held. No new string; anything richer than this is
+    // copy and a design question, which is FILED and not the builder's.
+    const facet = [
+      { trackedUrlId: 'open-one', url: 'https://example.gov/one/', public: true, first: '20211223211940', last: '20220211120000', entries: 4, shape: null },
+      { trackedUrlId: 'surveyed-empty', url: 'https://example.gov/fresh/', public: true, first: null, last: null, entries: 0, shape: null },
+    ];
+    const container = await renderCorpus(facet);
+    const rows = requireSubjects('the drawn rows', [...container.querySelectorAll('[data-page-row]')]);
+    const said = rows.map((row) => textNodes(row).map((node) => node.data.trim()).filter((text) => text !== ''));
+    expect({
+      // THE DOOR STOOD UP AT ALL — the whole of the defect: the read used to throw at the boundary and the
+      // page rendered nothing, so this count was zero and no assertion below it could even be reached.
+      rows: rows.length,
+      // THE WHOLE TEXT OF EVERY ROW, IN THE FACET'S OWN ORDER and by value, so a word added or lost is caught
+      // without a selector per fact — and so the row WITH an interval stands beside the row without one as
+      // the control: the absence below is this page's answer and not a component that stopped drawing dates.
+      said,
+    }).toEqual({
+      rows: 2,
+      said: [
+        ['example.gov/one/', '23.12.2021 – 11.2.2022', '·', '4 רשומות'],
+        ['example.gov/fresh/', '0 רשומות'],
+      ],
+    });
+  });
+
   it('THE EMPTY STATE IS A SENTENCE, NOT AN ERROR — a corpus with no opened page is region 5, not a 404', async () => {
     const container = await renderCorpus([]);
     expect({
@@ -172,7 +209,7 @@ describe('the pages list itself', () => {
     // 14-digit timestamp — so a page printing one passed `no-id-as-text` everywhere. The shape was added to
     // `test/scan.ts` here, measured safe across the whole suite first.
     const facet = [
-      { trackedUrlId: 'c7039812-d3ed-4206-95ed-8205c3f2b63c', url: 'https://example.gov/one/', public: true, first: '20211223211940', last: '20220211120000', entries: 4 },
+      { trackedUrlId: 'c7039812-d3ed-4206-95ed-8205c3f2b63c', url: 'https://example.gov/one/', public: true, first: '20211223211940', last: '20220211120000', entries: 4, shape: null },
     ];
     const container = await renderCorpus(facet);
     const shown = requireSubjects('text nodes of /corpus', textNodes(container))

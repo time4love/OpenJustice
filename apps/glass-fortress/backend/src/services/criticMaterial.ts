@@ -1,13 +1,13 @@
 import type { ThesisGapDecision } from '@prisma/client';
-import { prisma } from '../lib/prisma';
 import { changeSpans } from './claimTrajectory';
-import { pairName, resolveRecordByName, type ResolvedRecord } from './corpusReads';
+import { pairName, recordsByName, type ResolvedRecord } from './corpusReads';
 import { passagesCiting } from './debatePassage';
 import type { ContentVersionProvenance, RecordContent } from './evidencePredicates';
 import { currentContentOf } from './framingRounds';
 import { CRITIC_PROMPT_VERSION, fingerprint, gapList, type GapEntry } from './thesisPredicates';
 import type { CriticRecord, CriticTrajectory, CritiqueInput } from './thesisCritic';
 import type { DraftInput, DraftRecord } from './foiaDrafter';
+import { loadThesisRows, mentionsOf, versionOf, type ThesisRows } from './thesisRows';
 import { resolveTrajectoryCitations, TRAJECTORY_EXTRACTION_CAVEAT } from './trajectoryCitation';
 
 // ---------------------------------------------------------------------------
@@ -18,7 +18,10 @@ import { resolveTrajectoryCitations, TRAJECTORY_EXTRACTION_CAVEAT } from './traj
 // refusal and the read would then tell a researcher different things (R48 sketch §a).
 //
 // NOT `services/thesisAnalysis` — that path is RETIRED (`test/walk/retiredNames.test.ts` RETIRED_THESIS_MODULES).
-// This module holds a client and no model; the critic (`services/thesisCritic.ts`) holds a model and no client.
+// IT NO LONGER HOLDS A CLIENT AT ALL, and the line that said it did is corrected rather than left standing: every
+// read this module made moved into `services/thesisRows` (the plan's :779 clause), so `headFrom` and `fingerprintOf`
+// are pure and `headFingerprint` is the one caller that awaits. The critic (`services/thesisCritic.ts`) still holds a
+// model and no client.
 // ---------------------------------------------------------------------------
 
 /** The head version and what FINGERPRINT(head) is computed over — loaded once. */
@@ -45,46 +48,52 @@ function contentOf(record: ResolvedRecord): RecordContent<ContentVersionProvenan
   return { kind: 'DIFF', before: record.diff.before, after: record.diff.after, versions: record.diff.versions };
 }
 
-/** The head, its citations resolved, and the gap list against the head's names. */
-export async function loadHead(thesisId: string, headVersionId: string): Promise<LoadedHead> {
-  const version = await prisma.thesisVersion.findUnique({
-    where: { id: headVersionId },
-    select: { id: true, text: true, claim: true, contentHash: true },
-  });
-  if (version === null) {
-    throw new Error(`criticMaterial: thesis ${thesisId} points at head ${headVersionId}, which does not exist.`);
+/**
+ * THE HEAD, FROM ROWS ALREADY LOADED — a PURE function, no query of its own.
+ *
+ * It is `loadHead`'s body with its four reads removed: the version is a lookup in `rows.versions`, the mentions
+ * a filter over `rows.mentions`, the decisions `rows.decisions`, and the records come from the citation
+ * resolver's own resolution (`publishedThesis.citationsFrom`) rather than a second walk of the corpus. Every
+ * loud guard below is the one `loadHead` had, raised on the same name in the same order.
+ *
+ * WHY THE RECORDS ARRIVE RATHER THAN BEING RESOLVED HERE. `resolveRecordByName(x)` IS `recordsByName([x])`
+ * (`corpusReads.ts` :511–:512) and the plural walks the corpus; the gated read resolved the SAME names a few
+ * lines earlier for the citations. Resolving them twice was one of the duplicate passes
+ * `docs/gf-thesis-read-cost-2026-09-22.md` measured. A `ResolvedRecord` is an OBSERVATION and may be shared
+ * (evidence A3 :1060–:1063); every predicate over it is still CALLED (thesis A3 :1413–:1414).
+ */
+export function headFrom(rows: ThesisRows, headVersionId: string, records: ReadonlyMap<string, ResolvedRecord>): LoadedHead {
+  const found = versionOf(rows, headVersionId);
+  if (found === null) {
+    throw new Error(`criticMaterial: thesis ${rows.thesis.id} points at head ${headVersionId}, which does not exist.`);
   }
-  const mentions = await prisma.thesisMention.findMany({ where: { versionId: headVersionId }, select: { kind: true, name: true } });
+  const version = { id: found.id, text: found.text, claim: found.claim, contentHash: found.contentHash };
+  const mentions = mentionsOf(rows, headVersionId);
 
-  const records: LoadedHead['records'] = [];
-  for (const mention of mentions) {
-    if (mention.kind !== 'EVIDENCE') continue;
-    const record = await resolveRecordByName(mention.name);
-    // A LOUD GUARD (R48 D2): the version write resolved this name when it pinned it, and nothing is deleted after the
-    // rebuild — a citation whose record the corpus no longer holds is a malformed state, not an answer.
+  const evidenceNames = mentions.filter((mention) => mention.kind === 'EVIDENCE').map((mention) => mention.name);
+  const resolvedRecords: LoadedHead['records'] = evidenceNames.map((name) => {
+    const record = records.get(name) ?? null;
+    // A LOUD GUARD (R48 D2), UNCHANGED: the version write resolved this name when it pinned it, and nothing is
+    // deleted after the rebuild — a citation whose record the corpus no longer holds is a malformed state, not
+    // an answer.
     if (record === null) {
-      throw new Error(`criticMaterial: head ${headVersionId} cites #ev_${mention.name}, which no record of the corpus resolves.`);
+      throw new Error(`criticMaterial: head ${headVersionId} cites #ev_${name}, which no record of the corpus resolves.`);
     }
-    records.push({ name: mention.name, record });
-  }
+    return { name, record };
+  });
 
-  const decisions = await prisma.thesisGapDecision.findMany({ where: { thesisId } });
   return {
-    thesisId,
+    thesisId: rows.thesis.id,
     version,
-    records,
+    records: resolvedRecords,
     trajectoryIds: mentions.filter((m) => m.kind === 'TRAJECTORY').map((m) => m.name),
-    decisions,
-    list: gapList(decisions, thesisId, mentions.map((m) => m.name)),
+    decisions: rows.decisions,
+    list: gapList(rows.decisions, rows.thesis.id, mentions.map((m) => m.name)),
   };
 }
 
-/**
- * FINGERPRINT(HEAD) — CALLED, over the head's citations and the gap list at what each gap READS AS (R48 §c1).
- * Undefined names the diff BOTH ways, as A4 :1423 asks: its record name, and its page with the pair.
- */
-export async function headFingerprint(thesisId: string, headVersionId: string): Promise<HeadFingerprint> {
-  const head = await loadHead(thesisId, headVersionId);
+/** FINGERPRINT(HEAD) over a head already built — PURE, so the read and the refusal compute it the same way. */
+export function fingerprintOf(head: LoadedHead): HeadFingerprint {
   const f = fingerprint({
     contentHash: head.version.contentHash,
     evidence: head.records.map(({ name, record }) => ({ name, record: contentOf(record) })),
@@ -100,6 +109,66 @@ export async function headFingerprint(thesisId: string, headVersionId: string): 
       ? `the diff ${diff.page.url} ${pairName(diff.diff)} (#ev_${f.name})`
       : `#ev_${f.name}`;
   return { defined: false, head, name: f.name, named };
+}
+
+/**
+ * FINGERPRINT(HEAD) — CALLED, over the head's citations and the gap list at what each gap READS AS (R48 §c1).
+ * Undefined names the diff BOTH ways, as A4 :1423 asks: its record name, and its page with the pair.
+ *
+ * IT KEEPS ITS SIGNATURE AND ITS FOUR CALLERS, and that is the point rather than a convenience.
+ * `criticMaterial.ts` :16–:18 makes this the ONE loader `run_analysis` refuses ANALYSIS_CURRENT on and
+ * `get_thesis_context` reports CURRENT / STALE / NONE on — two loaders would be two fingerprints free to
+ * disagree about the same version. The rebuild satisfies that clause LITERALLY: the read and the refusal run
+ * THIS function, over the same rows, through the same two pure steps. A slimmer loader for the writers plus a
+ * parity test was considered and REJECTED — a second loader is exactly what the clause forbids.
+ *
+ * THE THREE WRITERS PAY MORE READS, AND IT IS THE RIGHT TRADE. `runAnalysis.ts` :72,
+ * `draftFoiaRequest.ts` :70 and `publicationEvaluation.ts` :113 now load every row of the thesis (fourteen
+ * reads in three waves) where they loaded four — against a paid LLM call, which is what each of them is
+ * about to make.
+ */
+export async function headFingerprint(thesisId: string, headVersionId: string): Promise<HeadFingerprint> {
+  return fingerprintOf(await loadHead(thesisId, headVersionId));
+}
+
+/**
+ * The head, built from the thesis's rows — the two functions above with the ONE load in front of them.
+ *
+ * It keeps `loadHead`'s name and signature (its callers are `headFingerprint` and the publication assessor's
+ * acceptance case), and it is not a second loader: `loadThesisRows` is the one query and `headFrom` the one
+ * composition, which is what `criticMaterial.ts` :16–:18 requires of the read and the refusal alike.
+ */
+export async function loadHead(thesisId: string, headVersionId: string): Promise<LoadedHead> {
+  const rows = await loadThesisRows(thesisId);
+  if (rows === null) {
+    throw new Error(`criticMaterial: no thesis ${thesisId}.`);
+  }
+  return headFrom(rows, headVersionId, await recordsForHead(rows, headVersionId));
+}
+
+/**
+ * THE HEAD'S RECORDS — the ONE read `headFrom` cannot be given for free by a caller that has no citations.
+ *
+ * THE GATED READ DOES NOT CALL THIS: it hands `citationsFrom`'s own `records`, which resolved the same names a
+ * moment earlier. The writers have no citations to share, so they resolve here — the same `recordsByName` over
+ * the same names, which is why the two paths cannot produce different fingerprints.
+ *
+ * IT IS DELIBERATELY NOT `citationsFrom`, and this is a declared departure from the proposal in
+ * `handoffs/R70-fable-design-source-2026-09-22.md` §1, which routed `headFingerprint` through it. FINGERPRINT(v)
+ * (thesis A3 :1376–:1378) is computed over the contentHash, each record's CURRENT content, the trajectory ids
+ * and the gap list — it reads no verdict. `citationsFrom` also computes VERIFIED, FLAGGED and the held texts,
+ * which is five reads the fingerprint never looks at and three predicates evaluated for nothing.
+ */
+async function recordsForHead(rows: ThesisRows, headVersionId: string): Promise<Map<string, ResolvedRecord>> {
+  const names = mentionsOf(rows, headVersionId)
+    .filter((mention) => mention.kind === 'EVIDENCE')
+    .map((mention) => mention.name);
+  const resolved = await recordsByName(names);
+  const records = new Map<string, ResolvedRecord>();
+  for (const [name, record] of resolved) {
+    if (record !== null) records.set(name, record);
+  }
+  return records;
 }
 
 /**

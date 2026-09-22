@@ -4,7 +4,7 @@ import { getResearcherId } from '../../context/researcherContext';
 import { assessedContent, openOrRevise, recordChecks, type NamedRecord } from '../../services/openDebate';
 import { assessAndRecord } from '../../services/respondInDebate';
 import { passagesCiting } from '../../services/debatePassage';
-import { loadDebate, priorTurns, projectDebate, type DebateState } from '../../services/debateState';
+import { loadDebate, priorTurns, projectDebate, turnsOf, type DebateState } from '../../services/debateState';
 import { promotionBlockers } from '../../services/promoteFromDebate';
 import { answer, refusal, type EvidenceWriteCode, type Refusal } from './evidenceRefusals';
 
@@ -158,5 +158,7 @@ export async function state(sessionId: string): Promise<DebateState> {
     throw new Error(`debate ${sessionId} could not be read back after a write to it.`);
   }
   const { blockedBy } = await promotionBlockers(debate);
-  return projectDebate(debate, blockedBy);
+  // THE TURNS COME FROM THE ONE BUILDER (evidence :1123), for every tool that answers a `DebateState` — so an
+  // argument read back after a write and the same argument read inside `get_thesis_context` say the same thing.
+  return projectDebate(debate, blockedBy, await turnsOf(debate, getResearcherId()));
 }

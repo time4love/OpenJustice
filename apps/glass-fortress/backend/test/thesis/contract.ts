@@ -108,7 +108,7 @@ export const MODULES = {
     exports: {
       claimFramed: fn(19),
       unargued: fn(20),
-      history: fn(20),
+      transcriptOf: fn(20),
       // THE GAP LIST IS STEP 20's (the R42 follow-up, H2): plan step 20 (:128–:129)
       // builds `get_thesis_context` "with HISTORY, UNARGUED and the gap list", and a
       // gap is listed at its decision in force. GAPS_DECIDED and the two appeals stay
@@ -123,6 +123,8 @@ export const MODULES = {
       trajectoryCurrent: fn(23),
       publishableVersion: fn(23),
       reviews: fn(24),
+      // UI-8 chunk B: REVIEWS for ONE thesis over rows already loaded — A4 :1476's `owed` and `reviews`.
+      reviewsOf: fn(24),
       // FINGERPRINT's last input (A3 :1378) — exported so a case can compute the
       // fingerprint the version's CURRENT analysis must carry, rather than guess it.
       CRITIC_PROMPT_VERSION: value(22),
@@ -285,19 +287,119 @@ export interface VersionPublishability {
   failed: readonly string[];
 }
 
-export interface HistoryEntry {
-  kind: string;
-  id: string;
-  createdAt: Date;
-  researcherId: string | null;
+/**
+ * A TURN OF THE TRANSCRIPT — thesis A4 :1476, RULED 2026-09-20 (the researcher, R66 „Q1 transcript approved”).
+ *
+ * Written here from the APPENDIX and not from the module, which is what an acceptance contract is for. It
+ * replaces the eight-kind `{ kind, id, createdAt, researcherId }` this file declared until 2026-09-20; that
+ * shape served ids alone and a page could render nothing from it (refactor plan §4 rule 1 — a case asserting a
+ * retired concept is rewritten in the commit that retires it).
+ */
+export interface Researcher {
+  handle: string;
+  mine: boolean;
 }
 
-export interface ReviewEntry {
-  kind: 'FLAGGED' | 'STALE_TRAJECTORY' | 'UNARGUED';
-  thesisId: string;
-  name: string;
-  command: string;
+export interface ModelVoice {
+  model: string | null;
+  promptVersion: string | null;
+  spentBy: Researcher;
 }
+
+export type Voice =
+  | ({ voice: 'RESEARCHER' } & Researcher)
+  | ({ voice: 'MODEL' } & ModelVoice)
+  | { voice: 'PLATFORM' };
+
+interface TurnBase {
+  id: string;
+  at: Date;
+  thread: { step: string; id: string };
+  by: Voice;
+  /** The identifying DATUM verbatim, or null where the kind and body name the turn (A4 :1476, „Q1 datum”). */
+  line: string | null;
+}
+
+/**
+ * THE SEVENTEEN BODIES, transcribed from A4 :1476 and from nothing else (M1/M2, 2026-09-20).
+ *
+ * `body: unknown` is what this file declared first, and it made the acceptance suite unable to state the one
+ * thing the appendix is most specific about: WHAT EACH KIND CARRIES. A case over `unknown` can pin a value it
+ * happens to find; it cannot say a body is missing half its fields.
+ */
+export type Turn =
+  | (TurnBase & { kind: 'FRAMING_OPENED'; body: { question: string; provision: string | null; fromRunId: string | null } })
+  | (TurnBase & { kind: 'ROUND_PROPOSED'; body: { framing: string | null; elements: unknown[] | null; malformed: boolean } })
+  | (TurnBase & { kind: 'ROUND_ASSESSED'; body: { content: Record<string, unknown> | null; malformed: boolean } })
+  | (TurnBase & {
+      kind: 'ROUND_CHOSEN';
+      body: { claim: string | null; provision: string | null; elements: unknown[] | null; restatedBy: string[]; malformed: boolean };
+    })
+  | (TurnBase & {
+      kind: 'VERSION';
+      body: {
+        text: string;
+        claim: string;
+        contentHash: string;
+        parentVersionId: string | null;
+        mentions: unknown[];
+        citationsVsParent: { added: string[]; repinned: string[]; dropped: string[]; carried: string[] };
+      };
+    })
+  | (TurnBase & { kind: 'DEBATE_OPENED'; body: { sessionId: string; record: unknown; pin: string | null } })
+  | (TurnBase & { kind: 'RATIONALE'; body: { text: string } })
+  | (TurnBase & {
+      kind: 'ASSESSMENT';
+      body: { hasSubstance: unknown; substanceGaps: unknown; verdict: unknown; objection: unknown; assessment: unknown; malformed: boolean };
+    })
+  | (TurnBase & { kind: 'RESPONSE'; body: { text: string } })
+  | (TurnBase & { kind: 'DEBATE_CLOSED'; body: { outcome: 'PROMOTED' | 'ABANDONED'; overObjection: boolean; evidenceFileHash: string | null } })
+  | (TurnBase & { kind: 'ANALYSIS'; body: { analysisId: string; inputFingerprint: string; current: boolean; opinion: unknown } })
+  | (TurnBase & {
+      kind: 'GAP_DECISION';
+      body: {
+        gapId: string;
+        description: string;
+        sequence: number;
+        decision: string;
+        citedName: string | null;
+        request: unknown;
+        callItem: unknown;
+        reason: string | null;
+        earlier: { sequence: number; decision: string; at: Date }[];
+      };
+    })
+  | (TurnBase & { kind: 'PUBLICATION_RATIONALE'; body: { attemptId: string; rationale: string } })
+  | (TurnBase & { kind: 'PUBLICATION_ASSESSMENT'; body: { attemptId: string; assessment: unknown; verdict: string | null } })
+  | (TurnBase & { kind: 'PUBLICATION_VERDICT'; body: { attemptId: string; outcome: 'PUBLISHED' | 'REFUSED'; refusedBy: string[] } })
+  | (TurnBase & { kind: 'WITHDRAWAL'; body: { versionId: string; reason: string } })
+  | (TurnBase & { kind: 'NOTE'; body: { text: string; on: 'THESIS' | 'FRAMING' } });
+
+/** Every kind A4 :1476 lists — the FLOOR an acceptance world must exercise. */
+export const TURN_KINDS_EXPECTED: readonly Turn['kind'][] = [
+  'FRAMING_OPENED',
+  'ROUND_PROPOSED',
+  'ROUND_ASSESSED',
+  'ROUND_CHOSEN',
+  'VERSION',
+  'DEBATE_OPENED',
+  'RATIONALE',
+  'ASSESSMENT',
+  'RESPONSE',
+  'DEBATE_CLOSED',
+  'ANALYSIS',
+  'GAP_DECISION',
+  'PUBLICATION_RATIONALE',
+  'PUBLICATION_ASSESSMENT',
+  'PUBLICATION_VERDICT',
+  'WITHDRAWAL',
+  'NOTE',
+];
+
+export type ReviewEntry =
+  | { kind: 'FLAGGED'; thesisId: string; name: string; command: string; versionId: string; mentionId: string; reasons: string[] }
+  | { kind: 'STALE_TRAJECTORY'; thesisId: string; name: string; command: string; citedOn: { versionId: string; published: boolean }[]; state: string }
+  | { kind: 'UNARGUED'; thesisId: string; name: string; command: string; versionId: string; mentionId: string };
 
 /**
  * `list_thesis_reviews`' ANSWER, as JSON (A4 :1523–:1525; T6 :868–:878): REVIEWS(caller),
@@ -319,15 +421,33 @@ export interface ReviewEntry {
  * owed with NO_FRAMING's, create_thesis's and `since`'s; step 17's dated record
  * names it.
  */
-export interface ThesisReviewListEntry extends ReviewEntry {
+export type ThesisReviewListEntry = ReviewEntry & {
   owedSince: string;
   material: Record<string, unknown>;
-}
+};
 
 export interface ThesisReviewList {
   owed: number;
   reviews: ThesisReviewListEntry[];
 }
+
+/**
+ * The GATED read's row — A4 :1476's `E & { record, owedSince }`, PAIRED PER KIND (the researcher, 2026-09-22).
+ *
+ * The three combinations are spelled as three arms, not as two nullable fields: two nullables describe FOUR
+ * shapes where the appendix names THREE, and a suite that accepted the fourth would grade a wire the design
+ * does not describe.
+ */
+export type OwedEntryShape =
+  | (Extract<ReviewEntry, { kind: 'FLAGGED' }> & { record: NamedRecordShape; owedSince: null })
+  | (Extract<ReviewEntry, { kind: 'UNARGUED' }> & { record: NamedRecordShape; owedSince: Date })
+  | (Extract<ReviewEntry, { kind: 'STALE_TRAJECTORY' }> & { record: null; owedSince: Date });
+
+/** A record as evidence A1 names it — its page and its timestamps, never a row id. */
+export type NamedRecordShape = { url: string; capture: string } | { url: string; before: string; after: string };
+
+/** The loader's rows, as the suite hands them — imported so the suite and the module cannot drift. */
+export type ThesisRowsShape = import('../../src/services/thesisRows').ThesisRows;
 
 export interface ThesisPredicatesModule {
   CRITIC_PROMPT_VERSION: string;
@@ -347,8 +467,20 @@ export interface ThesisPredicatesModule {
   theRequests(published: boolean, list: readonly GapEntry[]): unknown[];
   trajectoryCurrent(currency: TrajectoryCurrency): boolean;
   publishableVersion(versionId: string, assessment: PublicationAssessment): Promise<VersionPublishability>;
-  history(thesisId: string, since?: Date): Promise<HistoryEntry[]>;
+  // RESHAPED at UI-8 chunk A: HISTORY(t) is computed over rows the caller loaded, so by the purity rule this
+  // block states above it is PURE and SYNC. `loadThesisRows` is the question about the database.
+  transcriptOf(rows: ThesisRowsShape, options?: { since?: Date; callerId?: string | null; currentFingerprint?: string | null }): Turn[];
   reviews(researcherId: string): Promise<ReviewEntry[]>;
+  // PURE and SYNC, by the purity rule this block states: every input is a row the caller already loaded, which
+  // is the whole of A4 :1476's "ZERO EXTRA QUERIES". `resolved` is `ResolvedCitations`, structurally.
+  reviewsOf(
+    rows: ThesisRowsShape,
+    resolved: {
+      flags: ReadonlyMap<string, { flagged: boolean; reasons: string[] }>;
+      trajectories: ReadonlyMap<string, TrajectoryCurrency>;
+      records: ReadonlyMap<string, unknown>;
+    },
+  ): OwedEntryShape[];
 }
 
 /**

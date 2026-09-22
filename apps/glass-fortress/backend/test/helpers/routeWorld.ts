@@ -256,7 +256,12 @@ export function seedDebate(): void {
     recordDiff: { trackedUrl: { url: URL }, beforeSnapshot: { waybackTimestamp: BEFORE.waybackTimestamp }, afterSnapshot: { waybackTimestamp: AFTER.waybackTimestamp } },
     evidence: null,
     thesis: { createdById: AUTHOR, headVersionId: VERSION.id },
-    events: [{ type: 'RATIONALE_SUBMITTED', content: 'the opening argument', createdAt: new Date('2026-09-10T09:00:00.000Z') }],
+    // THE OPENER AND ITS MOMENT — columns `DebateSession` has always had (evidence T3 :371) and this fixture
+    // did not carry, because nothing read them until `get_debate`'s answer became TURNS (evidence :1123).
+    researcherId: AUTHOR,
+    createdAt: new Date('2026-09-10T08:59:00.000Z'),
+    closedAt: null,
+    events: [{ id: 'event-1', type: 'RATIONALE_SUBMITTED', content: 'the opening argument', createdAt: new Date('2026-09-10T09:00:00.000Z') }],
   };
 }
 

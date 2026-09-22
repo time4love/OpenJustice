@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
-import { AFTER, BEFORE, DIFF_NAME, DIFF_ROW, CURRENT_VERSION, PAGE, URL } from '../helpers/corpusFixture';
+import { AFTER, BEFORE, DIFF_NAME, DIFF_ROW, CURRENT_VERSION, PAGE, RE_EXTRACTED_BEFORE, URL } from '../helpers/corpusFixture';
 import { asked, db, rolledBack, store, written, writtenViaTx, type Row, type Write } from '../helpers/evidenceDouble';
 import { built } from './absent';
 import { MODULES, TOOLS, type ThesisCode, type ThesisRow, type ToolName, type WriteToolOnAThesis } from './contract';
@@ -410,16 +410,57 @@ const TRAJECTORY_ROW: Row = {
 /**
  * The corpus beneath the fixture VERSION's citation: the page, its two captures, the
  * pair and its CURRENT content version, the work-list row of the later capture, and
- * the one ClaimTrajectory the fixtures cite. `acquired: false` leaves the later capture
- * fetched but SKIPPED — no snapshot and so no pair, its bytes' hash on the work-list
- * row; `derived: false` leaves the pair with no content version (AWAITING_DERIVATION).
+ * the one ClaimTrajectory the fixtures cite.
+ *
+ * `acquired: false` leaves the later capture fetched but SKIPPED — no snapshot and so
+ * no pair, its bytes' hash on the work-list row.
+ *
+ * `derived: false` leaves the pair with NO CONTENT VERSION AT ALL — a pair the walk has
+ * NEVER derived, and therefore one **no citation can pin**: thesis T2 :412–:414 computes
+ * `pin := CURRENT(record).hash` and REFUSES AWAITING_DERIVATION, so no version write ever
+ * produces a mention over this world. It is the right world for a path that COMPUTES a
+ * pin or loads CURRENT and must refuse — the version write and the framing round — and
+ * the WRONG world for any path that RESOLVES an existing pin.
+ *
+ * `superseded: true` is the other AWAITING_DERIVATION, and it is the CITABLE one — flow
+ * E3 (evidence :496–:503). The re-walk re-extracted the BEFORE capture's text, so
+ * `CURRENT_VERSION.beforeTextHash` no longer matches it and `currentVersionOf` finds no
+ * CURRENT — while the version itself is **kept**, in `contentVersions` and in
+ * `store.contentVersions`, exactly where a pin names it. E3 :501: *"the old version is
+ * kept and every citation still pins it."*
+ *
+ * THE TWO ARE NOT INTERCHANGEABLE AND THE DIFFERENCE IS WHAT THIS DOCSTRING ONCE HID. It
+ * read "`derived: false` leaves the pair with no content version (AWAITING_DERIVATION)",
+ * which conflates a state of CURRENT with the absence of every version. They coincide
+ * only for an UNCITABLE pair, and three cases inherited the conflation and seeded a world
+ * the design cannot produce (a head citing a never-derived diff). CURRENT being undefined
+ * is a property of the endpoints' text, never of the stored versions (evidence
+ * :1027–:1029, :200–:204).
  */
-export function seedCorpus(over: { acquired?: boolean; derived?: boolean } = {}): void {
+export function seedCorpus(over: { acquired?: boolean; derived?: boolean; superseded?: boolean } = {}): void {
   const acquired = over.acquired ?? true;
   const derived = over.derived ?? true;
+  const superseded = over.superseded ?? false;
+  if (superseded && !derived) {
+    throw new Error(
+      'seedCorpus: `superseded` needs a stored version to supersede. A pair with no version at all is ' +
+        '`derived: false`, and no citation can pin one (thesis T2 :414).',
+    );
+  }
   const held = (capture: typeof BEFORE): Row => ({ ...capture, trackedUrlId: PAGE.id, trackedUrl: PAGE });
-  store.captures = acquired ? [held(BEFORE), held(AFTER)] : [held(BEFORE)];
-  store.diffs = acquired ? [{ ...DIFF_ROW, trackedUrlId: PAGE.id, contentVersions: derived ? [CURRENT_VERSION] : [] }] : [];
+  // THE ENDPOINT'S TEXT MOVES, AND THE STORED VERSION DOES NOT (E3 :499–:502) — `contentVersions` and
+  // `store.contentVersions` below are untouched by `superseded`, which is the whole point.
+  //
+  // IN BOTH PLACES THE FIXTURE HOLDS THE SNAPSHOT, because it holds it twice. The database has ONE
+  // `UrlSnapshot` row, which `store.captures` and the diff row's `beforeSnapshot` are two copies of; a
+  // re-extraction that moved only one of them would be a world no database can be in — and `recordsByName`
+  // builds the record's endpoints from the DIFF ROW, so moving only `store.captures` leaves CURRENT defined
+  // and the world silently unchanged. That is what the first spelling of this did.
+  const before = superseded ? RE_EXTRACTED_BEFORE : BEFORE;
+  store.captures = acquired ? [held(before), held(AFTER)] : [held(before)];
+  store.diffs = acquired
+    ? [{ ...DIFF_ROW, beforeSnapshot: before, trackedUrlId: PAGE.id, contentVersions: derived ? [CURRENT_VERSION] : [] }]
+    : [];
   store.contentVersions = acquired && derived ? [{ ...CURRENT_VERSION, diffId: DIFF_ROW.id }] : [];
   // Every key is a column of `CdxIndexEntry` (prisma/schema.prisma), `status` among
   // them — the one `lookupCapture` selects (7.3 round 2, L2). The double answers

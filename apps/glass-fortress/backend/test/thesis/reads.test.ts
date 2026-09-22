@@ -4,16 +4,17 @@ jest.mock('../../src/lib/prisma', () => ({
 jest.mock('../../src/context/researcherContext', () => (require('./tools') as typeof import('./tools')).researcherContextDouble);
 jest.mock('../../src/factories/LLMFactory', () => (require('./tools') as typeof import('./tools')).llmFactoryTripwire);
 
-import { DIFF_NAME } from '../helpers/corpusFixture';
-import { resetDouble, store, written } from '../helpers/evidenceDouble';
+import { AFTER, BEFORE, CAPTURE_NAME, CURRENT_VERSION, DIFF_NAME, DIFF_ROW, PAGE, URL } from '../helpers/corpusFixture';
+import { resetDouble, store, written, type Row } from '../helpers/evidenceDouble';
 import { built } from './absent';
-import type { ThesisGapDecisionRow, ThesisPredicatesModule, ThesisRow, ThesisVersionRow } from './contract';
+import type { ThesisGapDecisionRow, ThesisPredicatesModule, ThesisRow, ThesisRowsShape, ThesisVersionRow } from './contract';
 import {
   AUTHOR,
   BOTH_EVIDENCE_MENTION,
   BOTH_TRAJECTORY_MENTION,
   CITING_BOTH_VERSION,
   CLAIM,
+  DEBATE,
   FRAMING,
   MENTION,
   NEXT_VERSION,
@@ -43,9 +44,39 @@ import {
   objectsWhere,
   refusals,
   resetTools,
+  seedCorpus,
   seedThesis,
   tripped,
 } from './tools';
+import { loadThesisRows } from '../../src/services/thesisRows';
+import { citationsFrom } from '../../src/services/publishedThesis';
+import type { OwedEntryShape, ReviewEntry } from './contract';
+
+/**
+ * The gated row projected down to A4 :1523's `E` — spelled arm by arm rather than by discarding keys, so a field
+ * added to either shape is a compile failure here and not a key quietly carried onto the wrong envelope.
+ */
+const entryOf = (entry: OwedEntryShape): ReviewEntry => {
+  const common = { thesisId: entry.thesisId, name: entry.name, command: entry.command };
+  if (entry.kind === 'FLAGGED') {
+    return { ...common, kind: entry.kind, versionId: entry.versionId, mentionId: entry.mentionId, reasons: entry.reasons };
+  }
+  if (entry.kind === 'STALE_TRAJECTORY') {
+    return { ...common, kind: entry.kind, citedOn: entry.citedOn, state: entry.state };
+  }
+  return { ...common, kind: entry.kind, versionId: entry.versionId, mentionId: entry.mentionId };
+};
+
+/** A stable order for comparing two answers of the SAME set — never the order either one happens to build. */
+const byKindThenName = (a: ReviewEntry, b: ReviewEntry): number =>
+  a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name) || a.thesisId.localeCompare(b.thesisId);
+
+/** The seeded world as ROWS — the one query, so the composer under test is pure (UI-8 chunk A). */
+const thesisRowsOf = async (): Promise<ThesisRowsShape> => {
+  const rows = await loadThesisRows(THESIS.id);
+  if (rows === null) throw new Error('the world seeds a thesis and the loader answered none');
+  return rows;
+};
 
 // ---------------------------------------------------------------------------
 // THE READS AND THE NOTE — docs/gf-thesis-flows.md A4 :1426–:1431, :1476–:1479,
@@ -238,6 +269,35 @@ describe('get_thesis_context — A4 :1476–:1479, GATED (thesis step 20)', () =
     expect(tripped).toEqual([]);
   });
 
+  // -------------------------------------------------------------------------
+  // NO ID ON THE WIRE — A4 :1476, "a researcher — NEVER an id on the wire"; ui §4 :167, which bars a page from
+  // rendering one at all. Held on the SERIALISED answer, because that is what a route sends and what a page
+  // parses: a case reading the in-memory object would miss an id nested in a row the body carries whole.
+  //
+  // IT WAS NOT VACUOUS WHEN IT WAS WRITTEN. A walk of the live body on 2026-09-20 found exactly one path still
+  // carrying the caller's id — `gapList[].inForce.researcherId`, because :1476 spells `inForce` as "the
+  // ThesisGapDecision row" and the row has the column. The id is projected out of it and `by` carries the
+  // attribution instead; this case is what stops it coming back.
+  // -------------------------------------------------------------------------
+  it('the serialised context carries NO researcher id anywhere, and every `by` carries the seeded HANDLE instead (A4 :1476; §4 :167)', async () => {
+    seedThesis();
+    store.gapDecisions = [{ ...OPEN_GAP }];
+    store.notes = [{ ...NOTE }];
+    const text = await call('get_thesis_context', { thesisId: THESIS.id }, AUTHOR);
+    // THE VACUITY GUARD: the answer must actually hold the parts that name a researcher, or the absence below
+    // is an absence of everything.
+    const answer = answerOf(text) as { thesis: { by: { handle: string } }; gapList: unknown[]; history: unknown[] };
+    expect([answer.gapList.length > 0, answer.history.length > 0]).toEqual([true, true]);
+    expect(text).not.toContain(AUTHOR);
+    expect(text).not.toContain(OTHER_RESEARCHER);
+    expect(text).toContain('חוקר_א');
+    expect(answer.thesis.by).toEqual({ handle: 'חוקר_א', mine: true });
+    // Every `by` on every arm, from the serialised text: a handle and a `mine`, and no third key.
+    const byKeys = [...text.matchAll(/"by":\{([^{}]*)\}/g)].map((m) => m[1] ?? '');
+    expect(byKeys.length).toBeGreaterThan(3);
+    expect([...new Set(byKeys.map((keys) => keys.includes('"handle"') && keys.includes('"mine"')))]).toEqual([true]);
+  });
+
   it("HISTORY SINCE A DATE through the tool — `since`, ISO-8601, COINED (7.3 round 2, M2): the ONE predicate's entries after it and none before, the date BETWEEN two rows (A4 :1479; §9 :977–:978)", async () => {
     seedThesis();
     store.gapDecisions = [{ ...OPEN_GAP }];
@@ -246,11 +306,14 @@ describe('get_thesis_context — A4 :1476–:1479, GATED (thesis step 20)', () =
     // to a row's own createdAt would pin a strict-or-inclusive boundary A3 :1407
     // never states.
     const since = new Date(Date.UTC(2026, 8, 10, 9, 12, 30));
-    const p = await built<ThesisPredicatesModule>('services/thesisPredicates', ['history']);
+    const p = await built<ThesisPredicatesModule>('services/thesisPredicates', ['transcriptOf']);
     // HISTORY as the predicate answers it, in the JSON a tool returns — dates as ISO.
     const asJson = (entries: readonly unknown[]): unknown[] => entries.map((e) => JSON.parse(JSON.stringify(e)) as unknown);
-    const after = asJson(await p.history(THESIS.id, since));
-    const before = asJson(await p.history(THESIS.id)).filter((entry) => !containsDeep(after, entry));
+    // DECLARED EDIT, 2026-09-20 (R66): the CALL SHAPE only — `history` takes its options as an object since
+    // A4 :1476's ruling. Not one assertion of this case moved; it still holds the strict boundary and its own
+    // vacuity guard on both sides of the instant.
+    const after = asJson(p.transcriptOf(await thesisRowsOf(), { since }));
+    const before = asJson(p.transcriptOf(await thesisRowsOf())).filter((entry) => !containsDeep(after, entry));
     // THE VACUITY GUARD: the date must have rows on BOTH sides, or the case holds nothing.
     expect([after.length > 0, before.length > 0]).toEqual([true, true]);
     const answer = answerOf(
@@ -258,6 +321,344 @@ describe('get_thesis_context — A4 :1476–:1479, GATED (thesis step 20)', () =
     );
     expect(after.filter((entry) => !containsDeep(answer, entry))).toEqual([]);
     expect(before.filter((entry) => containsDeep(answer, entry))).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
+  // THE MENTIONS ARE RESOLVED, AND `pages` RIDES THE READ — A4 :1476 as amended 2026-09-21; T5 :811–:818 for
+  // what a resolved citation carries; ui §11 :410 and :413–:415 for the two readers that have always needed
+  // the record.
+  //
+  // THE OLD SHAPE WAS `{ kind, name, pin, argued }`, which the working view's centre CANNOT be fed: the centre
+  // is the public thesis column CALLED, and its `EvidenceCitation` requires `record`, `content`, `verified`,
+  // `flag` and `overObjection`. The only legal call was `citations: []`, which makes `ThesisText` :25–:31
+  // resolve EVERY token to `unresolved` — false on every citation.
+  //
+  // THE FLOOR IS STATED BECAUSE THE ASSERTION IS SATISFIABLE BY NOTHING. "The citations are resolved" is true
+  // of a version that cites nothing, so the world is checked to carry BOTH kinds, a FLAGGED citation and one
+  // promoted OVER THE OBJECTION before any shape is read.
+  //
+  // FLAGGED SITS ON PUBLISHED, AND MUST. FLAGGED(m) requires m to be on a published version (evidence A3
+  // :1054) and `flaggedFor` answers an unpublished mention as unflagged before it consults any evidence row —
+  // so a HEAD citation's flag is `{ flagged: false, reasons: [] }` ALWAYS. That is the design, not a defect,
+  // and a case expecting a flagged HEAD citation would assert what the design forbids.
+  // -------------------------------------------------------------------------
+
+  /** The key set A4 :1476 spells for each arm of `V.mentions`, and T5 :811–:818 lists. */
+  const EVIDENCE_KEYS = ['argued', 'content', 'flag', 'kind', 'name', 'overObjection', 'pin', 'record', 'verified'];
+  const TRAJECTORY_RESOLVED_KEYS = ['argued', 'claimText', 'current', 'kind', 'name', 'pin', 'resolves', 'transitions', 'url'];
+
+  interface Mention {
+    kind: string;
+    name: string;
+    flag?: { flagged: boolean; reasons: string[] };
+    overObjection?: boolean;
+  }
+  const keysOf = (m: Mention): string[] => Object.keys(m).sort();
+
+  /**
+   * PUBLISHED at VERSION citing the diff — ARGUED, promoted over the objection, and FLAGGED because the record
+   * was WITHDRAWN after publication — with HEAD moved on to CITING_BOTH_VERSION, which cites the same diff and
+   * a trajectory. Two versions, both kinds, and the two marks that only a published mention can carry.
+   */
+  function seedBothVersionsResolved(): void {
+    seedThesis({ ...AS_PUBLISHED, headVersionId: CITING_BOTH_VERSION.id });
+    store.versions = [VERSION, TRAJECTORY_VERSION, NEXT_VERSION, CITING_BOTH_VERSION];
+    // `promotedOverObjection` is spread onto the debate the double answers, as publicThesisRoutes.test.ts :182
+    // does: `mentionRow` carries the three fields ARGUED reads and this fourth is the FACT T5 :816 names.
+    const published = mentionRow(MENTION, true, DEBATE);
+    store.mentions = [
+      { ...published, debateSession: { ...(published['debateSession'] as Row), promotedOverObjection: true } },
+      mentionRow(BOTH_EVIDENCE_MENTION, false),
+      mentionRow(BOTH_TRAJECTORY_MENTION, false),
+    ];
+    // The endpoints carry their page and the pair its content versions, as VERIFIED and FLAGGED select them
+    // (`evidencePredicates.ts` :697, :790–:798) — routeWorld.ts :126's shape. A bare DIFF_ROW here throws
+    // inside VERIFIED, which is a malformed row and not a finding about the read.
+    store.evidenceRows = [
+      {
+        fileHash: DIFF_NAME,
+        kind: 'DIFF',
+        status: 'WITHDRAWN',
+        snapshot: null,
+        urlVersionDiff: {
+          ...DIFF_ROW,
+          trackedUrlId: PAGE.id,
+          contentVersions: [CURRENT_VERSION],
+          beforeSnapshot: { ...BEFORE, trackedUrl: PAGE },
+          afterSnapshot: { ...AFTER, trackedUrl: PAGE },
+        },
+      },
+    ];
+  }
+
+  it("HEAD's and PUBLISHED's mentions are RESOLVED CITATIONS — every key T5 :811–:818 lists, both kinds, the FLAG on the published one and the FACT of the objection — and `currency` is nowhere on the wire (A4 :1476)", async () => {
+    seedBothVersionsResolved();
+    const answer = answerOf(await call('get_thesis_context', { thesisId: THESIS.id }, OTHER_RESEARCHER)) as {
+      head: { mentions: Mention[] };
+      published: { mentions: Mention[] };
+    };
+    const head = answer.head.mentions;
+    const published = answer.published.mentions;
+
+    // THE FLOOR, before any shape is read: two versions really carry citations, BOTH kinds are present, and
+    // the published one really is FLAGGED and really was promoted over the objection. Without this every
+    // assertion below is satisfied by a world that cites nothing.
+    expect({
+      headCount: head.length,
+      publishedCount: published.length,
+      kinds: [...new Set(head.map((m) => m.kind))].sort(),
+      flagged: published.filter((m) => m.flag?.flagged === true).length,
+      overObjection: published.filter((m) => m.overObjection === true).length,
+    }).toEqual({ headCount: 2, publishedCount: 1, kinds: ['EVIDENCE', 'TRAJECTORY'], flagged: 1, overObjection: 1 });
+
+    // EACH ARM'S KEY SET EXACTLY — a missing `record` or `content` is what the centre cannot draw, and an
+    // extra key is a second citation shape beside the public one.
+    expect([...head, ...published].filter((m) => m.kind === 'EVIDENCE').map(keysOf)).toEqual([EVIDENCE_KEYS, EVIDENCE_KEYS]);
+    expect(head.filter((m) => m.kind === 'TRAJECTORY').map(keysOf)).toEqual([TRAJECTORY_RESOLVED_KEYS]);
+
+    // FLAGGED IS FALSE ON HEAD BY DEFINITION — the same record, the same WITHDRAWN row, and an unpublished
+    // mention. This is the design (evidence A3 :1054), stated so a future "fix" cannot quietly flag a draft.
+    expect(head.filter((m) => m.kind === 'EVIDENCE').map((m) => m.flag)).toEqual([{ flagged: false, reasons: [] }]);
+
+    // `currency` LEFT THE WIRE: it was written onto the `resolves: false` arm, where a property of a
+    // trajectory that RESOLVED cannot exist, and no reader consumes a mention's currency.
+    expect(await call('get_thesis_context', { thesisId: THESIS.id }, OTHER_RESEARCHER)).not.toContain('currency');
+    expect(written).toEqual([]);
+    expect(tripped).toEqual([]);
+  });
+
+  it('`pages` names each CITED page ONCE across HEAD and PUBLISHED together — the union deduplicated by url, which is what the chip resolves its link from (A4 :1476; `ThesisText.tsx` :49)', async () => {
+    seedBothVersionsResolved();
+    const answer = answerOf(await call('get_thesis_context', { thesisId: THESIS.id }, OTHER_RESEARCHER)) as {
+      head: { mentions: { kind: string; record?: { url: string } }[] };
+      published: { mentions: { kind: string; record?: { url: string } }[] };
+      pages: { trackedUrlId: string; url: string }[];
+    };
+    // THE VACUITY GUARD AND THE DECOY IN ONE: BOTH versions cite a record on this page, so a `pages` built by
+    // concatenating the two versions' lists would carry it TWICE and fail on the length — while a `pages`
+    // built from HEAD alone still passes. THE TWO-PAGE UNION IS NOT GRADED HERE: the thesis fixture holds one
+    // TrackedUrl, so a body serving only HEAD's pages would satisfy this case. Stated, not implied.
+    const citedUrls = [...answer.head.mentions, ...answer.published.mentions]
+      .filter((m) => m.kind === 'EVIDENCE')
+      .map((m) => m.record?.url);
+    expect(citedUrls).toEqual([URL, URL]);
+    expect(answer.pages).toEqual([{ trackedUrlId: PAGE.id, url: URL }]);
+  });
+
+  // -------------------------------------------------------------------------
+  // `owed` AND `reviews` — A4 :1476, ruled 2026-09-22 (the researcher, R71); ui §11 :402-:408.
+  //
+  // THIS THESIS'S ENTRIES OF REVIEWS RIDE THIS READ. The working view took a SECOND read of
+  // `/api/research/reviews` and kept the entries naming this thesis — a pass over EVERY thesis on the platform
+  // to keep one thesis's rows, and a read ui §10 :369-:371's CLOSED LIST never named. The field replaces it.
+  //
+  // THE SHAPE MIRRORS A4 :1523: `owed` is the COUNT and `reviews` the entries, so ONE NAME keeps ONE meaning
+  // across the two doors. A body serving `owed: ReviewEntry[]` — the design source's first proposal — passes
+  // nothing below.
+  // -------------------------------------------------------------------------
+  it("`owed` and `reviews` ride THIS read: the thesis's own entries of REVIEWS, `owed` the COUNT that mirrors A4 :1523 (A4 :1476; ui §11 :402)", async () => {
+    seedBothVersionsResolved();
+    const answer = answerOf(await call('get_thesis_context', { thesisId: THESIS.id }, AUTHOR)) as {
+      owed: number;
+      reviews: { kind: string; thesisId: string; name: string; command: string }[];
+    };
+    // THE FLOOR ON THE SUBJECT: this world really owes something, and really owes MORE THAN ONE KIND — a
+    // `reviews` that answered `[]`, or that served one arm and dropped the others, satisfies every equality
+    // below by carrying nothing. `owed: 0` is a legitimate answer and is held by its own case, on a world
+    // that owes nothing.
+    expect(answer.reviews.length).toBeGreaterThanOrEqual(2);
+    expect([...new Set(answer.reviews.map((e) => e.kind))].sort()).toEqual(['FLAGGED', 'UNARGUED']);
+    // `owed` IS A NUMBER AND IT IS THIS LIST'S COUNT — the count and the list cannot disagree with each other.
+    expect(answer.owed).toBe(answer.reviews.length);
+    // Every entry names THIS thesis and carries the ONE command to paste (T6 :881-:882).
+    expect(answer.reviews.filter((e) => e.thesisId !== THESIS.id || e.command.length === 0)).toEqual([]);
+    expect(written).toEqual([]);
+  });
+
+  it("each entry carries the RECORD and `owedSince` PAIRED BY KIND, on the SERIALISED answer (A4 :1476 as amended; ui §11 :404)", async () => {
+    // HELD ON THE SERIALISED ANSWER because that is what a route sends and what a page parses — the R66 lesson.
+    // A `Date` that never left the process would pass an in-memory assertion and reach the page as `{}`.
+    //
+    // AND THE WORLD CITES **TWO DIFFERENT RECORDS**, which the shared fixture does not: its published and head
+    // EVIDENCE mentions name the SAME diff, so a `record` taken from ANY entry of the resolver's map — the first,
+    // say — would be right by accident and this case would grade nothing. DEV's decoy E3 (2026-09-22) is exactly
+    // that, and reddened nothing until this line was added. The head gains a CAPTURE citation, so each entry's
+    // record can be checked against ITS OWN name.
+    seedBothVersionsResolved();
+    store.mentions = [
+      ...store.mentions,
+      mentionRow({ ...MENTION, id: 'mention-capture', versionId: CITING_BOTH_VERSION.id, name: CAPTURE_NAME, contentVersionHash: BEFORE.textHash }, false),
+    ];
+    // The capture HOLDS ITS TEXT at the pin — `heldTextsFor` answers a citation pinned to the capture's current
+    // extraction from the snapshot row itself, and a row without `text` is a malformed capture rather than a
+    // finding about this read (`publishedThesis.ts`'s `pinnedContent` throws on it by name).
+    store.captures = store.captures.map((capture) =>
+      capture['id'] === BEFORE.id ? { ...capture, text: 'הפסקה כפי שנצפתה בצילום' } : capture,
+    );
+    const answer = answerOf(await call('get_thesis_context', { thesisId: THESIS.id }, AUTHOR)) as {
+      reviews: { kind: string; name: string; record: unknown; owedSince: unknown }[];
+    };
+    // THE FLOOR: both arms this world owes are present, so the per-kind table below is over something.
+    expect([...new Set(answer.reviews.map((e) => e.kind))].sort()).toEqual(['FLAGGED', 'UNARGUED']);
+
+    // THE THREE LEGAL PAIRINGS, as VALUES — FLAGGED { record, owedSince: null } · UNARGUED { record, owedSince }
+    // · STALE_TRAJECTORY { record: null, owedSince }. A body that made both fields independently nullable would
+    // admit a fourth shape the appendix does not name, and this table is what refuses it.
+    expect(
+      answer.reviews.map((entry) => ({
+        kind: entry.kind,
+        record: entry.record === null ? null : 'named',
+        owedSince: entry.owedSince === null ? null : 'dated',
+      })),
+    ).toEqual(answer.reviews.map((entry) => ({ kind: entry.kind, record: 'named', owedSince: entry.kind === 'FLAGGED' ? null : 'dated' })));
+
+    // THE RECORD IS NAMED AS EVIDENCE A1 NAMES IT — the page and its timestamps, never a row id (§4 :167) — and
+    // EACH ENTRY CARRIES ITS OWN. The diff-named citations name the pair by its two endpoints; the capture-named
+    // one names a single capture. An entry handed another entry's record fails here by value.
+    expect(answer.reviews.map((entry) => [entry.name, entry.record])).toEqual(
+      answer.reviews.map((entry) => [
+        entry.name,
+        entry.name === CAPTURE_NAME
+          ? { url: URL, capture: BEFORE.waybackTimestamp }
+          : { url: URL, before: BEFORE.waybackTimestamp, after: AFTER.waybackTimestamp },
+      ]),
+    );
+    // THE VACUITY GUARD ON THAT TABLE: both sides are built from the same answer, so it is a SHAPE check and
+    // holds nothing unless the world really cites TWO records. It does, and this says which.
+    expect([...new Set(answer.reviews.map((entry) => entry.name))].sort()).toEqual([CAPTURE_NAME, DIFF_NAME].sort());
+
+    // AND THE DATE IS AN ISO INSTANT ON THE WIRE, not a serialised object. UNARGUED's is HEAD's own `createdAt`.
+    const unargued = answer.reviews.find((entry) => entry.kind === 'UNARGUED');
+    expect(unargued?.owedSince).toBe(CITING_BOTH_VERSION.createdAt.toISOString());
+  });
+
+  it('`{ owed: 0, reviews: [] }` is an ANSWER and never a refusal, on a thesis that owes nothing (A4 :1476, :1525; ui §11 :406)', async () => {
+    // The head's one citation ARGUED, for this record and this thesis: UNARGUED fires on ARGUED, nothing is
+    // published, and no trajectory is cited — the three arms are each answered and each answer is empty.
+    seedThesis();
+    store.mentions = [mentionRow(MENTION, false, DEBATE)];
+    const answer = answerOf(await call('get_thesis_context', { thesisId: THESIS.id }, AUTHOR));
+    expect({ owed: answer['owed'], reviews: answer['reviews'] }).toEqual({ owed: 0, reviews: [] });
+  });
+
+  // -------------------------------------------------------------------------
+  // THE COLLEAGUE CASE — ui §11 :407-:408, and the reason this field is NOT `REVIEWS(researcher)`.
+  //
+  // A3 :1408-:1410 scopes that predicate to the theses the caller AUTHORS. §11 :407 requires THE SAME ENTRIES
+  // on a COLLEAGUE'S thesis, with the command labelled as the author's — and §9 :1003 says the gated read is
+  // "gated from the public, not from colleagues". So a `reviews` field built by calling REVIEWS(caller) and
+  // keeping this thesis's rows answers `[]` to every colleague, silently.
+  //
+  // NOTHING IN THE TREE HELD THIS BEFORE (the R71 brief §2, the case it names as OWED).
+  // -------------------------------------------------------------------------
+  it("a COLLEAGUE reading the thesis is answered the SAME entries — the field is PER-THESIS and carries no author scoping (ui §11 :407; A3 :1408)", async () => {
+    seedBothVersionsResolved();
+    const mine = answerOf(await call('get_thesis_context', { thesisId: THESIS.id }, AUTHOR));
+    const theirs = answerOf(await call('get_thesis_context', { thesisId: THESIS.id }, OTHER_RESEARCHER));
+    // THE FLOOR: the author's own read really owes entries, or "the same" is the same nothing twice. And the
+    // two callers really are different researchers — `mine` on the thesis says so.
+    expect((mine['reviews'] as unknown[]).length).toBeGreaterThan(0);
+    expect([(mine['thesis'] as { by: { mine: boolean } }).by.mine, (theirs['thesis'] as { by: { mine: boolean } }).by.mine]).toEqual([true, false]);
+    expect(theirs['reviews']).toEqual(mine['reviews']);
+    expect(theirs['owed']).toEqual(mine['owed']);
+  });
+
+  // -------------------------------------------------------------------------
+  // ONE REVIEWS, TWO SOURCES — the guard on the deliberate second assembly.
+  //
+  // `reviewsOf` builds A3 :1408-:1410's three arms over rows the read already loaded; `reviews` builds them
+  // over queries of its own, because a cross-thesis list cannot afford one thesis's whole read per thesis (the
+  // researcher's ruling, 2026-09-22). Two sources is the ruling; two ANSWERS would be this repository's named
+  // defect. This case is what stops them parting, and it is what the later pending-work chunk keeps green when
+  // it collapses them.
+  // -------------------------------------------------------------------------
+  it('`reviewsOf` answers the SAME ENTRIES `reviews` answers — the gated row is `E` PLUS the pairing, never a different `E` (A3 :1408-:1410)', async () => {
+    // RE-AIMED 2026-09-22 (round 2), NOT WEAKENED. The two doors now serve different ROWS by ruling — A4 :1476's
+    // `E & { record, owedSince }` here, :1523's `E & { owedSince, material, author, mine }` there — so a raw
+    // deep-equal would hold a world the design deleted. What must not drift is the ENTRY underneath, and the
+    // projection below is the whole of it: a field added to either union's arms fails HERE by name rather than
+    // being dropped in silence.
+    seedBothVersionsResolved();
+    const p = await built<ThesisPredicatesModule>('services/thesisPredicates', ['reviews', 'reviewsOf']);
+    const rows = await thesisRowsOf();
+    const cited = await citationsFrom(
+      THESIS.id,
+      rows.mentions,
+      [rows.thesis.headVersionId, rows.thesis.publishedVersionId].filter((id): id is string => id !== null),
+    );
+    const overRows = p.reviewsOf(rows, cited);
+    const overQueries = await p.reviews(AUTHOR);
+    // THE FLOOR ON THE SUBJECT: a world that owes nothing makes the two lists equal by being empty twice.
+    expect(overRows.length).toBeGreaterThanOrEqual(2);
+    expect(overRows.map(entryOf).sort(byKindThenName)).toEqual([...overQueries].sort(byKindThenName));
+
+    // AND THE PAIRING IS EXACTLY THE THREE THE APPENDIX NAMES (A4 :1476), stated as a value per kind so a fourth
+    // combination — a FLAGGED entry with a date, a STALE entry with a record — fails by naming the kind.
+    expect(overRows.map((entry) => [entry.kind, entry.record === null ? 'no record' : 'record', entry.owedSince === null ? 'no date' : 'date'])).toEqual(
+      overRows.map((entry) => [entry.kind, entry.kind === 'STALE_TRAJECTORY' ? 'no record' : 'record', entry.kind === 'FLAGGED' ? 'no date' : 'date']),
+    );
+    // THE VACUITY GUARD ON THAT: both sides are built from `overRows`, so the equality above is a SHAPE check and
+    // holds nothing unless the kinds really differ. They do, and this says which.
+    expect([...new Set(overRows.map((e) => e.kind))].sort()).toEqual(['FLAGGED', 'UNARGUED']);
+  });
+
+  // -------------------------------------------------------------------------
+  // THE PIN'S GUARD — `publishedThesis.ts` :543, LOAD-BEARING AND UNTIL NOW UNHELD.
+  //
+  // A PIN ALWAYS NAMES A STORED VERSION, and that is a design fact rather than a hope: content is held as
+  // APPEND-ONLY VERSIONS and nothing overwrites one (evidence :200–:204, :796), the version write sets
+  // `pin := CURRENT(record).hash` and REFUSES AWAITING_DERIVATION (thesis T2 :412–:414), and a re-walk leaves
+  // every stored version where it was — *"the old version is kept and every citation still pins it"*
+  // (evidence :501). AWAITING_DERIVATION is a property of CURRENT, never of the pin.
+  //
+  // SO A MENTION WHOSE PIN NO VERSION CARRIES IS A MALFORMED ROW, and the read says so LOUDLY. It is the
+  // `requireSnapshotIdentity` pattern `CLAUDE.md` requires: never a silent filter, because a citation quietly
+  // dropped is a chip the centre draws as `unresolved` with nothing to say why — and on the KEEP column an
+  // unknown content kind renders NOTHING at all (`components/record/RecordContent.tsx` :104–:110, two
+  // exclusive branches and no else), so a "tolerant" arm would open a chip onto an empty pane.
+  //
+  // ONE GUARD SERVES BOTH BODIES. `citationsByVersion` is the public page's resolver and the gated read's, so
+  // this case holds the guard for `GET /api/thesis/:id` as much as for the working view.
+  // -------------------------------------------------------------------------
+  it('AWAITING_DERIVATION is a property of CURRENT and NOT of the pin: the cited version is KEPT, so the citation still RESOLVES and draws the PINNED chunks (evidence :1027–:1029, :501; T5 :813)', async () => {
+    // THE WORLD THE FIXTURE NOW SEEDS FOR "the walk owes a version", and the ONE it can seed for a CITED
+    // pair. This case is what stops `superseded` being quietly rewritten back into a world with no stored
+    // version at all — which is uncitable (T2 :414) and is what three cases held for months.
+    seedThesis();
+    seedCorpus({ superseded: true });
+    const gated = await import('../../src/mcp/tools/getThesisContext');
+    const body = await gated.thesisContextOf({ thesisId: THESIS.id });
+    expect('head' in body).toBe(true);
+    if (!('head' in body)) return;
+
+    // THE TWO HALVES TOGETHER, and neither alone is the world: CURRENT is undefined (the analysis arm says
+    // AWAITING_DERIVATION) AND the citation resolves at its pin, with the kept version's own chunks.
+    const citation = body.head?.mentions.at(0);
+    expect({
+      analysis: body.analysis,
+      pin: citation?.pin,
+      content: citation?.kind === 'EVIDENCE' ? citation.content : null,
+    }).toEqual({
+      analysis: { state: 'AWAITING_DERIVATION', name: DIFF_NAME },
+      pin: CURRENT_VERSION.contentVersionHash,
+      content: { kind: 'DIFF', chunks: CURRENT_VERSION.chunks.map((c) => ({ side: c.side, text: c.text })) },
+    });
+  });
+
+  it('a mention whose PIN no stored version carries is MALFORMED, and the read THROWS naming the pin and the diff — never a citation silently missing (evidence :200–:204; T2 :412–:414)', async () => {
+    seedThesis();
+    const gated = await import('../../src/mcp/tools/getThesisContext');
+
+    // THE GREEN CONTROL FIRST, on the world as seeded: the pin the store holds answers, so the throw below is
+    // the PIN's and not this world's.
+    const answered = await gated.thesisContextOf({ thesisId: THESIS.id });
+    expect('head' in answered && answered.head?.mentions.length).toBe(1);
+
+    // THE SAME WORLD, ONE FIELD MOVED: the head pins a hash no DiffContentVersion carries.
+    store.mentions = [mentionRow({ ...MENTION, contentVersionHash: 'content-no-version-carries-this' }, false)];
+    await expect(gated.thesisContextOf({ thesisId: THESIS.id })).rejects.toThrow(
+      /no content version content-no-version-carries-this of the diff 20201209134003 → 20210612183110/,
+    );
   });
 
   codeSetEquality('get_thesis_context');

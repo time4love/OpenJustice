@@ -1,9 +1,11 @@
 import {
   ForensicAgent,
   ForensicOutputSchema,
-  deriveSignificance,
   MAX_CLASSIFICATION_DRAWS,
 } from '../src/services/ForensicAgent';
+// `deriveSignificance` MOVED to the taxonomy module it belongs to at UI-8 chunk 5a, so the corpus read path can
+// CALL it without importing the classifier. The rule is unchanged and this case still holds it.
+import { deriveSignificance } from '../src/lib/investigativeCategories';
 import { LLMFactory } from '../src/factories/LLMFactory';
 
 // ---------------------------------------------------------------------------

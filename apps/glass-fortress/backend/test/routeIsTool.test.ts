@@ -518,7 +518,7 @@ describe('gate-by-prefix — one gate at the /api/research mount; the caller rea
     const research = codeAt('routes/researchRoutes.ts');
     const corpus = codeAt('routes/corpusRoutes.ts');
     const thesis = codeAt('routes/publicThesisRoutes.ts');
-    expect([registrations(research, 'researchRouter').length, ['corpusRouter', 'pagesRouter', 'recordsRouter'].map((r) => registrations(corpus, r).length).reduce((a, b) => a + b, 0), registrations(thesis, 'publicThesisRouter').length]).toEqual([14, 8, 4]);
+    expect([registrations(research, 'researchRouter').length, ['corpusRouter', 'pagesRouter', 'recordsRouter'].map((r) => registrations(corpus, r).length).reduce((a, b) => a + b, 0), registrations(thesis, 'publicThesisRouter').length]).toEqual([14, 9, 4]);
     expect(offDoor(research, 'researchRouter', 'researchRoute')).toEqual([]);
     expect(['corpusRouter', 'pagesRouter', 'recordsRouter'].flatMap((r) => offDoor(corpus, r, 'publicRoute'))).toEqual([]);
     expect(offDoor(thesis, 'publicThesisRouter', 'publicRoute')).toEqual([]);
@@ -635,7 +635,12 @@ describe('no-surveyed-page-anonymous — no public route lists surveyed pages or
     const app = express();
     app.use('/api/pages-planted', planted);
     const res = await request(app).get('/api/pages-planted');
-    expect([res.status, namesPrivatePages(res.text)]).toEqual([200, [PAGE_2.url, PAGE_3.url]]);
+    // THE ID ARM OF THE DETECTOR FIRES FOR THE FIRST TIME, 2026-09-20 (R66). `namesPrivatePages` has looked for
+    // `PAGE_2.id` and `PAGE_3.id` since it was written, and until `list_pages` gained `trackedUrlId` (interaction
+    // A5 :1071, the envelope RULED by the researcher) nothing could ever make it — so half the detector was
+    // unexercised and this case could not have told a url leak from an id leak. It can now: the planted public
+    // router leaks BOTH, and N2 holds that the real public routes leak NEITHER.
+    expect([res.status, namesPrivatePages(res.text)]).toEqual([200, [PAGE_2.url, PAGE_2.id, PAGE_3.url, PAGE_3.id]]);
   });
 });
 

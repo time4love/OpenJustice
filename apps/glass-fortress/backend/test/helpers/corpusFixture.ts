@@ -113,6 +113,21 @@ export const SUPERSEDED_VERSION = {
   chunks: [{ side: 'REMOVED', text: 'קודם', survival: 'UNCHECKABLE' }],
 };
 
+/**
+ * THE BEFORE CAPTURE AFTER A RE-WALK RE-EXTRACTED ITS TEXT — flow E3 (evidence :496–:503).
+ *
+ * This is `SUPERSEDED_VERSION`'s story told from the OTHER side, and only this side can be CITED. There the
+ * stored version carries stale provenance; here the ENDPOINT moved and **the stored version is untouched**:
+ * `CURRENT_VERSION.beforeTextHash` no longer equals this capture's `textHash`, so `currentVersionOf` finds no
+ * CURRENT (AWAITING_DERIVATION) while the version itself is still in `contentVersions` for a pin to name.
+ * E3 :501 states exactly that — *"the old version is kept and every citation still pins it."*
+ *
+ * THE RECORD'S NAME DOES NOT MOVE WITH IT. `recordId` is composed from `waybackTimestamp` and
+ * `documentHash` (:57–:68), never from `textHash`, so `DIFF_NAME` and `CAPTURE_NAME` are the same names
+ * before and after the re-extraction — evidence :203's "the record's name never moves".
+ */
+export const RE_EXTRACTED_BEFORE = { ...BEFORE, textHash: 'text-before-rewalked' };
+
 export const DIFF_ROW = {
   id: 'diff-1',
   beforeSnapshot: BEFORE,
