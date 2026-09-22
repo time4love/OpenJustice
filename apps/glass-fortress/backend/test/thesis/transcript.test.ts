@@ -8,6 +8,7 @@ import { built } from './absent';
 import { resetDouble, store, written } from '../helpers/evidenceDouble';
 import { TURN_KINDS_EXPECTED, type ThesisPredicatesModule, type Turn } from './contract';
 import { ANALYSIS, ATTEMPT, AUTHOR, CLAIM, DEBATE, FRAMING, NOTE, OPEN_GAP, OTHER_RESEARCHER, PROVISION, THESIS, VERSION, WITHDRAWAL } from './fixtures';
+import { loadThesisRows } from '../../src/services/thesisRows';
 import { resetTools, tripped } from './tools';
 
 // ---------------------------------------------------------------------------
@@ -102,8 +103,12 @@ function seedEverything(): void {
 }
 
 const transcript = async (over: { currentFingerprint?: string | null; callerId?: string | null } = {}): Promise<Turn[]> => {
-  const p = await built<ThesisPredicatesModule>('services/thesisPredicates', ['history']);
-  return p.history(THESIS.id, { currentFingerprint: 'fp-now', ...over });
+  const p = await built<ThesisPredicatesModule>('services/thesisPredicates', ['transcriptOf']);
+  // THE LOADER IS THE ONE QUERY AND THE COMPOSER IS PURE (UI-8 chunk A). The world below is the same world
+  // these cases always seeded; what changed is that it reaches the composer as ROWS.
+  const rows = await loadThesisRows(THESIS.id);
+  if (rows === null) throw new Error('the world seeds a thesis and the loader answered none');
+  return p.transcriptOf(rows, { currentFingerprint: 'fp-now', ...over });
 };
 
 /** The one turn of a kind, narrowed — `find` alone leaves the union wide and a body unreadable without a cast. */
@@ -169,6 +174,33 @@ describe('THE TRANSCRIPT, kind by kind — A4 :1476, every body pinned by its KE
       carried: [],
     });
     expect(child.body.parentVersionId).toBe('version-parent');
+  });
+
+  it("VERSION — a mention carries EXACTLY the five STORED columns A4 :1476 names, and none of the loader's wider row", async () => {
+    // A4 :1476: the VERSION body's mentions are the STORED rows
+    // `[{ versionId, kind, name, contentVersionHash, debateSessionId }]` — "NOT `V`'s resolved shape".
+    //
+    // WHY THIS CASE EXISTS, and it is UI-8 chunk A's own hazard. The one loader reads mentions ONCE for both the
+    // transcript and the citation resolver, so its row is the UNION of two selects and carries `id` and a nested
+    // `debateSession`. `versionTurns` (`thesisTranscript.ts` :565) passes `version.mentions` STRAIGHT THROUGH to
+    // the wire, and TypeScript's structural typing accepts a wider object through a variable without complaint —
+    // so nothing but this assertion stands between the loader and a transcript carrying a mention id and
+    // ANOTHER thesis's `debateSession.thesisId`. The outer key set above cannot see it: the body's keys are
+    // unchanged either way.
+    const turns = await transcript();
+    const child = turns.flatMap((t) => (t.kind === 'VERSION' && t.id === 'version-child' ? [t] : []))[0];
+    if (child === undefined) throw new Error('the world seeds version-child and the transcript has no VERSION turn for it');
+    // A FLOOR, so a version whose mentions arrived EMPTY cannot satisfy a case about what a mention carries.
+    expect(child.body.mentions.length).toBeGreaterThanOrEqual(1);
+    for (const mention of child.body.mentions) {
+      expect(keysOf(mention as unknown as Record<string, unknown>)).toEqual([
+        'contentVersionHash',
+        'debateSessionId',
+        'kind',
+        'name',
+        'versionId',
+      ]);
+    }
   });
 
   it('DEBATE_OPENED — the session, the record as A1 names it, and the pin the citation carried', async () => {

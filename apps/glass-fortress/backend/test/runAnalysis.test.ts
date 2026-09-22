@@ -153,9 +153,17 @@ describe('run_analysis — ONE draw, the audit, ONE analysis row (T4 :595–:602
 describe('run_analysis — nothing is spent twice, and a lost race says what it cost (A2 :1318; R48 §6-8)', () => {
   it('an analysis of this input recorded BETWEEN the read and the create → ANALYSIS_CURRENT, saying the draw was spent and not recorded — nothing committed', async () => {
     seedThesis();
-    // The other run's row is already held when this one creates; this one's read answered before it landed.
+    // The other run's row is already held when this one creates; this one's READS answered before it landed.
+    //
+    // STAGED BY INTENT, NEVER BY CALL POSITION. This was `mockImplementationOnce`, which blinded whichever
+    // `thesisAnalysis.findMany` happened to run FIRST in the process. UI-8 chunk A's loader reads that table
+    // too (wave 2, for the transcript's ANALYSIS turns), so the once-only stub moved to the loader's read and
+    // the check at `runAnalysis.ts` :82 then SAW the row and refused early — the case went red on a fixture
+    // that encoded a call order, not a world. `mockImplementation` blinds every read this run makes, which is
+    // what "recorded between the read and the create" means; the double's own unique index (`appendOnly`,
+    // `evidenceDouble.ts` :246) still collides the create against `store.analyses`.
     store.analyses = [{ ...ANALYSIS, versionId: VERSION.id, inputFingerprint: HEAD_FINGERPRINT() }];
-    db.thesisAnalysis.findMany.mockImplementationOnce(() => Promise.resolve([]));
+    db.thesisAnalysis.findMany.mockImplementation(() => Promise.resolve([]));
     const draw = jest.spyOn(thesisCritic, 'critique').mockResolvedValue(CRITIQUE);
 
     const out = await run();

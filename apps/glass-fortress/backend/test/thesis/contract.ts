@@ -108,7 +108,7 @@ export const MODULES = {
     exports: {
       claimFramed: fn(19),
       unargued: fn(20),
-      history: fn(20),
+      transcriptOf: fn(20),
       // THE GAP LIST IS STEP 20's (the R42 follow-up, H2): plan step 20 (:128–:129)
       // builds `get_thesis_context` "with HISTORY, UNARGUED and the gap list", and a
       // gap is listed at its decision in force. GAPS_DECIDED and the two appeals stay
@@ -431,6 +431,9 @@ export interface ThesisReviewList {
   reviews: ThesisReviewListEntry[];
 }
 
+/** The loader's rows, as the suite hands them — imported so the suite and the module cannot drift. */
+export type ThesisRowsShape = import('../../src/services/thesisRows').ThesisRows;
+
 export interface ThesisPredicatesModule {
   CRITIC_PROMPT_VERSION: string;
   claimFramed(input: {
@@ -449,7 +452,9 @@ export interface ThesisPredicatesModule {
   theRequests(published: boolean, list: readonly GapEntry[]): unknown[];
   trajectoryCurrent(currency: TrajectoryCurrency): boolean;
   publishableVersion(versionId: string, assessment: PublicationAssessment): Promise<VersionPublishability>;
-  history(thesisId: string, options?: { since?: Date; callerId?: string | null; currentFingerprint?: string | null }): Promise<Turn[]>;
+  // RESHAPED at UI-8 chunk A: HISTORY(t) is computed over rows the caller loaded, so by the purity rule this
+  // block states above it is PURE and SYNC. `loadThesisRows` is the question about the database.
+  transcriptOf(rows: ThesisRowsShape, options?: { since?: Date; callerId?: string | null; currentFingerprint?: string | null }): Turn[];
   reviews(researcherId: string): Promise<ReviewEntry[]>;
 }
 

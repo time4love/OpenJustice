@@ -6,7 +6,7 @@ import * as evidencePredicates from '../../src/services/evidencePredicates';
 import { AFTER, BEFORE, CAPTURE_NAME, CURRENT_VERSION, DIFF_NAME, DIFF_ROW } from '../helpers/corpusFixture';
 import { resetDouble, store, written } from '../helpers/evidenceDouble';
 import { built } from './absent';
-import type { CitedMention, DebateRef, FingerprintInput, ReviewEntry, ThesisPredicatesModule, ThesisVersionRow } from './contract';
+import type { CitedMention, DebateRef, FingerprintInput, ReviewEntry, ThesisPredicatesModule, ThesisRowsShape, ThesisVersionRow } from './contract';
 import {
   ANALYSIS,
   ATTEMPT,
@@ -49,6 +49,14 @@ import {
   trajectoriesAre,
 } from './gateWorld';
 import { mentionRow } from './rows';
+import { loadThesisRows } from '../../src/services/thesisRows';
+
+/** The seeded world as ROWS — the one query, so the composer under test is pure (UI-8 chunk A). */
+const thesisRowsOf = async (): Promise<ThesisRowsShape> => {
+  const rows = await loadThesisRows(THESIS.id);
+  if (rows === null) throw new Error('the world seeds a thesis and the loader answered none');
+  return rows;
+};
 
 // ---------------------------------------------------------------------------
 // A3's DERIVATIONS — docs/gf-thesis-flows.md A3, the R40 sketch §2.
@@ -546,9 +554,9 @@ describe('HISTORY(t) — every row naming the thesis, in time order, attributed 
   // -------------------------------------------------------------------------
 
   it('is a TRANSCRIPT: every stored row read back as one turn or several, in A4 :1476\'s order, none of another thesis', async () => {
-    const p = await predicates('history');
+    const p = await predicates('transcriptOf');
     seedHistory();
-    const turns = await p.history(THESIS.id);
+    const turns = p.transcriptOf(await thesisRowsOf());
     expect(turns.map((t) => [t.kind, t.id])).toEqual([
       ['FRAMING_OPENED', FRAMING.id],
       ['ROUND_PROPOSED', 'round-1'],
@@ -568,9 +576,9 @@ describe('HISTORY(t) — every row naming the thesis, in time order, attributed 
   });
 
   it('attributes every turn to a VOICE — the researcher by HANDLE and never an id, the model with its name and who spent the call, the platform as itself', async () => {
-    const p = await predicates('history');
+    const p = await predicates('transcriptOf');
     seedHistory();
-    const turns = await p.history(THESIS.id, { callerId: AUTHOR });
+    const turns = p.transcriptOf(await thesisRowsOf(), { callerId: AUTHOR });
     expect(turns.map((t) => [t.kind, t.by.voice])).toEqual([
       ['FRAMING_OPENED', 'RESEARCHER'],
       ['ROUND_PROPOSED', 'RESEARCHER'],
@@ -605,9 +613,9 @@ describe('HISTORY(t) — every row naming the thesis, in time order, attributed 
   });
 
   it('`line` is the turn\'s identifying DATUM verbatim and NULL where the kind names it — never a sentence, in no language (A4 :1476)', async () => {
-    const p = await predicates('history');
+    const p = await predicates('transcriptOf');
     seedHistory();
-    const turns = await p.history(THESIS.id);
+    const turns = p.transcriptOf(await thesisRowsOf());
     const lineOf = (kind: string): string | null | undefined => turns.find((t) => t.kind === kind)?.line;
     expect(lineOf('FRAMING_OPENED')).toBe(FRAMING.question);
     expect(lineOf('ROUND_PROPOSED')).toBe(CLAIM);
@@ -622,12 +630,12 @@ describe('HISTORY(t) — every row naming the thesis, in time order, attributed 
   });
 
   it('since a date is what happened after it — the date falls BETWEEN two rows, since A3 :1407 states no boundary (L1)', async () => {
-    const p = await predicates('history');
+    const p = await predicates('transcriptOf');
     seedHistory();
     // Half a minute after VERSION (09:11) and before the gap decision (09:12). An
     // instant equal to a row's own createdAt would pin a strict-or-inclusive
     // boundary the appendix never states, and step 20 would inherit it as a rule.
-    expect((await p.history(THESIS.id, { since: at(9, 11, 30) })).map((t) => t.kind)).toEqual([
+    expect((p.transcriptOf(await thesisRowsOf(), { since: at(9, 11, 30) })).map((t) => t.kind)).toEqual([
       'GAP_DECISION',
       'NOTE',
       'DEBATE_OPENED',
@@ -640,9 +648,9 @@ describe('HISTORY(t) — every row naming the thesis, in time order, attributed 
   });
 
   it('WRITES NOTHING — the history is derived from the acts, never logged beside them', async () => {
-    const p = await predicates('history');
+    const p = await predicates('transcriptOf');
     seedHistory();
-    await p.history(THESIS.id);
+    p.transcriptOf(await thesisRowsOf());
     expect(written).toEqual([]);
   });
 });

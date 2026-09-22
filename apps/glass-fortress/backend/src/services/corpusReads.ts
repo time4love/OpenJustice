@@ -532,46 +532,92 @@ export async function recordsByName(fileHashes: readonly string[]): Promise<Map<
   const resolved = new Map<string, ResolvedRecord | null>(wanted.map((name) => [name, null]));
   if (wanted.length === 0) return resolved;
 
-  // The promoted names' own pages first — one indexed lookup for the whole set rather than one each.
+  // The promoted names' own pages first — one indexed lookup for the whole set rather than one each. The page's
+  // URL rides this select because the narrowed pass below searches those pages and `matchInPage` needs it; it
+  // is the same row under one more column, not another query.
   const promoted = await prisma.evidence.findMany({
     where: { fileHash: { in: wanted } },
     select: {
       fileHash: true,
       kind: true,
-      snapshot: { select: { trackedUrlId: true } },
-      urlVersionDiff: { select: { trackedUrlId: true } },
+      snapshot: { select: { trackedUrl: { select: { id: true, url: true } } } },
+      urlVersionDiff: { select: { trackedUrl: { select: { id: true, url: true } } } },
     },
   });
-  const promotedPage = new Map<string, string>();
+  const promotedPage = new Map<string, SearchablePage>();
   for (const row of promoted) {
-    const pageId = row.snapshot?.trackedUrlId ?? row.urlVersionDiff?.trackedUrlId ?? null;
-    if (pageId !== null) promotedPage.set(row.fileHash, pageId);
+    const page = row.snapshot?.trackedUrl ?? row.urlVersionDiff?.trackedUrl ?? null;
+    if (page !== null) promotedPage.set(row.fileHash, page);
   }
 
-  // Every page the set could resolve against. A promoted name's page is already among them, so the corpus is
-  // walked ONCE and not once per name: the pass is linear in the corpus, and it now runs a single time.
+  // THE WALK IS NARROWED TO THE CITED PAGES WHEN EVERY NAME IS PROMOTED, and skipped entirely otherwise it is
+  // not (`docs/gf-thesis-read-cost-2026-09-22.md`; the source's §2). `Evidence.snapshotId` and
+  // `Evidence.urlVersionDiffId` are `@unique` FKs, so a promoted name's record lives on that name's own page
+  // and the other pages' captures and diffs were loaded and never examined.
+  //
+  // THE PREDICATE IS `promotedPage.size`, NOT `promoted.length`. An Evidence row whose page cannot be read
+  // (neither relation present) adds no entry above, so counting the ROWS would narrow the walk on a name whose
+  // page is unknown and answer `null` for it — `NOT_A_RECORD` on the public `resolve_record`, for a record the
+  // corpus holds.
+  //
+  // AND THE NARROW PASS FALLS BACK RATHER THAN REFUSING. The `@unique` argument above is sound but it is
+  // ASSERTED, not held by anything here: if a promoted name does not match on the pages this narrowing
+  // searched, the full walk runs and answers exactly what it answered before. A false `NOT_A_RECORD` on a
+  // public read is not a cost worth one saved query, and the fallback costs nothing in the case that happens.
+  const everyNamePromoted = promotedPage.size === wanted.length;
+  const cited = [...new Map([...promotedPage.values()].map((page) => [page.id, page])).values()];
+
+  if (everyNamePromoted) {
+    const missed = await resolveOverPages(wanted, cited, promotedPage, resolved);
+    if (missed.length === 0) return resolved;
+  }
+  // Every page the set could resolve against — the pass that is linear in the corpus, and it runs once.
   const pages = await prisma.trackedUrl.findMany({ select: { id: true, url: true } });
-  const searchable = pages.length === 0 ? [] : pages;
+  await resolveOverPages(wanted, pages, promotedPage, resolved);
+  return resolved;
+}
+
+/** A page a name can be resolved against — its id and its url, which is all `matchInPage` reads. */
+interface SearchablePage {
+  id: string;
+  url: string;
+}
+
+/**
+ * Resolve every name against a page set, writing into `resolved` — and return the names it could NOT answer.
+ *
+ * ONE PASS FOR THE WHOLE SET, whichever page set it is given, so the narrowed pass and the full walk cannot
+ * disagree about what a name resolves to: they are the same code over a different page list.
+ */
+async function resolveOverPages(
+  wanted: readonly string[],
+  searchable: readonly SearchablePage[],
+  promotedPage: ReadonlyMap<string, SearchablePage>,
+  resolved: Map<string, ResolvedRecord | null>,
+): Promise<string[]> {
   const ids = searchable.map((page) => page.id);
   // SIBLINGS, NOT A SEQUENCE: both key on `ids` and neither reads the other's answer. Measured 2026-09-21,
   // they ran one after the other inside an eleven-call chain that was the whole critical path of the public
   // thesis read.
   const [captures, diffs] = await Promise.all([capturesByPage(ids), diffsByPage(ids)]);
 
+  const missed: string[] = [];
   for (const name of wanted) {
     // The promoted name's own page first, then the rest — the order the singular read had, preserved because
     // a name is answered by the FIRST page whose record satisfies RECOMPUTABLE.
-    const first = promotedPage.get(name);
+    const first = promotedPage.get(name)?.id;
     const order = first === undefined ? searchable : [...searchable.filter((p) => p.id === first), ...searchable.filter((p) => p.id !== first)];
+    let found: ResolvedRecord | null = null;
     for (const page of order) {
-      const found = matchInPage(name, page, captures.get(page.id) ?? [], diffs.get(page.id) ?? []);
+      found = matchInPage(name, page, captures.get(page.id) ?? [], diffs.get(page.id) ?? []);
       if (found !== null) {
         resolved.set(name, found);
         break;
       }
     }
+    if (found === null) missed.push(name);
   }
-  return resolved;
+  return missed;
 }
 
 /**
