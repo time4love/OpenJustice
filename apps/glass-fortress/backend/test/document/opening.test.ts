@@ -1,6 +1,6 @@
 import { built } from './built';
 import type { DocumentOpeningDecisionRow, Opening } from './contract';
-import { OPENING_ORDER } from './fixtures';
+import { FIXTURE_COMMITMENT, OPENING_ORDER } from './fixtures';
 
 // ---------------------------------------------------------------------------
 // §7 :754-:818, A3 :1377-:1380 — WHAT PUBLICATION OPENS.
@@ -30,7 +30,10 @@ interface Openings {
 
 const openings = (only: readonly string[]) => built<Openings>('services/documentPredicates', only);
 
-const COMMITMENT = '0x' + 'c1'.repeat(32);
+// The SAME document the other files name. Pointed at `FIXTURE_COMMITMENT` in R74 chunk 3
+// with the fixture's own correction: leaving the old literal here would have made the suite
+// carry two different values both called "the fixture document's commitment".
+const COMMITMENT = FIXTURE_COMMITMENT;
 
 function decision(over: Partial<DocumentOpeningDecisionRow> = {}): DocumentOpeningDecisionRow {
   return {

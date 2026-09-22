@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SRC } from '../walk/scan';
 import { built } from './built';
+import { NO_SENDER_IDENTITY_COLUMNS, NO_SENDER_IDENTITY_MODELS } from './contract';
+import { modelBody, schemaText } from './schema';
 
 // ---------------------------------------------------------------------------
 // THE FOURTEEN INVARIANTS, NAMED INDIVIDUALLY: A7's closing list (:1595-:1608), SIX, and
@@ -22,7 +24,7 @@ async function sourceOf(path: string): Promise<string> {
 
 const schema = async (): Promise<string> => {
   await anchor();
-  return readFileSync(join(SRC, '..', 'prisma', 'schema.prisma'), 'utf8');
+  return schemaText();
 };
 
 // --- A7 :1597-:1608 — the acceptance suite holds these on every refactor step -----------
@@ -112,9 +114,22 @@ describe('§11.7 invariant 2 — identity is the plaintext hash; the public name
 });
 
 describe('§11.7 invariant 3 — the sender holds the ONLY key', () => {
-  it('the platform keeps no key, no plaintext of a sealed document, no contact, no sender identity', async () => {
+  // CORRECTED, R74 chunk 3 — see `contract.ts`' NO_SENDER_IDENTITY_MODELS block. This
+  // scanned the WHOLE schema text for `encryptedContact`, `senderKey` and `plaintext`:
+  //   · `encryptedContact` stands in `Whistleblower` (`schema.prisma` :434) until STEP 36
+  //     (plan :141, plan §4 :410), so it failed at step 29 for a step-36 reason;
+  //   · `plaintext` occurs at `schema.prisma` :28 in a comment about the MCP BEARER TOKEN,
+  //     so the case could never pass in ANY step. Plaintext at rest is `no-plaintext-at-rest`,
+  //     a SOURCE scan over `src/` write paths (A7 :1562-:1565) that binds at step 32 — never
+  //     a schema scan, and the schema is not where it would show.
+  it('no column of Arrival or Document holds a key, a contact or a sender identity', async () => {
     const text = await schema();
-    for (const column of ['encryptedContact', 'senderKey', 'plaintext']) expect(text).not.toContain(column);
+    for (const model of NO_SENDER_IDENTITY_MODELS) {
+      const body = modelBody(text, model);
+      // THE FLOOR: the model was FOUND — an absent one makes every check below it vacuous.
+      expect(body).not.toBe('');
+      for (const column of NO_SENDER_IDENTITY_COLUMNS) expect(body).not.toContain(column);
+    }
   });
 });
 

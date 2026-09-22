@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type {
   ArrivalRow,
   Custody,
@@ -66,14 +67,41 @@ export const KIND_EXPECTATION: Record<FixtureKind, KindExpectation> = {
 };
 
 /**
+ * THE FIXTURE DOCUMENT'S NAME, ITS SALT, AND ITS COMMITMENT — the last COMPUTED from the
+ * first two, never hard-coded.
+ *
+ * CORRECTED, R74 chunk 3. `commitment` was the literal `0xc1…c1`, which is not
+ * `sha256(bytes32(docId) ‖ salt)` of this row's own docId and salt. A3 :1364-:1365 defines
+ * RECOMPUTABLE(e) for kind DOCUMENT as exactly that recomputation, and A7 :1549-:1552 calls a
+ * row failing it MALFORMED — so `standing.test.ts`'s "an Evidence row of kind DOCUMENT is
+ * recomputable" case asserted `true` over a row the design calls malformed. A predicate written
+ * to the appendix went RED on it and a field comparison — the non-predicate — went GREEN: the
+ * exact inversion a fixture must never produce. Computing it here means it cannot drift again.
+ */
+const FIXTURE_DOC_ID = '0x' + 'a1'.repeat(32);
+// `Buffer`, not `Uint8Array` — Prisma maps a `Bytes` column to `Buffer`, and the
+// transcription this fixture was written against said `Uint8Array`. The substitution at
+// step 28 is what surfaced it: the fixture had been wrong against the schema since it was
+// written, and nothing could say so while the row type was hand-copied. A Buffer IS a
+// Uint8Array, so every reader that takes the wider type is unaffected.
+const FIXTURE_SALT = Buffer.alloc(32, 7);
+
+/** A1 :1236-:1238 — `sha256(bytes32(DOC_ID) ‖ salt)`, the 32 RAW bytes of the name, never its hex text. */
+export const FIXTURE_COMMITMENT =
+  '0x' +
+  createHash('sha256')
+    .update(Buffer.concat([Buffer.from(FIXTURE_DOC_ID.slice(2), 'hex'), FIXTURE_SALT]))
+    .digest('hex');
+
+/**
  * A HELD document. `title` is the fourth assertion (A2 :1271) and is present at the
  * researcher's door; a sealed arrival has none at receipt, which `sealed()` below shows.
  */
 export function held(over: Partial<DocumentRow> = {}): DocumentRow {
   return {
-    docId: '0x' + 'a1'.repeat(32),
-    commitment: '0x' + 'c1'.repeat(32),
-    salt: new Uint8Array(32).fill(7),
+    docId: FIXTURE_DOC_ID,
+    commitment: FIXTURE_COMMITMENT,
+    salt: FIXTURE_SALT,
     cid: null,
     bytes: 'bucket://documents/0xa1a1',
     mimeType: 'application/pdf',
@@ -84,6 +112,9 @@ export function held(over: Partial<DocumentRow> = {}): DocumentRow {
     assertedAt: null,
     derivedFromCommitment: null,
     title: 'the supplementary dataset of the cardiac risk-communication paper, 2026',
+    // Required by the generated row and absent from the transcription this replaced —
+    // the second column the substitution found the fixture had never supplied.
+    createdAt: new Date('2026-09-20T09:00:00.000Z'),
     ...over,
   };
 }
@@ -103,7 +134,7 @@ export function sealed(over: Partial<DocumentRow> = {}): DocumentRow {
 /** A SHED document: custody reads as neither held nor sealed (A3 :1363, A2 :1275). */
 export function shedRow(over: Partial<ShedRow> = {}): ShedRow {
   return {
-    commitment: '0x' + 'c1'.repeat(32),
+    commitment: FIXTURE_COMMITMENT,
     cause: 'SENDER',
     researcherId: null,
     reason: null,
@@ -116,7 +147,7 @@ export function shedRow(over: Partial<ShedRow> = {}): ShedRow {
 export function version(over: Partial<DocumentContentVersionRow> = {}): DocumentContentVersionRow {
   return {
     id: 'dcv_1',
-    commitment: '0x' + 'c1'.repeat(32),
+    commitment: FIXTURE_COMMITMENT,
     text: 'the ministry instructed, on 3.9.2026, that the reporting channel be kept open.',
     contentVersionHash: '0x' + 'b1'.repeat(32),
     extractor: 'illustrative-pdf-reader',

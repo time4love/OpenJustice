@@ -1,3 +1,11 @@
+import type {
+  ArrivalDoor,
+  DocumentDerivedFrom,
+  DocumentOpening,
+  PassageVerdictValue,
+  ShedCause,
+} from '@prisma/client';
+
 // ---------------------------------------------------------------------------
 // THE DOCUMENT CONTRACT, TRANSCRIBED FOR THE ACCEPTANCE SUITE — docs/gf-document-flows.md
 // A1-A7, composed with the factual layer's A1-A8, evidence's A1-A7 and the thesis's
@@ -16,119 +24,54 @@
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// A2 — THE ROWS, AS THE TARGET SHAPES THEM. Transcribed until step 28.
+// A2 — THE ROWS. PRISMA'S SINCE STEP 28, as the thesis contract's became Prisma's
+// at thesis step 18 (`test/thesis/contract.ts` :21-:25).
+//
+// UNTIL STEP 28 THEY WERE TRANSCRIBED HERE, and the header above says why: a type
+// imported from an absent model is a file-level TS2307 that would have sunk all
+// nineteen files. Step 28 landed A2's eight models, so the transcription's whole
+// reason expired and each is replaced by the GENERATED model — which is stronger
+// than a transcription in the one way that matters: a column renamed or dropped in
+// a later migration now breaks this file at COMPILE TIME, where a transcription
+// would have gone on agreeing with a schema that had moved.
+//
+// WHAT IS STILL DECLARED HERE is the SPEC SIDE — the closed refusal sets, the check
+// ids, the module every case loads and the step that owes it. Those are the design's
+// words and are not the schema's to supply.
 // ---------------------------------------------------------------------------
 
-/** HELD iff bytes present · SEALED iff cid present and bytes absent · NONE iff a Shed row exists (A2 :1274-:1275). */
+export type {
+  Arrival as ArrivalRow,
+  ArrivalDecision as ArrivalDecisionRow,
+  ArrivalDocument as ArrivalDocumentRow,
+  Document as DocumentRow,
+  DocumentContentVersion as DocumentContentVersionRow,
+  DocumentOpeningDecision as DocumentOpeningDecisionRow,
+  PassageVerdict as PassageVerdictRow,
+  Shed as ShedRow,
+} from '@prisma/client';
+
+/**
+ * HELD iff bytes present · SEALED iff cid present and bytes absent · NONE iff a Shed
+ * row exists (A2 :1274-:1275). DERIVED, and deliberately NOT a column — so it is not
+ * a Prisma enum and never will be.
+ */
 export type Custody = 'HELD' | 'SEALED' | 'NONE';
 
 /** A2 :1301 — whether the bytes were at rest when the version was derived. */
-export type DerivedFrom = 'AT_RECEIPT' | 'HELD_BYTES';
+export type DerivedFrom = DocumentDerivedFrom;
 
 /** A2 :1279 — the door is the one thing the platform verifies (§1 :74-:88). */
-export type Door = 'INTAKE' | 'RESEARCHER';
+export type Door = ArrivalDoor;
 
 /** §7 :777-:789, ordered: PASSAGE < CONTENT < BYTES. The order IS the widening rule (§7 :797). */
-export type Opening = 'PASSAGE' | 'CONTENT' | 'BYTES';
+export type Opening = DocumentOpening;
 
 /** A2 :1321 — SENDER is the key holder's act, OPERATOR a researcher's with a reason. */
-export type ShedCause = 'SENDER' | 'OPERATOR';
+export type { ShedCause };
 
 /** A3 :1385-:1386 — the verdict rule's three values; UNCHECKED is this document's amendment to thesis T1. */
-export type Verdict = 'PRESENT' | 'ABSENT' | 'UNCHECKED';
-
-/**
- * A2 :1262-:1276. `custody` is DERIVED and is deliberately absent as a column.
- * `title` is the FOURTH assertion, RULED 2026-09-22 at :1271 — REQUIRED at the
- * researcher's door, absent on a sealed arrival at receipt (step 32's question),
- * so the column is nullable and `NO_TITLE` binds at the RESEARCHER door alone.
- */
-export interface DocumentRow {
-  docId: string;
-  commitment: string;
-  salt: Uint8Array;
-  cid: string | null;
-  bytes: string | null;
-  mimeType: string;
-  byteLength: number;
-  receivedAt: Date;
-  verifiedAtReceipt: Date | null;
-  assertedUrl: string | null;
-  assertedAt: Date | null;
-  derivedFromCommitment: string | null;
-  title: string | null;
-}
-
-/** A2 :1278-:1288. The CHECKs are the invariants, not conventions. */
-export interface ArrivalRow {
-  id: string;
-  door: Door;
-  thesisId: string | null;
-  gapId: string | null;
-  researcherId: string | null;
-  termsHash: string | null;
-  receivedAt: Date;
-}
-
-/** A2 :1286 — the grouping; several files in one arrival are several documents (§2 :188-:194). */
-export interface ArrivalDocumentRow {
-  arrivalId: string;
-  commitment: string;
-}
-
-/** A2 :1290-:1294. DISMISSED is the one value; ANSWERED is derived (A3 :1375). */
-export interface ArrivalDecisionRow {
-  id: string;
-  arrivalId: string;
-  sequence: number;
-  decision: 'DISMISSED';
-  reason: string;
-  researcherId: string;
-  createdAt: Date;
-}
-
-/** A2 :1296-:1305. `text` and `opinion` are NULLED by SHED; the row, its hash and its provenance stay. */
-export interface DocumentContentVersionRow {
-  id: string;
-  commitment: string;
-  text: string | null;
-  contentVersionHash: string;
-  extractor: string;
-  extractorVersion: string;
-  derivedAt: Date;
-  derivedFrom: DerivedFrom;
-  opinion: unknown | null;
-}
-
-/** A2 :1307-:1311. */
-export interface DocumentOpeningDecisionRow {
-  id: string;
-  thesisId: string;
-  commitment: string;
-  sequence: number;
-  opening: Opening;
-  researcherId: string;
-  createdAt: Date;
-}
-
-/** A2 :1313-:1317 — written by publish_thesis once per published version, KEPT AS OBSERVED even after SHED. */
-export interface PassageVerdictRow {
-  id: string;
-  versionId: string;
-  mentionId: string;
-  phrase: string;
-  verdict: Verdict;
-  at: Date;
-}
-
-/** A2 :1319-:1323 — one shed per document, ever; `researcherId` and `reason` REQUIRED iff OPERATOR. */
-export interface ShedRow {
-  commitment: string;
-  cause: ShedCause;
-  researcherId: string | null;
-  reason: string | null;
-  at: Date;
-}
+export type Verdict = PassageVerdictValue;
 
 // ---------------------------------------------------------------------------
 // THE MODULES THE SUITE LOADS, AND THE STEP THAT OWES EACH EXPORT.
@@ -370,4 +313,46 @@ export const INSTRUMENTS = {
 export const RETIRED_DOCUMENT_NAMES = [
   'create_evidence_from_text',
   'recover_evidence_from_screenshot',
+] as const;
+
+// ---------------------------------------------------------------------------
+// `no-sender-identity`, THE SCHEMA HALF — ONE VALUE, ONE PLACE.
+//
+// A7 :1567-:1569: "Arrival and Document have no column for an address, an account, a name
+// or a contact; the intake and withdrawal handlers read no request address into any write;
+// Whistleblower absent." Plan §4 :410 SPLITS that clause across three steps: "the schema
+// half from step 28, `Whistleblower`'s absence added at STEP 36; the handler half from
+// step 32."
+//
+// CORRECTED, R74 chunk 3. `scans.test.ts` and `invariants.test.ts` each carried their OWN
+// banned list — they disagreed with each other — and each scanned the WHOLE schema text
+// rather than the two models A7 names. Two consequences, both defects:
+//   · `Whistleblower.encryptedContact` (`schema.prisma` :434) is LIVE until step 36 by the
+//     amended step-28 body (plan :141, "Nothing is removed here"), so both cases failed at
+//     step 29 for a reason STEP 36 owns;
+//   · `invariants.test.ts` also banned the word `plaintext`, which occurs at `schema.prisma`
+//     :28 in a comment about the MCP BEARER TOKEN — so that case could never pass, in any
+//     step. `no-plaintext-at-rest` is a SOURCE scan over `src/` write paths (A7 :1562-:1565),
+//     never a schema one.
+// The subject is the two MODELS; `Whistleblower` is step 36's and is named there, not here.
+// ---------------------------------------------------------------------------
+
+/** The two models A7 :1567 names — the schema half's whole subject at step 28. */
+export const NO_SENDER_IDENTITY_MODELS = ['Arrival', 'Document'] as const;
+
+/**
+ * A column for an address, an account, a name or a contact — the four shapes A7 :1567 forbids,
+ * spelled as the column names a well-meaning implementation would reach for.
+ */
+export const NO_SENDER_IDENTITY_COLUMNS = [
+  'senderIp',
+  'ipAddress',
+  'remoteAddress',
+  'userAgent',
+  'accountId',
+  'senderName',
+  'senderEmail',
+  'contactEmail',
+  'encryptedContact',
+  'senderKey',
 ] as const;
