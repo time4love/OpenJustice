@@ -1,7 +1,13 @@
 import type { Config } from 'jest';
 
 // ---------------------------------------------------------------------------
-// Five projects, one suite — `npm test` selects them all.
+// Six projects; `npm test` selects FIVE of them.
+//
+// `document` is the sixth and is deliberately NOT in that list: document
+// refactor plan step 27 (:121) writes it RED and keeps it "informational in CI
+// until step 36", which is the step that puts it into the required run. Until
+// then it is reached by `npm run test:document` alone, and a red file in it is
+// the acceptance suite doing its job rather than a broken build.
 //
 // `unit` is everything as it has always been: node_modules untransformed, which
 // is fast and is why every test touching the scraper mocks jsdom and
@@ -48,10 +54,14 @@ const config: Config = {
       testPathIgnorePatterns: [
         '<rootDir>/test/extraction/',
         '<rootDir>/test/walk/',
-        // The three acceptance suites are their OWN projects below, and `npm test`
-        // selects all of them — ignored here only so no file runs twice.
+        // The acceptance suites are their OWN projects below — ignored here only so no
+        // file runs twice. `npm test` selects evidence and thesis; it does NOT select
+        // `document`, which is informational until step 36, and WITHOUT this entry the
+        // `unit` project's `test/**/*.test.ts` would sweep test/document/ back into the
+        // required run and defeat that.
         '<rootDir>/test/evidence/',
         '<rootDir>/test/thesis/',
+        '<rootDir>/test/document/',
       ],
     },
     {
@@ -94,6 +104,21 @@ const config: Config = {
         '^.+\\.m?js$': ['ts-jest', { tsconfig: 'tsconfig.test.json', diagnostics: false }],
       },
       transformIgnorePatterns: [],
+    },
+    {
+      ...shared,
+      // `document` is the acceptance suite of document steps 27-37, written from
+      // docs/gf-document-flows.md's appendix BEFORE the code (document plan step
+      // 27) and red until each step builds the module it names — the same shape
+      // as `walk`, `evidence` and `thesis`. Every absent module is reached
+      // through test/document/built.ts, never a literal `import()`, for the
+      // reason test/thesis/absent.ts states: a literal specifier to a missing
+      // module is a file-level TS2307 that sinks the whole file uncounted, where
+      // the loader fails each case BY NAME with the step that owes it.
+      //
+      // NOT in `npm test`'s --selectProjects list until step 36 (plan :121).
+      displayName: 'document',
+      testMatch: ['<rootDir>/test/document/**/*.test.ts'],
     },
   ],
 };
