@@ -145,13 +145,19 @@ describe('no-disclaimer-off-the-thesis · the rendered pages', () => {
     const control = controlFragment();
     expect({
       found: DISCLAIMERS.filter((sentence) => shownText(container).includes(sentence)),
-      // THE FLOOR: the page really drew its two regions and the owed entries — so "no disclaimer" is a fact
+      // THE FLOOR: the page really drew its regions and the owed entries — so "no disclaimer" is a fact
       // about a rendered thesis and not about a tree that produced nothing.
-      regions: container.querySelectorAll('[data-region]').length,
+      //
+      // RE-AIMED 2026-09-22 (R73 chunk 2), AND STRENGTHENED. It counted `2` while the page had a context
+      // block and an owed strip; the CENTRE landed with this chunk and the count is 3. A bare number was the
+      // weaker guard anyway — it could not say WHICH regions rendered — so the floor now NAMES them, and the
+      // centre being present is exactly what makes this case's question live: the page now really does draw a
+      // thesis, which is the "closest call" the docblock above describes.
+      regions: [...container.querySelectorAll('[data-region]')].map((region) => region.getAttribute('data-region')),
       owed: container.querySelectorAll('[data-owed-entry]').length > 0,
       claim: (container.querySelector('h1[data-claim]')?.textContent ?? '').length > 0,
       controlFindsBoth: DISCLAIMERS.filter((sentence) => (control.textContent ?? '').includes(sentence)).length,
-    }).toEqual({ found: [], regions: 2, owed: true, claim: true, controlFindsBoth: 2 });
+    }).toEqual({ found: [], regions: ['context', 'owed', 'centre'], owed: true, claim: true, controlFindsBoth: 2 });
   });
 
   it('THE CLAIMS VIEW CARRIES NO DISCLAIMER — a corpus view is neither a thesis page nor a call page', async () => {

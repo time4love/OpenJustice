@@ -111,8 +111,8 @@ export const fullTranscript: Turn[] = [
       contentHash: 'aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111',
       parentVersionId: null,
       // THE STORED ROWS (Q-D), not the resolved citations `head.mentions` carries.
-      mentions: [{ versionId: 'version-1', kind: 'EVIDENCE', name: 'record-one', contentVersionHash: 'pin-one', debateSessionId: 'debate-1' }],
-      citationsVsParent: { added: ['record-one'], repinned: [], dropped: [], carried: [] },
+      mentions: [{ versionId: 'version-1', kind: 'EVIDENCE', name: '0x1111111111111111111111111111111111111111111111111111111111111111', contentVersionHash: 'pin-one', debateSessionId: 'debate-1' }],
+      citationsVsParent: { added: ['0x1111111111111111111111111111111111111111111111111111111111111111'], repinned: [], dropped: [], carried: [] },
     },
   },
   {
@@ -128,17 +128,17 @@ export const fullTranscript: Turn[] = [
       contentHash: 'bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222',
       parentVersionId: 'version-1',
       mentions: [
-        { versionId: 'version-2', kind: 'EVIDENCE', name: 'record-one', contentVersionHash: 'pin-two', debateSessionId: 'debate-1' },
+        { versionId: 'version-2', kind: 'EVIDENCE', name: '0x1111111111111111111111111111111111111111111111111111111111111111', contentVersionHash: 'pin-two', debateSessionId: 'debate-1' },
         // AN EVIDENCE CITATION NOBODY HAS ARGUED — added 2026-09-22 so the row's UNARGUED count DISCRIMINATES.
         // Without it every version in this fixture scored 0 and a renderer answering a constant would have
         // passed; run B's four VERSION rows read 1, 2, 0, 0, so a fixture flat at 0 was not the platform's
         // shape either. The TRAJECTORY below keeps its null session deliberately: it is the guard that the
         // EVIDENCE-only half of `thesisPredicates.ts` :152–:156 is really applied, and a renderer that
         // dropped that test would count it and read 2.
-        { versionId: 'version-2', kind: 'EVIDENCE', name: 'record-three', contentVersionHash: 'pin-three', debateSessionId: null },
-        { versionId: 'version-2', kind: 'TRAJECTORY', name: 'trajectory-one', contentVersionHash: null, debateSessionId: null },
+        { versionId: 'version-2', kind: 'EVIDENCE', name: '0x3333333333333333333333333333333333333333333333333333333333333333', contentVersionHash: 'pin-three', debateSessionId: null },
+        { versionId: 'version-2', kind: 'TRAJECTORY', name: 'ctrajaaaaaaaaaaaaaaaaaaaa', contentVersionHash: null, debateSessionId: null },
       ],
-      citationsVsParent: { added: ['trajectory-one', 'record-three'], repinned: ['record-one'], dropped: [], carried: [] },
+      citationsVsParent: { added: ['ctrajaaaaaaaaaaaaaaaaaaaa', '0x3333333333333333333333333333333333333333333333333333333333333333'], repinned: ['0x1111111111111111111111111111111111111111111111111111111111111111'], dropped: [], carried: [] },
     },
   },
   {
@@ -262,7 +262,7 @@ export const fullTranscript: Turn[] = [
       description: 'חסר מכתב ההנחיה',
       sequence: 2,
       decision: 'CITED',
-      citedName: 'record-one',
+      citedName: '0x1111111111111111111111111111111111111111111111111111111111111111',
       request: null,
       callItem: null,
       reason: null,
@@ -392,27 +392,105 @@ export const fullTranscript: Turn[] = [
   },
 ];
 
+/**
+ * THE CITATION NAMES OBEY THE APPENDIX'S GRAMMAR — thesis A1 :1241–:1244, `#ev_0x<64 hex>` and `#tr_<cuid>`,
+ * which `lib/citationTokens.ts` :37 enforces with its own regex.
+ *
+ * They were `'record-one'` and `'trajectory-one'` until R73 chunk 2, which was harmless only while nothing
+ * put a token in a fixture's TEXT: a name that cannot appear after a prefix can never be matched to the
+ * chip that cites it, so a centre rendered over the old names would have drawn no chip and passed a case
+ * asserting it drew none. The names are long because the grammar is; `no-id-as-text` holds that no reader
+ * ever sees one.
+ */
+const RECORD_CAPTURE = '0x1111111111111111111111111111111111111111111111111111111111111111';
+const RECORD_PUBLISHED_ONLY = '0x2222222222222222222222222222222222222222222222222222222222222222';
+const RECORD_DIFF = '0x3333333333333333333333333333333333333333333333333333333333333333';
+const TRAJECTORY = 'ctrajaaaaaaaaaaaaaaaaaaaa';
+
+/** The two cited pages. HEAD cites only the first; `pages` carries both, which is what the union is for. */
+const PAGE_A = { trackedUrlId: 'page-a', url: 'https://example.gov.il/vaccine' };
+const PAGE_B = { trackedUrlId: 'page-b', url: 'https://example.gov.il/reports' };
+
+/** Not `as const`: `CitationVerdict`'s `captures` is a mutable array, and a readonly tuple does not satisfy it. */
+const VERIFIED_OK = {
+  verified: true,
+  captures: [{ capture: '20220628120000', attributed: true, anchoredHashMatchesDocumentHash: true }],
+};
+const UNFLAGGED = { flagged: false, reasons: [] as string[] };
+
+/**
+ * HEAD's citations, RESOLVED — A4 :1476's `V.mentions`, the ONE citation shape, with the record, the pinned
+ * content, the verdict and the flag the backend serves (`getThesisContext.ts` :71).
+ *
+ * THREE ARMS ON PURPOSE: a CAPTURE, a DIFF (whose chip draws an interval rather than a date, `Tick.tsx`
+ * :48–:51) and a TRAJECTORY (whose chip draws the claim's first words). A fixture with one arm would green a
+ * centre that drew only captures.
+ */
+const HEAD_CITATIONS = [
+  {
+    kind: 'EVIDENCE' as const,
+    name: RECORD_CAPTURE,
+    pin: 'pin-two',
+    record: { url: PAGE_A.url, capture: '20220628120000' },
+    content: { kind: 'CAPTURE' as const, text: 'הטקסט שנלכד בצילום.' },
+    verified: VERIFIED_OK,
+    flag: UNFLAGGED,
+    argued: true,
+    overObjection: false,
+  },
+  {
+    kind: 'EVIDENCE' as const,
+    name: RECORD_DIFF,
+    pin: 'pin-three',
+    record: { url: PAGE_A.url, before: '20220628120000', after: '20220805053301' },
+    content: { kind: 'DIFF' as const, chunks: [{ side: 'REMOVED' as const, text: 'סעיף תופעות הלוואי' }] },
+    verified: { notEvaluable: 'NOT_PROMOTED' },
+    flag: UNFLAGGED,
+    argued: false,
+    overObjection: false,
+  },
+  {
+    kind: 'TRAJECTORY' as const,
+    name: TRAJECTORY,
+    resolves: true as const,
+    claimText: 'הקישור לדיווח על תופעות לוואי הוסר ולא הוחזר',
+    url: PAGE_A.url,
+    transitions: 3,
+    current: true,
+  },
+];
+
 const HEAD = {
   versionId: 'version-2',
   by: AUTHOR,
-  text: 'הגרסה השנייה של התזה, עם ציטוט נוסף.',
+  text: `הגרסה השנייה של התזה, עם ציטוט נוסף #ev_${RECORD_CAPTURE} וגם שינוי #ev_${RECORD_DIFF} וטענה לאורך זמן #tr_${TRAJECTORY}.`,
   claim: 'המשרד החזיק במידע ולא מסר אותו במועד',
   contentHash: 'bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222',
   createdAt: '2026-02-01T08:00:00.000Z',
-  mentions: [
-    { kind: 'EVIDENCE' as const, name: 'record-one', pin: 'pin-two', argued: true },
-    { kind: 'TRAJECTORY' as const, name: 'trajectory-one', pin: null, argued: false as const, resolves: true },
-  ],
+  mentions: HEAD_CITATIONS,
 };
 
+/** PUBLISHED cites a page HEAD does not — the reason `pages` is a UNION and not HEAD's own list. */
 const PUBLISHED = {
   versionId: 'version-1',
   by: AUTHOR,
-  text: 'הגרסה הראשונה של התזה.',
+  text: `הגרסה הראשונה של התזה #ev_${RECORD_PUBLISHED_ONLY}.`,
   claim: 'המשרד החזיק במידע ולא מסר אותו',
   contentHash: 'aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111',
   createdAt: '2026-01-05T08:00:00.000Z',
-  mentions: [{ kind: 'EVIDENCE' as const, name: 'record-one', pin: 'pin-one', argued: true }],
+  mentions: [
+    {
+      kind: 'EVIDENCE' as const,
+      name: RECORD_PUBLISHED_ONLY,
+      pin: 'pin-one',
+      record: { url: PAGE_B.url, capture: '20220301090000' },
+      content: { kind: 'CAPTURE' as const, text: 'טקסט הדוח.' },
+      verified: VERIFIED_OK,
+      flag: UNFLAGGED,
+      argued: true,
+      overObjection: false,
+    },
+  ],
 };
 
 const GAP_LIST: ThesisContext['gapList'] = (
@@ -435,7 +513,7 @@ const GAP_LIST: ThesisContext['gapList'] = (
     description,
     sequence,
     decision,
-    citedName: decision === 'CITED' ? 'record-one' : null,
+    citedName: decision === 'CITED' ? '0x1111111111111111111111111111111111111111111111111111111111111111' : null,
     request: decision === 'REQUESTED' ? { authority: 'רשות ציבורית' } : null,
     callItem: decision === 'CALLED' ? { whatIsNeeded: 'מסמך מן הוועדה' } : null,
     reason: decision === 'CONCEDED' || decision === 'DISMISSED' ? 'הנימוק נרשם' : null,
@@ -462,7 +540,9 @@ export const thesisContextFull: ThesisContext = {
   },
   head: HEAD,
   published: PUBLISHED,
-  unargued: ['trajectory-one'],
+  // THE UNION, deduplicated by url (A4 :1476): PAGE_A is HEAD's, PAGE_B is PUBLISHED's alone.
+  pages: [PAGE_A, PAGE_B],
+  unargued: ['ctrajaaaaaaaaaaaaaaaaaaaa'],
   gapList: GAP_LIST,
   analysis: {
     state: 'CURRENT',
@@ -580,6 +660,9 @@ export const thesisContextWithdrawn: ThesisContext = {
     mentions: [],
   },
   published: null,
+  // A THESIS THAT CITES NOTHING — `TickLine.tsx` :37 renders NOTHING for it, which is a real state of a
+  // thesis and not an empty rail. `pages` is empty for the same reason and is not a missing field.
+  pages: [],
   unargued: [],
   gapList: [],
   analysis: { state: 'NONE' },
@@ -619,12 +702,25 @@ export const thesisContextThin: ThesisContext = {
     claim: 'הנוהל לא פורסם',
     contentHash: 'ffff6666ffff6666ffff6666ffff6666ffff6666ffff6666ffff6666ffff6666',
     createdAt: '2026-04-01T09:00:00.000Z',
-    mentions: [{ kind: 'EVIDENCE', name: 'record-two', pin: 'pin-four', argued: false }],
+    mentions: [
+      {
+        kind: 'EVIDENCE',
+        name: RECORD_PUBLISHED_ONLY,
+        pin: 'pin-four',
+        record: { url: PAGE_B.url, capture: '20220301090000' },
+        content: { kind: 'CAPTURE', text: 'טקסט הדוח.' },
+        verified: { notEvaluable: 'NOT_PROMOTED' },
+        flag: UNFLAGGED,
+        argued: false,
+        overObjection: false,
+      },
+    ],
   },
   published: null,
-  unargued: ['record-two'],
+  pages: [PAGE_B],
+  unargued: ['0x2222222222222222222222222222222222222222222222222222222222222222'],
   gapList: [],
-  analysis: { state: 'AWAITING_DERIVATION', name: 'record-two' },
+  analysis: { state: 'AWAITING_DERIVATION', name: '0x2222222222222222222222222222222222222222222222222222222222222222' },
   framings: [],
   history: [
     {
@@ -639,8 +735,8 @@ export const thesisContextThin: ThesisContext = {
         claim: 'הנוהל לא פורסם',
         contentHash: 'ffff6666ffff6666ffff6666ffff6666ffff6666ffff6666ffff6666ffff6666',
         parentVersionId: null,
-        mentions: [{ versionId: 'version-solo', kind: 'EVIDENCE', name: 'record-two', contentVersionHash: 'pin-four', debateSessionId: null }],
-        citationsVsParent: { added: ['record-two'], repinned: [], dropped: [], carried: [] },
+        mentions: [{ versionId: 'version-solo', kind: 'EVIDENCE', name: '0x2222222222222222222222222222222222222222222222222222222222222222', contentVersionHash: 'pin-four', debateSessionId: null }],
+        citationsVsParent: { added: ['0x2222222222222222222222222222222222222222222222222222222222222222'], repinned: [], dropped: [], carried: [] },
       },
     },
   ],
