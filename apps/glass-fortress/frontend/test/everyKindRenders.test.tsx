@@ -179,4 +179,33 @@ describe('every-kind-renders', () => {
     }
     expect(wrong).toEqual([]);
   });
+  it('THE GLYPH ITSELF DIFFERS PER FAMILY — eight distinct drawings, each constant across its own kinds', async () => {
+    // THE HALF THE CASE ABOVE CANNOT REACH, and a probe proved it: forcing `GLYPHS[family]` to `GLYPHS['act']`
+    // left every `data-turn-glyph` reading its mapped family and every `svg` count at 1, so a page drawing ONE
+    // icon for all seventeen kinds passed the whole suite. The attribute is the page's own claim about itself;
+    // this case reads the DRAWING instead.
+    const container = await renderResearchThesis(LOCALE, { withPane: true, context: thesisContextFull });
+    const rails = [...container.querySelectorAll('[data-turn-glyph]')];
+    // THE FLOOR: no glyph at all means nothing was examined.
+    if (rails.length === 0) throw new Error('the transcript drew no glyph — nothing to compare');
+
+    // The MARKUP of each drawing, per family. `innerHTML` is what distinguishes the eight: `act` is a filled
+    // circle, `model` the same circle DASHED, `verdict` a circle with a tick, and so on (`glyphs.tsx` :50–:67).
+    const byFamily = new Map<string, Set<string>>();
+    for (const rail of rails) {
+      const family = rail.getAttribute('data-turn-glyph') ?? '';
+      const markup = rail.querySelector('svg')?.innerHTML ?? '';
+      if (markup === '') throw new Error(`the ${family} glyph drew an empty svg`);
+      (byFamily.get(family) ?? byFamily.set(family, new Set()).get(family))?.add(markup);
+    }
+
+    // ONE DRAWING PER FAMILY: a family whose rows disagree means the glyph is not a function of the family.
+    const inconsistent = [...byFamily.entries()].filter(([, markups]) => markups.size !== 1).map(([family]) => family);
+    expect(inconsistent).toEqual([]);
+
+    // AND EIGHT DISTINCT DRAWINGS ACROSS THE EIGHT FAMILIES — the assertion the probe defeats. One icon for
+    // every kind collapses this to 1.
+    const drawings = new Set([...byFamily.values()].map((markups) => [...markups][0] ?? ''));
+    expect([byFamily.size, drawings.size]).toEqual([8, 8]);
+  });
 });

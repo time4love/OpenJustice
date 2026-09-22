@@ -54,6 +54,12 @@ export function Transcript({ turns, locale }: { turns: readonly Turn[]; locale: 
   // `scrollTop`, so the pane's own box does the arithmetic and a resize does not strand the reader mid-way.
   // jsdom implements no scrolling and defines no `scrollIntoView`, so the call is guarded: a missing method
   // must never take the page down with it — `Shell.tsx` :160–:163's own lesson, one component over.
+  //
+  // THE MARKER IS THE LAST ELEMENT IN THE SECTION, AFTER THE CONTROL, and that position is the fix for a
+  // measured defect: with the marker ABOVE the „לקפוץ להתחלה" button, "the end" stopped short of the button
+  // itself — 55 px short locally and 56 px on staging — so the one control a reader at the end would reach
+  // for was the one thing below the fold. Scrolling to a marker means the marker must be past everything
+  // the reader should see.
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ block: 'end' });
   }, [turns]);
@@ -71,7 +77,7 @@ export function Transcript({ turns, locale }: { turns: readonly Turn[]; locale: 
           return (
             <li key={turn.id} className="contents">
               {opensThread ? (
-                <h3 data-thread={turn.thread.step} className="mt-3 text-xs font-semibold text-ink-muted">
+                <h3 data-thread={turn.thread.step} className="turn-thread">
                   {t(THREAD_KEY[turn.thread.step])}
                 </h3>
               ) : null}
@@ -82,7 +88,6 @@ export function Transcript({ turns, locale }: { turns: readonly Turn[]; locale: 
           );
         })}
       </ul>
-      <div ref={endRef} data-transcript-end />
       {/* THE CONTROL IS „לקפוץ להתחלה" BECAUSE THE PANE OPENS AT NOW (§11 :432). The thread headings are the
           anchors; this is the one that returns to the top of the thread. */}
       <button
@@ -95,6 +100,7 @@ export function Transcript({ turns, locale }: { turns: readonly Turn[]; locale: 
       >
         {research('thesis.jumpToStart')}
       </button>
+      <div ref={endRef} data-transcript-end />
     </section>
   );
 }

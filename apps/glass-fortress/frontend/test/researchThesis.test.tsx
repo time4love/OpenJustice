@@ -279,4 +279,21 @@ describe('the working view — what is owed, and the transcript`s door', () => {
     // R68 ruling read backwards, and a reader already at now being offered a jump to it.
     expect(container.textContent).not.toContain('לקפוץ לסוף');
   });
+  it('WV-14 THE END MARKER IS THE LAST ELEMENT, so opening at the end does not hide the jump control', async () => {
+    const container = await renderResearchThesis(LOCALE, { withPane: true });
+    const end = container.querySelector('[data-transcript-end]');
+    const jump = container.querySelector('[data-jump-to-start]');
+    if (end === null || jump === null) throw new Error('the transcript drew no end marker or no jump control');
+
+    // WHAT THIS HOLDS, AND WHAT IT CANNOT. jsdom computes NO LAYOUT and defines no `scrollIntoView`, so no
+    // case here can assert a scroll POSITION — the 55 px local / 56 px staging shortfall was measured in a
+    // browser and the measurement is the evidence for it. What a case CAN hold is the mechanism: with
+    // `block: 'end'` the marker's bottom is aligned to the container's, so everything BEFORE it in the flow
+    // is on screen and anything after it is not. The control must therefore precede the marker.
+    expect(end.compareDocumentPosition(jump) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+
+    // And the marker really is last, not merely ahead of this one control — a third element appended after
+    // it later would be hidden by exactly the same defect.
+    expect(end.nextElementSibling).toBeNull();
+  });
 });
