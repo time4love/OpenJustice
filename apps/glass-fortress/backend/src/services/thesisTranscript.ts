@@ -410,14 +410,21 @@ function parsedObject(text: string): Record<string, unknown> | null {
  * A NESTED Json object, or null when the value at `key` is not one — the same refusal as `objectOrNull`, one
  * level down. It exists because a stored datum can sit inside a sub-object: the critic's grade is
  * `opinion.strength.grade` (`thesisCritic.ts` :92–:97, an object of `grade` and `reasoning`), and reading it
- * with `stringAt(_, 'strength')` answered null on EVERY real body — `stringAt` :421 refuses a non-string, so
+ * with `stringAt(_, 'strength')` answered null on EVERY real body — `stringAt` below refuses a non-string, so
  * the ANALYSIS turn's `line` was silently empty where A4 :1476 requires the grade.
  *
  * THE CAST IS DELIBERATE AND IS NARROWER THAN IT LOOKS. `value` is `unknown`, and the three tests above narrow
  * it to `object` — TypeScript will not carry that on to an index signature, so the assertion bridges `object`
  * to `Record<string, unknown>` and nothing else. It is sound for a value that has been proved non-null, of
- * type object and not an array. `objectOrNull` :396 needs no cast only because ITS input is
+ * type object and not an array. `objectOrNull` above needs no cast only because ITS input is
  * `Prisma.JsonValue`, whose object arm already carries the index signature.
+ *
+ * THE TWO SIBLINGS ARE NAMED AND NOT NUMBERED, deliberately. This docblock has now carried a wrong `:line`
+ * for `stringAt` TWICE: once when `objectAt` landed above it, and once when the correction ADDED the
+ * paragraph above — the number was computed correctly and then invalidated by the same edit that wrote it.
+ * A cite to a symbol in the SAME file gains a reader nothing a name does not, and it is the only part of
+ * this comment that an edit here can falsify. Cross-file cites keep their lines, since nothing done in this
+ * file moves them.
  */
 function objectAt(object: Record<string, unknown> | null, key: string): Record<string, unknown> | null {
   const value = object?.[key];

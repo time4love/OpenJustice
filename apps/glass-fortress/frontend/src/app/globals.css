@@ -1142,6 +1142,31 @@ html, body {
     color: var(--ink);
   }
 
+  /* A THREAD'S HEADING, and the RULE that makes it read as a divider rather than a bare label
+     (`docs/boards/boards.py` :112–:113). The rule fills the row after the words — `flex: 1` — so a short
+     heading and a long one both reach the column's edge. The heading is a SIBLING of the rows, outside any
+     `.turn-row`, which is also what breaks the glyph rail across it.
+
+     THE MARGINS ARE THE BOARD'S, not Tailwind's nearest step: 14px above and 2px below, where `mt-3` was
+     12px and nothing below. A shape on an approved board is decided, so the 2px difference is not mine to
+     round off. The size is `--text-mark`, whose value is the 12px the board sets. */
+  .turn-thread {
+    margin: 14px 0 2px;
+    font-size: var(--text-mark);
+    font-weight: 600;
+    color: var(--ink-muted);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .turn-thread::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+
   .turn-rail-model svg { color: var(--ink-muted); }
   .turn-rail-publication svg { color: var(--gold); }
   .turn-rail-withdrawal svg { color: var(--seal-red); }

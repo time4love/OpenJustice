@@ -171,14 +171,24 @@ function isFilled(element: unknown): boolean {
  * mention is never in the set, there is no argument for a trajectory" (:149–:150).
  *
  * IT IS THE `debateSessionId IS NULL` HALF, AND ONLY THAT HALF, WHICH IS SAID RATHER THAN GLOSSED. The
- * predicate's full test is `debateSessionId is null OR NOT ARGUED(m)`, and ARGUED needs the debate's OUTCOME —
- * PROMOTED, for this record and this thesis (A3 :1373–:1374). A VERSION turn carries `VersionMentionRow`, the
- * five STORED columns (Q-D), which hold the session's ID and not its outcome. So a citation whose debate was
- * ABANDONED is counted here as argued and by the predicate as unargued. That is a KNOWN and NARROW gap: to
- * close it the turn's rows would have to carry the outcome, which is an appendix change, not a page change.
- * The envelope's own `unargued: string[]` is HEAD's and cannot serve these rows — it is one list, and using it
- * would say the same number about four different versions, which is what the board's generator does at
- * `boards.py` :237.
+ * predicate's full test is `debateSessionId is null OR NOT ARGUED(m)`, and ARGUED is evidence A3 :1035 —
+ * `DebateSession(m.debateSessionId).status = PROMOTED`, with :1036 adding that the session's record and
+ * thesis must be the mention's (thesis A3 :1373–:1374 only DELEGATES to it). So a citation whose debate was
+ * ABANDONED is counted here as argued and by the predicate as unargued.
+ *
+ * AND THE REASON NOT TO CLOSE THAT GAP IS NOT THAT THE DATA IS ABSENT — it is present. A DEBATE_CLOSED turn's
+ * `thread.id` IS the `debateSessionId` these rows carry (verified on all three of run B's debates) and its
+ * body carries `outcome`, so the outcome could be joined from the transcript this component already has. The
+ * reason is that `since` returns a SUBSET of the turns (ui §11 :432; A4 :1476, "`since` strictly after
+ * `at`"): on a delta read the VERSION turn can arrive without its DEBATE_CLOSED turn, and a count derived
+ * across turns would then answer differently on the same version depending on how the page was read. A
+ * number that changes with the read is worse than one that is narrowly conservative, and this one is
+ * conservative in the safe direction — it can only UNDER-report what is owed, never claim a citation is
+ * argued when the debate never closed.
+ *
+ * The envelope's own `unargued: string[]` is HEAD's and cannot serve these rows either — it is one list, and
+ * using it would say the same number about four different versions, which is what the board's generator does
+ * at `boards.py` :237.
  */
 function unarguedOf(mentions: readonly { kind: 'EVIDENCE' | 'TRAJECTORY'; debateSessionId: string | null }[]): number {
   return mentions.filter((mention) => mention.kind === 'EVIDENCE' && mention.debateSessionId === null).length;
