@@ -94,6 +94,18 @@ export interface ExportContract {
 
 const fn = (step: number): ExportContract => ({ step, kind: 'function' });
 const value = (step: number): ExportContract => ({ step, kind: 'value' });
+/**
+ * An OBJECT export. The loader classifies `typeof x === 'object' && x !== null` as a
+ * TABLE, so a vector, a map or a frozen record is this kind and never `value`.
+ *
+ * CORRECTED, R74 chunk 3 part (a). `HASH_VECTOR` was declared `value(29)` and A1
+ * :1254-:1257 describes an OBJECT — the bytes AND the digest they must hash to, which
+ * `identity.test.ts` :81-:86 destructures as `.bytes` and `.docId`. The module was
+ * therefore UNLOADABLE by construction: every one of that file's nine cases failed with
+ * "exports HASH_VECTOR as a table, not as a value", and no correct implementation could
+ * have satisfied it — a primitive vector cannot carry both halves.
+ */
+const table = (step: number): ExportContract => ({ step, kind: 'table' });
 
 export const MODULES = {
   // A1 :1230-:1252 — one importable symbol each over the server's SHA-256, with the
@@ -104,7 +116,7 @@ export const MODULES = {
       docId: fn(29),
       commitment: fn(29),
       contentVersionHashOf: fn(29),
-      HASH_VECTOR: value(29),
+      HASH_VECTOR: table(29),
     },
   },
   // A1 :1247-:1248 — one constant naming the extractor AND its version; the PDF reader,

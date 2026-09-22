@@ -146,6 +146,11 @@ const NAMED_HASHERS: Record<string, string> = {
   'lib/chromeRuleset.ts': 'a ruleset id over its sorted selectors',
   'lib/classifierVersion.ts': 'the classifier prompt, as proof beside its version string',
   'lib/diffSurvival.ts': "the survival check's source state — its four inputs",
+  // Document step 29a. THREE names, one formula each (document flows A1 :1230-:1252):
+  // DOC_ID over the bytes as handed over, the COMMITMENT over the salted DOC_ID, and a
+  // content version over the extractor's text. The list moving is this scan working —
+  // "a new caller fails until it is named, which is the moment to ask what it is naming".
+  'lib/documentIdentity.ts': "a document's name over its bytes, its salted commitment, and a content version over the extractor's text",
   'lib/onChainVerdict.ts': "an on-chain verdict's source state",
   'lib/mission.ts': 'the scan-relevance prompt',
   'services/Web3Service.ts': 'a file, at the chain boundary',
