@@ -1,4 +1,5 @@
-import type { ThesisContext, Turn } from '@/types/research';
+import type { ThesisContext, ThesisOwedEntry, ThesisReview, Turn } from '@/types/research';
+import { thesisReviewsOwed } from './reads';
 
 // ---------------------------------------------------------------------------
 // THE WORKING VIEW'S BODIES — hand-written from thesis A4 :1476 (plan §4 :960–:963), never captured from a
@@ -450,7 +451,49 @@ export const thesisContextFull: ThesisContext = {
   },
   framings: [{ framingId: 'framing-1', question: 'מה נמסר לציבור על תופעות הלוואי, ומתי', provision: 'NUREMBERG_1', by: AUTHOR, createdAt: '2026-01-04T09:00:00.000Z' }],
   history: fullTranscript,
+  // NOTHING OWED — the other half of WV-8's question, and `{ owed: 0, reviews: [] }` is an ANSWER (A4 :1476).
+  owed: 0,
+  reviews: [],
 };
+
+const OWED_THESIS_ID = 'cmu0aaaa00011112222333344';
+
+/**
+ * A4 :1476's `E` — :1523's element WITHOUT what the list pays reads to add (`owedSince`, `author`, `mine`, the
+ * material). Spelled arm by arm rather than by discarding keys, so a field added to either shape is a `tsc`
+ * failure here and not a key quietly carried onto the wrong envelope.
+ */
+function entryOf(review: ThesisReview): ThesisOwedEntry {
+  const common = { thesisId: review.thesisId, name: review.name, command: review.command };
+  if (review.kind === 'FLAGGED') {
+    // THE DATE IS DROPPED ON THIS ARM AND THAT IS THE RULING: FLAGGED's `owedSince` is computed from the
+    // material (`thesisReviews.ts` :228), which this read does not load — ui §11 :404 sends it to the sheet.
+    return { ...common, kind: review.kind, versionId: review.versionId, mentionId: review.mentionId, reasons: review.reasons, record: review.material.record, owedSince: null };
+  }
+  if (review.kind === 'STALE_TRAJECTORY') {
+    return { ...common, kind: review.kind, citedOn: review.citedOn, state: review.state, record: null, owedSince: review.owedSince };
+  }
+  return { ...common, kind: review.kind, versionId: review.versionId, mentionId: review.mentionId, record: review.material.record, owedSince: review.owedSince };
+}
+
+/** A3 :1408–:1410's kind order — what `reviewsOf` returns, which is not the LIST's oldest-first. */
+const KIND_ORDER = ['FLAGGED', 'STALE_TRAJECTORY', 'UNARGUED'];
+
+/**
+ * THIS THESIS'S ENTRIES, DERIVED FROM THE LIST FIXTURE and never written twice.
+ *
+ * The two bodies are the SAME entries under different cover (A4 :1476 and :1523), so writing them out here
+ * would be two literals free to disagree — and the case that reads them would hold only that each agrees with
+ * itself. The list's own entries for the OTHER thesis are what the working view must NOT carry, and the filter
+ * here is the SERVER's narrowing stated as a fixture, not the page's: the page no longer keeps anything.
+ */
+const OWED_ENTRIES: ThesisOwedEntry[] = thesisReviewsOwed.reviews
+  .filter((review) => review.thesisId === OWED_THESIS_ID)
+  .map(entryOf)
+  // IN THE ORDER THE BACKEND SENDS, not the order the LIST sorts by: `reviewsOf` builds FLAGGED, then
+  // STALE_TRAJECTORY, then UNARGUED (A3's kinds), while the list sorts oldest first (A4 :1524). A fixture in
+  // the list's order would let a page case pass over a sequence the wire never carries.
+  .sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind));
 
 /**
  * THE SAME FULL BODY, ANSWERING FOR THE THESIS THE OWED LIST NAMES (`reads.ts`' `thesisReviewsOwed`).
@@ -463,7 +506,9 @@ export const thesisContextFull: ThesisContext = {
  */
 export const thesisContextOwed: ThesisContext = {
   ...thesisContextFull,
-  thesis: { ...thesisContextFull.thesis, thesisId: 'cmu0aaaa00011112222333344' },
+  thesis: { ...thesisContextFull.thesis, thesisId: OWED_THESIS_ID },
+  owed: OWED_ENTRIES.length,
+  reviews: OWED_ENTRIES,
 };
 
 /** A COLLEAGUE'S THESIS — identical in shape, `mine` false in every voice and on the thesis itself (§13 :480). */
@@ -527,6 +572,8 @@ export const thesisContextWithdrawn: ThesisContext = {
       body: { versionId: 'version-9', reason: 'הרשומה שצוטטה הוחלפה' },
     },
   ],
+  owed: 0,
+  reviews: [],
 };
 
 /** ONE VERSION AND NOTHING ELSE — §13 :477's row: one VERSION turn, UNARGUED n, and no analysis. */
@@ -574,4 +621,6 @@ export const thesisContextThin: ThesisContext = {
       },
     },
   ],
+  owed: 0,
+  reviews: [],
 };

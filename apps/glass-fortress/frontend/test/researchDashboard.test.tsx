@@ -113,7 +113,13 @@ describe('/research — the four regions', () => {
       // AT `mine` THE COLLEAGUE'S ROWS ARE NOT DRAWN, so their words are not on the page — which is the
       // switch's whole meaning, and the reason these two are pinned HERE rather than above: a case that
       // expected them at `mine` would be asserting that the filter does nothing.
-      expect(text).not.toContain('ציטוט שלא נטען בדיון');
+      //
+      // THE WITNESS MOVED 2026-09-22 (UI-8 chunk B round 2) and the case did not weaken. It used the UNARGUED
+      // KIND word, which was `all`-only because the ONLY unargued entry was a colleague's; the working view
+      // needed an unargued citation on the CALLER's own thesis, so that word is now drawn at `mine` too and
+      // would have made this a test of nothing. `research.owed.byAuthor` is drawn ONLY on an entry whose
+      // thesis is someone else's (§11 :407), so it witnesses the same filter and cannot stop doing so.
+      expect(text).not.toContain('הפקודה היא של handle-b, מחבר/ת התזה');
       expect(text).not.toContain('טיוטה בלבד');
 
       const all = container.querySelector('[data-scope-option="all"]');
@@ -123,7 +129,7 @@ describe('/research — the four regions', () => {
         await Promise.resolve();
       });
       const widened = container.textContent ?? '';
-      expect(widened).toContain('ציטוט שלא נטען בדיון');
+      expect(widened).toContain('הפקודה היא של handle-b, מחבר/ת התזה');
       expect(widened).toContain('טיוטה בלבד');
     } finally {
       fetching.restore();
@@ -218,7 +224,24 @@ describe('/research — the four regions', () => {
         'הפקודה להדבקה בשיחה',
       ]);
 
+      // THE CALLER'S OWN UNARGUED CITATION — the entry added 2026-09-22 so the WORKING VIEW can draw the arm
+      // that carries both a record and a date. It is the first UNARGUED in document order (oldest first), so
+      // `setOf` finds it, and it carries NO author line because the thesis is the caller's.
       expect(setOf('UNARGUED')).toEqual([
+        'ציטוט שלא נטען בדיון',
+        'המשרד החזיק במידע ולא מסר אותו במועד',
+        'פתוח מ־1.2.2026',
+        'צילום של העמוד מ־23.12.2021',
+        'הפקודה להדבקה בשיחה',
+        'open_debate thesisId=cmu0aaaa00011112222333344',
+        'הפקודה להדבקה בשיחה',
+      ]);
+
+      // AND THE COLLEAGUE'S, pinned by its OWN marker as the second stale entry is — the author line is what
+      // makes it a different row and not a second copy of the one above.
+      const theirs = container.querySelector('[data-owed-by-author]')?.closest('[data-owed-entry]');
+      if (theirs === null || theirs === undefined) throw new Error('the owed strip drew no entry on a colleague`s thesis');
+      expect(requireSubjects('the colleague`s unargued entry`s text nodes', textNodes(theirs)).map((node) => node.textContent)).toEqual([
         'ציטוט שלא נטען בדיון',
         'התוכנית הורחבה לאחר האות',
         'פתוח מ־12.2.2026',
@@ -306,8 +329,12 @@ describe('/research — the four regions', () => {
         await Promise.resolve();
       });
 
-      const unargued = container.querySelector('[data-owed-entry="UNARGUED"]');
-      if (unargued === null) throw new Error('the owed strip drew no UNARGUED entry');
+      // THE COLLEAGUE'S ENTRY BY ITS OWN MARKER, since 2026-09-22: the list now carries an unargued citation on
+      // the CALLER's thesis too, and it comes first — so `[data-owed-entry="UNARGUED"]` alone would select the
+      // row that correctly has NO author line and this case would fail for the world rather than for a defect.
+      const unargued = container.querySelector('[data-owed-by-author]')?.closest('[data-owed-entry]');
+      if (unargued === null || unargued === undefined) throw new Error('the owed strip drew no entry on a colleague`s thesis');
+      expect(unargued.getAttribute('data-owed-entry')).toBe('UNARGUED');
       expect(unargued.querySelector('[data-owed-by-author]')?.textContent).toBe('הפקודה היא של handle-b, מחבר/ת התזה');
 
       // §29 :892–:894: ONE command on a thesis review, "the commands" on the corpus-wide entry — so the
@@ -455,10 +482,10 @@ describe('/research — the states of §13', () => {
       owed: thesisReviewsOwed.owed,
       reviews: thesisReviewsOwed.reviews.map((review) => ({ ...review, mine: false, author: 'handle-b' })),
     };
-    // THE FLOOR, BY VALUE: the body really carries four entries and every one of them is a colleague's — so
+    // THE FLOOR, BY VALUE: the body really carries five entries and every one of them is a colleague's — so
     // "no rows" below is the FILTER's doing. A case asserting no rows is satisfied by a body that arrived
     // empty, and this is what tells the two apart.
-    expect(colleagues.reviews.length).toBe(4);
+    expect(colleagues.reviews.length).toBe(5);
     expect(colleagues.reviews.every((review) => !review.mine)).toBe(true);
     expect(colleagues.owed).toBeGreaterThan(0);
 
@@ -479,7 +506,7 @@ describe('/research — the states of §13', () => {
         fireEvent.click(all);
         await Promise.resolve();
       });
-      expect(container.querySelectorAll('[data-owed-entry]').length).toBe(4);
+      expect(container.querySelectorAll('[data-owed-entry]').length).toBe(5);
     } finally {
       fetching.restore();
     }

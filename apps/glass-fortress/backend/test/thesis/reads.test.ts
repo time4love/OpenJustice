@@ -4,7 +4,7 @@ jest.mock('../../src/lib/prisma', () => ({
 jest.mock('../../src/context/researcherContext', () => (require('./tools') as typeof import('./tools')).researcherContextDouble);
 jest.mock('../../src/factories/LLMFactory', () => (require('./tools') as typeof import('./tools')).llmFactoryTripwire);
 
-import { AFTER, BEFORE, CURRENT_VERSION, DIFF_NAME, DIFF_ROW, PAGE, URL } from '../helpers/corpusFixture';
+import { AFTER, BEFORE, CAPTURE_NAME, CURRENT_VERSION, DIFF_NAME, DIFF_ROW, PAGE, URL } from '../helpers/corpusFixture';
 import { resetDouble, store, written, type Row } from '../helpers/evidenceDouble';
 import { built } from './absent';
 import type { ThesisGapDecisionRow, ThesisPredicatesModule, ThesisRow, ThesisRowsShape, ThesisVersionRow } from './contract';
@@ -49,6 +49,27 @@ import {
   tripped,
 } from './tools';
 import { loadThesisRows } from '../../src/services/thesisRows';
+import { citationsFrom } from '../../src/services/publishedThesis';
+import type { OwedEntryShape, ReviewEntry } from './contract';
+
+/**
+ * The gated row projected down to A4 :1523's `E` — spelled arm by arm rather than by discarding keys, so a field
+ * added to either shape is a compile failure here and not a key quietly carried onto the wrong envelope.
+ */
+const entryOf = (entry: OwedEntryShape): ReviewEntry => {
+  const common = { thesisId: entry.thesisId, name: entry.name, command: entry.command };
+  if (entry.kind === 'FLAGGED') {
+    return { ...common, kind: entry.kind, versionId: entry.versionId, mentionId: entry.mentionId, reasons: entry.reasons };
+  }
+  if (entry.kind === 'STALE_TRAJECTORY') {
+    return { ...common, kind: entry.kind, citedOn: entry.citedOn, state: entry.state };
+  }
+  return { ...common, kind: entry.kind, versionId: entry.versionId, mentionId: entry.mentionId };
+};
+
+/** A stable order for comparing two answers of the SAME set — never the order either one happens to build. */
+const byKindThenName = (a: ReviewEntry, b: ReviewEntry): number =>
+  a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name) || a.thesisId.localeCompare(b.thesisId);
 
 /** The seeded world as ROWS — the one query, so the composer under test is pure (UI-8 chunk A). */
 const thesisRowsOf = async (): Promise<ThesisRowsShape> => {
@@ -422,6 +443,163 @@ describe('get_thesis_context — A4 :1476–:1479, GATED (thesis step 20)', () =
       .map((m) => m.record?.url);
     expect(citedUrls).toEqual([URL, URL]);
     expect(answer.pages).toEqual([{ trackedUrlId: PAGE.id, url: URL }]);
+  });
+
+  // -------------------------------------------------------------------------
+  // `owed` AND `reviews` — A4 :1476, ruled 2026-09-22 (the researcher, R71); ui §11 :402-:408.
+  //
+  // THIS THESIS'S ENTRIES OF REVIEWS RIDE THIS READ. The working view took a SECOND read of
+  // `/api/research/reviews` and kept the entries naming this thesis — a pass over EVERY thesis on the platform
+  // to keep one thesis's rows, and a read ui §10 :369-:371's CLOSED LIST never named. The field replaces it.
+  //
+  // THE SHAPE MIRRORS A4 :1523: `owed` is the COUNT and `reviews` the entries, so ONE NAME keeps ONE meaning
+  // across the two doors. A body serving `owed: ReviewEntry[]` — the design source's first proposal — passes
+  // nothing below.
+  // -------------------------------------------------------------------------
+  it("`owed` and `reviews` ride THIS read: the thesis's own entries of REVIEWS, `owed` the COUNT that mirrors A4 :1523 (A4 :1476; ui §11 :402)", async () => {
+    seedBothVersionsResolved();
+    const answer = answerOf(await call('get_thesis_context', { thesisId: THESIS.id }, AUTHOR)) as {
+      owed: number;
+      reviews: { kind: string; thesisId: string; name: string; command: string }[];
+    };
+    // THE FLOOR ON THE SUBJECT: this world really owes something, and really owes MORE THAN ONE KIND — a
+    // `reviews` that answered `[]`, or that served one arm and dropped the others, satisfies every equality
+    // below by carrying nothing. `owed: 0` is a legitimate answer and is held by its own case, on a world
+    // that owes nothing.
+    expect(answer.reviews.length).toBeGreaterThanOrEqual(2);
+    expect([...new Set(answer.reviews.map((e) => e.kind))].sort()).toEqual(['FLAGGED', 'UNARGUED']);
+    // `owed` IS A NUMBER AND IT IS THIS LIST'S COUNT — the count and the list cannot disagree with each other.
+    expect(answer.owed).toBe(answer.reviews.length);
+    // Every entry names THIS thesis and carries the ONE command to paste (T6 :881-:882).
+    expect(answer.reviews.filter((e) => e.thesisId !== THESIS.id || e.command.length === 0)).toEqual([]);
+    expect(written).toEqual([]);
+  });
+
+  it("each entry carries the RECORD and `owedSince` PAIRED BY KIND, on the SERIALISED answer (A4 :1476 as amended; ui §11 :404)", async () => {
+    // HELD ON THE SERIALISED ANSWER because that is what a route sends and what a page parses — the R66 lesson.
+    // A `Date` that never left the process would pass an in-memory assertion and reach the page as `{}`.
+    //
+    // AND THE WORLD CITES **TWO DIFFERENT RECORDS**, which the shared fixture does not: its published and head
+    // EVIDENCE mentions name the SAME diff, so a `record` taken from ANY entry of the resolver's map — the first,
+    // say — would be right by accident and this case would grade nothing. DEV's decoy E3 (2026-09-22) is exactly
+    // that, and reddened nothing until this line was added. The head gains a CAPTURE citation, so each entry's
+    // record can be checked against ITS OWN name.
+    seedBothVersionsResolved();
+    store.mentions = [
+      ...store.mentions,
+      mentionRow({ ...MENTION, id: 'mention-capture', versionId: CITING_BOTH_VERSION.id, name: CAPTURE_NAME, contentVersionHash: BEFORE.textHash }, false),
+    ];
+    // The capture HOLDS ITS TEXT at the pin — `heldTextsFor` answers a citation pinned to the capture's current
+    // extraction from the snapshot row itself, and a row without `text` is a malformed capture rather than a
+    // finding about this read (`publishedThesis.ts`'s `pinnedContent` throws on it by name).
+    store.captures = store.captures.map((capture) =>
+      capture['id'] === BEFORE.id ? { ...capture, text: 'הפסקה כפי שנצפתה בצילום' } : capture,
+    );
+    const answer = answerOf(await call('get_thesis_context', { thesisId: THESIS.id }, AUTHOR)) as {
+      reviews: { kind: string; name: string; record: unknown; owedSince: unknown }[];
+    };
+    // THE FLOOR: both arms this world owes are present, so the per-kind table below is over something.
+    expect([...new Set(answer.reviews.map((e) => e.kind))].sort()).toEqual(['FLAGGED', 'UNARGUED']);
+
+    // THE THREE LEGAL PAIRINGS, as VALUES — FLAGGED { record, owedSince: null } · UNARGUED { record, owedSince }
+    // · STALE_TRAJECTORY { record: null, owedSince }. A body that made both fields independently nullable would
+    // admit a fourth shape the appendix does not name, and this table is what refuses it.
+    expect(
+      answer.reviews.map((entry) => ({
+        kind: entry.kind,
+        record: entry.record === null ? null : 'named',
+        owedSince: entry.owedSince === null ? null : 'dated',
+      })),
+    ).toEqual(answer.reviews.map((entry) => ({ kind: entry.kind, record: 'named', owedSince: entry.kind === 'FLAGGED' ? null : 'dated' })));
+
+    // THE RECORD IS NAMED AS EVIDENCE A1 NAMES IT — the page and its timestamps, never a row id (§4 :167) — and
+    // EACH ENTRY CARRIES ITS OWN. The diff-named citations name the pair by its two endpoints; the capture-named
+    // one names a single capture. An entry handed another entry's record fails here by value.
+    expect(answer.reviews.map((entry) => [entry.name, entry.record])).toEqual(
+      answer.reviews.map((entry) => [
+        entry.name,
+        entry.name === CAPTURE_NAME
+          ? { url: URL, capture: BEFORE.waybackTimestamp }
+          : { url: URL, before: BEFORE.waybackTimestamp, after: AFTER.waybackTimestamp },
+      ]),
+    );
+    // THE VACUITY GUARD ON THAT TABLE: both sides are built from the same answer, so it is a SHAPE check and
+    // holds nothing unless the world really cites TWO records. It does, and this says which.
+    expect([...new Set(answer.reviews.map((entry) => entry.name))].sort()).toEqual([CAPTURE_NAME, DIFF_NAME].sort());
+
+    // AND THE DATE IS AN ISO INSTANT ON THE WIRE, not a serialised object. UNARGUED's is HEAD's own `createdAt`.
+    const unargued = answer.reviews.find((entry) => entry.kind === 'UNARGUED');
+    expect(unargued?.owedSince).toBe(CITING_BOTH_VERSION.createdAt.toISOString());
+  });
+
+  it('`{ owed: 0, reviews: [] }` is an ANSWER and never a refusal, on a thesis that owes nothing (A4 :1476, :1525; ui §11 :406)', async () => {
+    // The head's one citation ARGUED, for this record and this thesis: UNARGUED fires on ARGUED, nothing is
+    // published, and no trajectory is cited — the three arms are each answered and each answer is empty.
+    seedThesis();
+    store.mentions = [mentionRow(MENTION, false, DEBATE)];
+    const answer = answerOf(await call('get_thesis_context', { thesisId: THESIS.id }, AUTHOR));
+    expect({ owed: answer['owed'], reviews: answer['reviews'] }).toEqual({ owed: 0, reviews: [] });
+  });
+
+  // -------------------------------------------------------------------------
+  // THE COLLEAGUE CASE — ui §11 :407-:408, and the reason this field is NOT `REVIEWS(researcher)`.
+  //
+  // A3 :1408-:1410 scopes that predicate to the theses the caller AUTHORS. §11 :407 requires THE SAME ENTRIES
+  // on a COLLEAGUE'S thesis, with the command labelled as the author's — and §9 :1003 says the gated read is
+  // "gated from the public, not from colleagues". So a `reviews` field built by calling REVIEWS(caller) and
+  // keeping this thesis's rows answers `[]` to every colleague, silently.
+  //
+  // NOTHING IN THE TREE HELD THIS BEFORE (the R71 brief §2, the case it names as OWED).
+  // -------------------------------------------------------------------------
+  it("a COLLEAGUE reading the thesis is answered the SAME entries — the field is PER-THESIS and carries no author scoping (ui §11 :407; A3 :1408)", async () => {
+    seedBothVersionsResolved();
+    const mine = answerOf(await call('get_thesis_context', { thesisId: THESIS.id }, AUTHOR));
+    const theirs = answerOf(await call('get_thesis_context', { thesisId: THESIS.id }, OTHER_RESEARCHER));
+    // THE FLOOR: the author's own read really owes entries, or "the same" is the same nothing twice. And the
+    // two callers really are different researchers — `mine` on the thesis says so.
+    expect((mine['reviews'] as unknown[]).length).toBeGreaterThan(0);
+    expect([(mine['thesis'] as { by: { mine: boolean } }).by.mine, (theirs['thesis'] as { by: { mine: boolean } }).by.mine]).toEqual([true, false]);
+    expect(theirs['reviews']).toEqual(mine['reviews']);
+    expect(theirs['owed']).toEqual(mine['owed']);
+  });
+
+  // -------------------------------------------------------------------------
+  // ONE REVIEWS, TWO SOURCES — the guard on the deliberate second assembly.
+  //
+  // `reviewsOf` builds A3 :1408-:1410's three arms over rows the read already loaded; `reviews` builds them
+  // over queries of its own, because a cross-thesis list cannot afford one thesis's whole read per thesis (the
+  // researcher's ruling, 2026-09-22). Two sources is the ruling; two ANSWERS would be this repository's named
+  // defect. This case is what stops them parting, and it is what the later pending-work chunk keeps green when
+  // it collapses them.
+  // -------------------------------------------------------------------------
+  it('`reviewsOf` answers the SAME ENTRIES `reviews` answers — the gated row is `E` PLUS the pairing, never a different `E` (A3 :1408-:1410)', async () => {
+    // RE-AIMED 2026-09-22 (round 2), NOT WEAKENED. The two doors now serve different ROWS by ruling — A4 :1476's
+    // `E & { record, owedSince }` here, :1523's `E & { owedSince, material, author, mine }` there — so a raw
+    // deep-equal would hold a world the design deleted. What must not drift is the ENTRY underneath, and the
+    // projection below is the whole of it: a field added to either union's arms fails HERE by name rather than
+    // being dropped in silence.
+    seedBothVersionsResolved();
+    const p = await built<ThesisPredicatesModule>('services/thesisPredicates', ['reviews', 'reviewsOf']);
+    const rows = await thesisRowsOf();
+    const cited = await citationsFrom(
+      THESIS.id,
+      rows.mentions,
+      [rows.thesis.headVersionId, rows.thesis.publishedVersionId].filter((id): id is string => id !== null),
+    );
+    const overRows = p.reviewsOf(rows, cited);
+    const overQueries = await p.reviews(AUTHOR);
+    // THE FLOOR ON THE SUBJECT: a world that owes nothing makes the two lists equal by being empty twice.
+    expect(overRows.length).toBeGreaterThanOrEqual(2);
+    expect(overRows.map(entryOf).sort(byKindThenName)).toEqual([...overQueries].sort(byKindThenName));
+
+    // AND THE PAIRING IS EXACTLY THE THREE THE APPENDIX NAMES (A4 :1476), stated as a value per kind so a fourth
+    // combination — a FLAGGED entry with a date, a STALE entry with a record — fails by naming the kind.
+    expect(overRows.map((entry) => [entry.kind, entry.record === null ? 'no record' : 'record', entry.owedSince === null ? 'no date' : 'date'])).toEqual(
+      overRows.map((entry) => [entry.kind, entry.kind === 'STALE_TRAJECTORY' ? 'no record' : 'record', entry.kind === 'FLAGGED' ? 'no date' : 'date']),
+    );
+    // THE VACUITY GUARD ON THAT: both sides are built from `overRows`, so the equality above is a SHAPE check and
+    // holds nothing unless the kinds really differ. They do, and this says which.
+    expect([...new Set(overRows.map((e) => e.kind))].sort()).toEqual(['FLAGGED', 'UNARGUED']);
   });
 
   // -------------------------------------------------------------------------

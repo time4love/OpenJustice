@@ -5,7 +5,7 @@ import { chunksOf, heldTextKey, heldTextsFor, pairName, recordsByName, type Reso
 import { argued, EVER_PUBLISHED, flaggedFor, verifiedFor, type FlagReport, type VerifiedReport } from './evidencePredicates';
 import type { PublicationMaterial } from './publicationAssessor';
 import { decisionsAtPublication, gapList, theCall, theRequests, trajectoryCurrent, type CitedMention } from './thesisPredicates';
-import { resolveTrajectoryCitations } from './trajectoryCitation';
+import { resolveTrajectoryCitations, type TrajectoryCurrency } from './trajectoryCitation';
 import { refusal, type Refusal } from '../mcp/tools/thesisRefusals';
 
 // ---------------------------------------------------------------------------
@@ -333,6 +333,26 @@ export interface ResolvedCitations {
    * version loses every link on the toggle. A caller asking for one version gets that version's pages.
    */
   pages: { trackedUrlId: string; url: string }[];
+  /**
+   * FLAGGED(m) for every EVIDENCE mention resolved here — mention id → the report, `flaggedFor`'s OWN answer.
+   *
+   * IT IS THE PREDICATE CALLED ONCE, NOT A CACHE OF IT. `flaggedFor` is FLAGGED's plural, exported from the
+   * predicate's own module (evidence A7 :1302-:1303), and this read calls it exactly once for the whole set; what
+   * rides here is that one call's answer, for the consumers of THIS read. Nothing is stored and nothing is read
+   * back on a later read, which is what evidence A3 :1060-:1063 forbids — `corpusReads.ts` :522-:525 states the
+   * same of itself. A second `flaggedFor` inside REVIEWS' arm would be two evaluations of ONE predicate in one
+   * body, which is the cost thesis A4 :1476's "ZERO EXTRA QUERIES" names.
+   */
+  flags: ReadonlyMap<string, FlagReport>;
+  /**
+   * The currency of every TRAJECTORY citation resolved here — the id → the currency of the pass it pins.
+   *
+   * `resolveTrajectoryCitations` is the ONE resolver and this read already calls it; a name ABSENT from this map
+   * is a citation no stored pass holds, which is the `missing` arm `thesisPredicates.staleTrajectories` returns
+   * whole so each caller can say what it means (A3 :1386-:1388). The wire carries only `current: boolean` (A4
+   * :1476, `currency` dropped 2026-09-21), and this is the internal signal that decided it.
+   */
+  trajectories: ReadonlyMap<string, TrajectoryCurrency>;
 }
 
 /**
@@ -388,7 +408,7 @@ export async function citationsFrom(
   const byVersion = new Map<string, VersionCitations>(wanted.map((id) => [id, { citations: [], cited: [] }]));
   // url → trackedUrlId, one entry per cited page.
   const pages = new Map<string, string>();
-  if (wanted.length === 0) return { byVersion, records: new Map(), pages: [] };
+  if (wanted.length === 0) return { byVersion, records: new Map(), pages: [], flags: new Map(), trajectories: new Map() };
 
   const asked = new Set(wanted);
   const mentions = allMentions.filter((m) => asked.has(m.versionId));
@@ -451,7 +471,13 @@ export async function citationsFrom(
   for (const [name, record] of records) {
     if (record !== null) resolvedRecords.set(name, record);
   }
-  return { byVersion, records: resolvedRecords, pages: [...pages].map(([url, trackedUrlId]) => ({ trackedUrlId, url })) };
+  return {
+    byVersion,
+    records: resolvedRecords,
+    pages: [...pages].map(([url, trackedUrlId]) => ({ trackedUrlId, url })),
+    flags,
+    trajectories: new Map(resolved.map((t) => [t.id, t.currency])),
+  };
 }
 
 /**

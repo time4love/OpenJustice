@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 import type { Framing, FramingRound, ThesisAnalysis, ThesisGapDecision, ThesisMention, ThesisVersion } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+// ALIASED, because this module already imports `debateState.namedRecordOf` — TWO LOADERS, ONE NAMING RULE, each
+// over the rows it holds: that one names a record from a DEBATE row's relations, this one from a ResolvedRecord.
+// Two names in one file is the honest spelling; one name for two inputs is not.
+import { namedRecordOf as namedRecordOfResolved, type ResolvedRecord } from './corpusReads';
 import type { NamedRecord } from './evidenceReviews';
 import {
   argued,
@@ -8,10 +12,11 @@ import {
   flagged,
   type ContentVersionProvenance,
   type FlagReason,
+  type FlagReport,
   type RecordContent,
 } from './evidencePredicates';
 import { namedRecordOf } from './debateState';
-import type { ThesisRows } from './thesisRows';
+import type { MentionRow, ThesisRows } from './thesisRows';
 import {
   analysisTurns,
   debateTurns,
@@ -392,7 +397,7 @@ export async function publishableVersion(
 // ---------------------------------------------------------------------------
 
 /** One EVIDENCE citation of a version that FLAGGED(m) holds for, with the arms `flagged` named. */
-interface FlaggedCitation {
+export interface FlaggedCitation {
   mentionId: string;
   name: string;
   reasons: FlagReason[];
@@ -485,6 +490,205 @@ export function reviewCommand(kind: ReviewKind, thesisId: string, headVersionId:
     case 'UNARGUED':
       return `open_debate thesisId=${thesisId} record=${record === null ? '…' : JSON.stringify(record)} rationale=…`;
   }
+}
+
+/**
+ * WHAT `get_thesis_context` HANDS REVIEWS — the two plurals its citation resolver ALREADY called, and nothing else.
+ *
+ * It is spelled structurally rather than imported from `publishedThesis`, for the reason that module states of its
+ * own `CitationMention` (:299-:306): a predicate module must not depend on the reader that feeds it.
+ * `ResolvedCitations` satisfies this shape by construction.
+ */
+export interface ReviewInputs {
+  /** mention id -> FLAGGED(m), from the ONE `flaggedFor` call of the read that loaded the rows. */
+  flags: ReadonlyMap<string, FlagReport>;
+  /** trajectory id -> the currency of the pass it pins. ABSENT is "no stored pass holds it" (A3 :1386-:1388). */
+  trajectories: ReadonlyMap<string, TrajectoryCurrency>;
+  /** EVIDENCE name -> the record the corpus holds, from the `recordsByName` pass the resolver already made. */
+  records: ReadonlyMap<string, ResolvedRecord>;
+}
+
+/**
+ * ONE THING OWED, AS THE GATED READ SERVES IT — A4 :1476's `E & { record, owedSince }`, **PAIRED PER KIND** and
+ * ruled that way on 2026-09-22 (the researcher, R71 "approve c, rule the record in").
+ *
+ * THE PAIRING IS THE CONTRACT, not two independently nullable fields:
+ *
+ *   FLAGGED           { record, owedSince: null }   its date AND its material are the CITATION SHEET's
+ *   UNARGUED          { record, owedSince }         the date is HEAD's `createdAt`
+ *   STALE_TRAJECTORY  { record: null, owedSince }   a trajectory has no record — `/research`'s own shape for it
+ *
+ * WHY FLAGGED CARRIES NO DATE, and it is not an omission. `thesisReviews.ts` :228 computes it as
+ * `later(published, earliest)`, where `earliest` folds `decision.at` (:211, `latestDecisionOf`) and
+ * `material.movedAt` (:207, `movedFrom` over :202, `recordRowOf`) — the evidence-side rows this read never
+ * loads, at 3-6 singular reads per flagged citation. And `publishedAt` ALONE was REFUSED (A4 :1476, the same
+ * ruling): publication is a LOWER BOUND, so a card drawn from it would claim a flag had been open longer than
+ * it has. A false date on a forensic surface is worse than none.
+ *
+ * EVERYTHING HERE IS STILL FREE: the record comes from the `recordsByName` pass the citation resolver already
+ * made, and STALE's instant from the trajectory currency it already returned.
+ */
+export type OwedEntry =
+  | (Extract<ReviewEntry, { kind: 'FLAGGED' }> & { record: NamedRecord; owedSince: null })
+  | (Extract<ReviewEntry, { kind: 'UNARGUED' }> & { record: NamedRecord; owedSince: Date })
+  | (Extract<ReviewEntry, { kind: 'STALE_TRAJECTORY' }> & { record: null; owedSince: Date });
+
+/** The LATER of two instants — `thesisReviews.ts` :163's rule: an obligation begins at the later of its moments. */
+const laterOf = (a: Date, b: Date): Date => (a.getTime() >= b.getTime() ? a : b);
+
+/**
+ * REVIEWS FOR ONE THESIS, OVER ROWS ALREADY LOADED — thesis A4 :1476's `owed` and `reviews`, ruled 2026-09-22.
+ *
+ * IT IS PER-THESIS AND CARRIES NO AUTHOR SCOPING. A3 :1408 scopes REVIEWS(researcher) to the theses the caller
+ * AUTHORS; ui §11 :407-:408 requires these same entries on a COLLEAGUE's thesis, with the command labelled as the
+ * author's. So this function asks nothing about who is calling — the gated read's own rule (§9 :1003, "gated from
+ * the public, not from colleagues") — and every command it builds still writes only as the author (A7 :1685).
+ *
+ * ZERO QUERIES, WHICH IS THE WHOLE POINT (A4 :1476). FLAGGED reads the `flaggedFor` answer the citation resolver
+ * already computed, STALE_TRAJECTORY the currency that same resolver already holds, UNARGUED the head's own mention
+ * rows through `unargued` CALLED. A second read for any of them is the second read this field exists to delete.
+ *
+ * IT IS A SECOND ASSEMBLY OF A3 :1408-:1410's THREE ARMS BESIDE `reviews` BELOW, DELIBERATELY AND FOR NOW. The two
+ * differ only in their SOURCE — this one over rows a single thesis's read already paid for, that one over queries a
+ * cross-thesis list can afford — and the researcher ruled on 2026-09-22 that the cross-thesis read is a LATER chunk
+ * (`handoffs/R71-fable-pending-work-source-2026-09-22.md` §2 rebuilds it as a domain query whose last step is this
+ * same fold). Until then the two spellings are held equal BY A TEST rather than by hope: `thesis/derivations.test.ts`
+ * asserts that both answer the same entries for one thesis, so a change to either that the other does not follow is
+ * a red suite and not a drift.
+ *
+ * A TRAJECTORY NO STORED PASS HOLDS IS NOT AN OBLIGATION HERE, and `reviews` below THROWS on the same state — the
+ * difference is deliberate and is `staleTrajectories`' own rule (:415, "each caller says what a citation no stored
+ * pass holds means"). A4 :1476's `V` arm serves such a citation as `{ kind: 'TRAJECTORY', resolves: false }`, so
+ * this read already draws it, on the page, in the same body; a read whose envelope admits a state cannot throw on
+ * it. REVIEWS as a LIST has no such page, which is why it refuses to report the thesis at all.
+ */
+export function reviewsOf(rows: ThesisRows, resolved: ReviewInputs): OwedEntry[] {
+  const thesisId = rows.thesis.id;
+  const head = rows.thesis.headVersionId;
+  if (head === null) {
+    // The same loud guard `reviews` states: `create_thesis` writes the thesis, its first version and the head in
+    // ONE transaction, so a thesis without one is malformed rather than unowing.
+    throw new Error(`reviewsOf: thesis ${thesisId} has no head version — a malformed thesis, not an obligation.`);
+  }
+  const published = rows.thesis.publishedVersionId;
+  const command = (kind: ReviewKind): string => reviewCommand(kind, thesisId, head, null);
+  // `thesisRows.mentionsOf`, NOT IMPORTED: a value import of that module here would close a runtime cycle
+  // (thesisPredicates -> thesisRows -> publishedThesis -> thesisPredicates), and this module's dependency on the
+  // loader is a TYPE and stays one.
+  const mentionsOn = (versionId: string): MentionRow[] => rows.mentions.filter((m) => m.versionId === versionId);
+  const headVersion = rows.versions.find((v) => v.id === head);
+  if (headVersion === undefined) {
+    throw new Error(`reviewsOf: thesis ${thesisId} points at head ${head}, which is not among its versions.`);
+  }
+  // THE TWO INSTANTS THE ARMS READ. The loud guard is `thesisReviews.ts` :156-:161's: a thesis with a PUBLISHED
+  // pointer has a `publishedAt`, or the row is malformed and an entry dated from it would be a guess.
+  const headCreatedAt = headVersion.createdAt;
+  const publishedAtOf = (kind: ReviewKind, name: string): Date => {
+    const at = rows.thesis.publishedAt;
+    if (at === null) {
+      throw new Error(`reviewsOf: ${kind} ${name} is owed on the PUBLISHED version of ${thesisId}, which has no publishedAt.`);
+    }
+    return at;
+  };
+  /** The record as evidence A1 names it — `namedRecordOf` CALLED over the pass the citation resolver already made. */
+  const recordOf = (name: string, mentionId: string): NamedRecord => {
+    const found = resolved.records.get(name);
+    if (found === undefined) {
+      throw new Error(`reviewsOf: mention ${mentionId} cites #ev_${name}, which the resolver of this read did not resolve.`);
+    }
+    return namedRecordOfResolved(found);
+  };
+
+  const entries: OwedEntry[] = [];
+
+  if (published !== null) {
+    for (const mention of mentionsOn(published).filter((m) => m.kind === 'EVIDENCE')) {
+      const report = resolved.flags.get(mention.id);
+      if (report === undefined) {
+        throw new Error(`reviewsOf: no FLAGGED for the citation ${mention.id} — the resolver answers for every EVIDENCE mention it was handed.`);
+      }
+      if (!report.flagged) continue;
+      entries.push({
+        kind: 'FLAGGED',
+        thesisId,
+        name: mention.name,
+        versionId: published,
+        mentionId: mention.id,
+        reasons: report.reasons,
+        command: command('FLAGGED'),
+        record: recordOf(mention.name, mention.id),
+        owedSince: null,
+      });
+    }
+  }
+
+  // THE POINTERS A TRAJECTORY CAN BE CITED ON, and ONE entry per trajectory whichever cite it (A3 :1408-:1409) —
+  // where PUBLISHED and HEAD are the same version it is named once, as PUBLISHED.
+  const pointers: CitedOn[] =
+    published === null
+      ? [{ versionId: head, published: false }]
+      : published === head
+        ? [{ versionId: published, published: true }]
+        : [
+            { versionId: published, published: true },
+            { versionId: head, published: false },
+          ];
+  const stale = new Map<string, { citedOn: CitedOn[]; state: TrajectoryCurrency['state']; latestComputedAt: string }>();
+  for (const pointer of pointers) {
+    for (const mention of mentionsOn(pointer.versionId).filter((m) => m.kind === 'TRAJECTORY')) {
+      const currency = resolved.trajectories.get(mention.name);
+      if (currency === undefined || trajectoryCurrent(currency)) continue;
+      // A LOUD GUARD, the one `thesisReviews.ts` :247-:252 states: every state `trajectoryCurrent` calls STALE —
+      // RECOMPUTED_DISAGREES and NOT_FOLLOWED_BY_LATEST — carries the newer pass's instant, so a stale citation
+      // without one is a currency the resolver did not build.
+      if (!('latestComputedAt' in currency)) {
+        throw new Error(`reviewsOf: trajectory ${mention.name} on thesis ${thesisId} reads ${currency.state} and carries no latestComputedAt.`);
+      }
+      const held = stale.get(mention.name);
+      if (held === undefined) stale.set(mention.name, { citedOn: [pointer], state: currency.state, latestComputedAt: currency.latestComputedAt });
+      else held.citedOn.push(pointer);
+    }
+  }
+  for (const [id, { citedOn, state, latestComputedAt }] of stale) {
+    // THE CITING INSTANT, `thesisReviews.ts` :253-:256: the PUBLISHED pointer from its publication, HEAD from its
+    // writing — the EARLIER where both cite — and the obligation begins at the later of that and the newer pass.
+    const citing = citedOn
+      .map((c) => (c.published ? publishedAtOf('STALE_TRAJECTORY', id) : headCreatedAt))
+      .reduce((first, moment) => (moment < first ? moment : first));
+    entries.push({
+      kind: 'STALE_TRAJECTORY',
+      thesisId,
+      name: id,
+      citedOn,
+      state,
+      command: command('STALE_TRAJECTORY'),
+      record: null,
+      owedSince: laterOf(citing, new Date(latestComputedAt)),
+    });
+  }
+
+  const headMentions = mentionsOn(head);
+  const owed = new Set(
+    unargued(
+      { thesisId },
+      headMentions.map((m) => ({ kind: m.kind, name: m.name, debate: m.debateSession })),
+    ),
+  );
+  for (const mention of headMentions.filter((m) => owed.has(m.name))) {
+    entries.push({
+      kind: 'UNARGUED',
+      thesisId,
+      name: mention.name,
+      versionId: head,
+      mentionId: mention.id,
+      command: command('UNARGUED'),
+      record: recordOf(mention.name, mention.id),
+      // An unargued HEAD citation is owed from the moment the head was written (`thesisReviews.ts` :195-:196).
+      owedSince: headCreatedAt,
+    });
+  }
+
+  return entries;
 }
 
 /**

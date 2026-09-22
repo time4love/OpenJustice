@@ -13,7 +13,7 @@ import {
 } from '@/lib/researchBody';
 import { TURN_KINDS, type TurnKind } from '@/types/research';
 import { requireSubjects } from './scan';
-import { thesisContextColleague, thesisContextFull, thesisContextThin, thesisContextWithdrawn } from './fixtures/research/thesisContext';
+import { thesisContextColleague, thesisContextFull, thesisContextOwed, thesisContextThin, thesisContextWithdrawn } from './fixtures/research/thesisContext';
 import {
   articleRules,
   captures,
@@ -285,6 +285,52 @@ describe('research-body — the lists', () => {
 
     const empty = parseThesisReviews(overTheWire(thesisReviewsEmpty));
     expect(empty).toEqual({ owed: 0, reviews: [] });
+  });
+
+  it("RR-11b `get_thesis_context` CARRIES THIS THESIS'S OWED ENTRIES, and the parser holds the PAIRING (A4 :1476)", () => {
+    const parsed = parseThesisContext(overTheWire(thesisContextOwed));
+    // THE FLOOR: the body really carries entries of more than one kind, so the equalities below are not the
+    // equalities of an empty list — and `owed` is a NUMBER, exactly as it is on `list_thesis_reviews` (:1523).
+    const kinds = new Set(requireSubjects("the thesis's owed entries", parsed.reviews).map((entry) => entry.kind));
+    expect(kinds.size).toBe(3);
+    expect(parsed.owed).toBe(parsed.reviews.length);
+    expect(parsed.reviews.every((entry) => entry.command !== '')).toBe(true);
+    // EVERY ENTRY IS THIS THESIS'S. The read is per-thesis, so a body carrying another thesis's row is a
+    // backend that answered a different question.
+    expect(parsed.reviews.filter((entry) => entry.thesisId !== thesisContextOwed.thesis.thesisId)).toEqual([]);
+
+    // THE THREE LEGAL PAIRINGS, OFF THE PARSE (A4 :1476 as amended 2026-09-22): FLAGGED { record, no date } ·
+    // UNARGUED { record, date } · STALE_TRAJECTORY { no record, date }.
+    expect(parsed.reviews.map((entry) => [entry.kind, entry.record === null ? 'no record' : 'record', entry.owedSince === null ? 'no date' : 'date'])).toEqual([
+      ['FLAGGED', 'record', 'no date'],
+      ['STALE_TRAJECTORY', 'no record', 'date'],
+      ['STALE_TRAJECTORY', 'no record', 'date'],
+      ['UNARGUED', 'record', 'date'],
+    ]);
+
+    // AND WHAT THE ROW IS NOT: `material`, `author` and `mine` are A4 :1523's, and every one of them costs that
+    // list reads this one does not make.
+    expect(JSON.stringify(parsed.reviews)).not.toMatch(/"material"|"author"|"mine"/);
+
+    // THE PAIRING IS CHECKED, NOT MERELY THE PRESENCE. A wire the appendix does not describe fails BY NAME —
+    // and a FLAGGED entry carrying a date is exactly the wire the ruling refused, because the only date that
+    // read could produce is `publishedAt`, a LOWER BOUND that overstates how long the flag has been open.
+    const flaggedWithADate = withInstead(thesisContextOwed, ['reviews', '0', 'owedSince'], '2026-02-10T09:00:00.000Z');
+    expect(() => parseThesisContext(overTheWire(flaggedWithADate))).toThrow(/thesis context\.reviews\[0\]\.owedSince/);
+    const staleWithARecord = withInstead(thesisContextOwed, ['reviews', '1', 'record'], { url: 'https://example.gov/one/', capture: '20211223211940' });
+    expect(() => parseThesisContext(overTheWire(staleWithARecord))).toThrow(/thesis context\.reviews\[1\]\.record/);
+    const unarguedWithNoDate = withInstead(thesisContextOwed, ['reviews', '3', 'owedSince'], null);
+    expect(() => parseThesisContext(overTheWire(unarguedWithNoDate))).toThrow(/thesis context\.reviews\[3\]\.owedSince/);
+    const flaggedWithNoRecord = withInstead(thesisContextOwed, ['reviews', '0', 'record'], null);
+    expect(() => parseThesisContext(overTheWire(flaggedWithNoRecord))).toThrow(/thesis context\.reviews\[0\]\.record/);
+
+    // AND THE ENTRY'S OWN FIELDS ARE STILL CHECKED, as they are on the other door.
+    const noKind = withInstead(thesisContextOwed, ['reviews', '0', 'kind'], 'ARRIVED');
+    expect(() => parseThesisContext(overTheWire(noKind))).toThrow(/thesis context\.reviews\[0\]\.kind/);
+    const noCommand = withInstead(thesisContextOwed, ['reviews', '0', 'command'], 7);
+    expect(() => parseThesisContext(overTheWire(noCommand))).toThrow(/thesis context\.reviews\[0\]\.command/);
+    const noCount = withInstead(thesisContextOwed, ['owed'], 'three');
+    expect(() => parseThesisContext(overTheWire(noCount))).toThrow(/thesis context\.owed/);
   });
 
   it('RR-12 `list_evidence_reviews`: ALL FOUR cause arms, MORE THAN ONE command, and BOTH `notEvaluable` reasons', () => {

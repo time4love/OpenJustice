@@ -32,7 +32,9 @@ import type {
   RuleMatch,
   ThesesList,
   ThesisContext,
+  ThesisOwedEntry,
   ThesisReview,
+  ThesisReviewEntry,
   ThesisReviewList,
   ThesisRow,
   ThesisState,
@@ -572,6 +574,11 @@ export function parseThesisContext(value: unknown): ThesisContext {
       };
     }),
     history: turns(body.history, 'thesis context.history'),
+    // WHAT THIS THESIS OWES, ON ITS OWN READ (A4 :1476). `owed` is a COUNT here exactly as it is on
+    // `list_thesis_reviews` (:1523), and the entries are that envelope's `E` — parsed by the ONE entry parser, so
+    // a field the wire stops sending on either door is a named failure and never a silent `undefined`.
+    owed: count(body.owed, 'thesis context.owed'),
+    reviews: list(body.reviews, 'thesis context.reviews').map((one, index) => thesisOwedEntry(one, `thesis context.reviews[${String(index)}]`)),
   };
 }
 
@@ -679,19 +686,20 @@ export function parseFramings(value: unknown): FramingRow[] {
   });
 }
 
-function thesisReview(value: unknown, at: string): ThesisReview {
+/**
+ * ONE THING OWED, AS THE ENTRY ALONE — A4 :1476's `E`, the shape BOTH doors carry.
+ *
+ * `get_thesis_context` serves exactly this per thesis; `list_thesis_reviews` serves it under what the LIST adds.
+ * Parsing it once is what stops the two envelopes' shared union drifting into two readings of one name.
+ */
+function thesisReviewEntry(value: unknown, at: string): ThesisReviewEntry {
   const row = object(value, at);
   const kind = oneOf(row.kind, ['FLAGGED', 'STALE_TRAJECTORY', 'UNARGUED'] as const, `${at}.kind`);
   const common = {
-    owedSince: instant(row.owedSince, `${at}.owedSince`),
-    author: text(row.author, `${at}.author`),
-    mine: flag(row.mine, `${at}.mine`),
     thesisId: text(row.thesisId, `${at}.thesisId`),
     name: text(row.name, `${at}.name`),
     command: text(row.command, `${at}.command`),
   };
-  const material = object(row.material, `${at}.material`);
-
   if (kind === 'FLAGGED') {
     return {
       ...common,
@@ -699,6 +707,69 @@ function thesisReview(value: unknown, at: string): ThesisReview {
       versionId: text(row.versionId, `${at}.versionId`),
       mentionId: text(row.mentionId, `${at}.mentionId`),
       reasons: list(row.reasons, `${at}.reasons`).map((reason, index): FlagReason => oneOf(reason, FLAG_REASONS, `${at}.reasons[${String(index)}]`)),
+    };
+  }
+  if (kind === 'STALE_TRAJECTORY') {
+    return {
+      ...common,
+      kind,
+      citedOn: list(row.citedOn, `${at}.citedOn`).map((one, index) => citedOn(one, `${at}.citedOn[${String(index)}]`)),
+      state: trajectoryCurrency({ state: row.state }, at).state,
+    };
+  }
+  return {
+    ...common,
+    kind,
+    versionId: text(row.versionId, `${at}.versionId`),
+    mentionId: text(row.mentionId, `${at}.mentionId`),
+  };
+}
+
+/**
+ * A4 :1476's ROW — `E` AND THE PAIRING, checked AS A PAIRING and not as two nullable fields.
+ *
+ * THE THREE COMBINATIONS ARE THE CONTRACT (the researcher, 2026-09-22): FLAGGED `{ record, owedSince: null }` ·
+ * UNARGUED `{ record, owedSince }` · STALE_TRAJECTORY `{ record: null, owedSince }`. A parser that accepted
+ * `R | null` beside `ISO | null` would pass a FLAGGED entry carrying a date — the one the appendix refuses,
+ * because it could only be `publishedAt`, a LOWER BOUND that overstates how long a flag has been open — and a
+ * STALE entry carrying a record, which no arm of REVIEWS has. `null` is checked, never defaulted: absent is a
+ * field the wire stopped sending and fails by name (`present`'s rule, :96–:99).
+ */
+function thesisOwedEntry(value: unknown, at: string): ThesisOwedEntry {
+  const row = object(value, at);
+  const entry = thesisReviewEntry(value, at);
+
+  if (entry.kind === 'STALE_TRAJECTORY') {
+    if (present(row.record, `${at}.record`) !== null) {
+      fail(`${at}.record`, 'null — a trajectory citation names no record on any arm of REVIEWS', row.record);
+    }
+    return { ...entry, record: null, owedSince: instant(row.owedSince, `${at}.owedSince`) };
+  }
+
+  const record = namedRecord(row.record, `${at}.record`);
+  if (entry.kind === 'FLAGGED') {
+    if (present(row.owedSince, `${at}.owedSince`) !== null) {
+      fail(`${at}.owedSince`, "null — FLAGGED's date is the citation sheet's (ui §11 :404)", row.owedSince);
+    }
+    return { ...entry, record, owedSince: null };
+  }
+  return { ...entry, record, owedSince: instant(row.owedSince, `${at}.owedSince`) };
+}
+
+function thesisReview(value: unknown, at: string): ThesisReview {
+  const row = object(value, at);
+  const entry = thesisReviewEntry(value, at);
+  const common = {
+    owedSince: instant(row.owedSince, `${at}.owedSince`),
+    author: text(row.author, `${at}.author`),
+    mine: flag(row.mine, `${at}.mine`),
+  };
+  const material = object(row.material, `${at}.material`);
+
+  if (entry.kind === 'FLAGGED') {
+    return {
+      ...common,
+      ...entry,
       material: {
         versionId: text(material.versionId, `${at}.material.versionId`),
         record: namedRecord(material.record, `${at}.material.record`),
@@ -711,14 +782,12 @@ function thesisReview(value: unknown, at: string): ThesisReview {
     };
   }
 
-  if (kind === 'STALE_TRAJECTORY') {
+  if (entry.kind === 'STALE_TRAJECTORY') {
     const cited = object(material.cited, `${at}.material.cited`);
     const computation = object(cited.computation, `${at}.material.cited.computation`);
     return {
       ...common,
-      kind,
-      citedOn: list(row.citedOn, `${at}.citedOn`).map((one, index) => citedOn(one, `${at}.citedOn[${String(index)}]`)),
-      state: trajectoryCurrency({ state: row.state }, at).state,
+      ...entry,
       material: {
         citedOn: list(material.citedOn, `${at}.material.citedOn`).map((one, index) => citedOn(one, `${at}.material.citedOn[${String(index)}]`)),
         cited: {
@@ -738,9 +807,7 @@ function thesisReview(value: unknown, at: string): ThesisReview {
 
   return {
     ...common,
-    kind,
-    versionId: text(row.versionId, `${at}.versionId`),
-    mentionId: text(row.mentionId, `${at}.mentionId`),
+    ...entry,
     material: {
       versionId: text(material.versionId, `${at}.material.versionId`),
       record: namedRecord(material.record, `${at}.material.record`),

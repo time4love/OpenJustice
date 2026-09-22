@@ -6,7 +6,7 @@ import { CopyableCode } from '@/components/CopyableCode';
 import { ProvisionName } from '@/components/thesis/ProvisionName';
 import { useAsyncData } from '@/hooks/useAsyncData';
 import { researchFetch } from '@/lib/researchFetch';
-import { parseThesisContext, parseThesisReviews } from '@/lib/researchBody';
+import { parseThesisContext } from '@/lib/researchBody';
 import type { ThesisContext } from '@/types/research';
 import { OwedStrip } from './OwedStrip';
 import { ResearchDoor, ResearchFetchBoundary } from './ResearchFetchBoundary';
@@ -24,11 +24,13 @@ import { ThesisState } from './ThesisRow';
 // UNARGUED, the gap list, the analysis, the framings and the whole transcript in one body, and `since` is that
 // same read's own parameter rather than a second read for a filter.
 //
-// WHAT IS OWED IS A DIFFERENT SUBJECT, NOT A FILTER OF THE FIRST. §11 :402–:408 draws "this thesis's entries of
-// REVIEWS", and REVIEWS is `list_thesis_reviews`' list (thesis A4 :1523) — a body the thesis read does not carry
-// and cannot: it is computed over every thesis. So the page reads it once at `all`, as `/research` does, and
-// KEEPS the entries whose `thesisId` is this one. The keeping is a view over a field the body carries, which is
-// exactly what §7.1 :328 rules about `mine`.
+// WHAT IS OWED RIDES THE SAME READ — RULED 2026-09-22 (the researcher, R71; A4 :1476, ui §11 :402). §11 :402–:408
+// draws "this thesis's entries of REVIEWS", and until today this page took a SECOND read of `/api/research/reviews`
+// at `all` and KEPT the entries naming this thesis. That was a pass over every thesis on the platform to keep one
+// thesis's rows — a read ui §10 :369–:371's closed list never named — and it was MEASURED on the real page at
+// 5,246 ms for a body of 23 bytes, running beside the 4,344 ms read the page actually needs and therefore SETTING
+// the page's wall. `get_thesis_context` now carries `owed` and `reviews` for this thesis, at zero extra queries,
+// and the second read is gone.
 //
 // IT IS A CLIENT COMPONENT because the bearer lives in `window.localStorage` and a Server Component cannot read
 // it (`lib/session.ts` :80, :110). The shell above carries the metadata, `<main>` and the reading measure.
@@ -96,13 +98,12 @@ export function ResearchThesis({ thesisId, locale }: { thesisId: string; locale:
   const context = useAsyncData(
     useCallback((signal: AbortSignal) => researchFetch(`/api/research/theses/${thesisId}`, parseThesisContext, { signal }), [thesisId]),
   );
-  const reviews = useAsyncData(useCallback((signal: AbortSignal) => researchFetch('/api/research/reviews', parseThesisReviews, { signal }), []));
 
   return (
     // THE DOOR ANSWERS ONCE FOR THE PAGE (§13 :474–:475): a 401 is one act and a 403 is one sentence, whatever
     // number of reads met them. A 404 is this page's own state — `research.state.noThesis`, named rather than
     // the public one-404, because the caller is a researcher and working state is theirs to read (§7 :310–:313).
-    <ResearchDoor states={[context.state, reviews.state]}>
+    <ResearchDoor states={[context.state]}>
       <ResearchFetchBoundary state={context.state}>
         {(body) => (
           <>
@@ -110,28 +111,20 @@ export function ResearchThesis({ thesisId, locale }: { thesisId: string; locale:
 
             <section data-region="owed" className="flex flex-col gap-2">
               <h2 className="text-sm text-ink">{t('thesis.owedHere')}</h2>
-              <ResearchFetchBoundary state={reviews.state}>
-                {(list) => {
-                  // THIS THESIS'S ENTRIES (§11 :402), kept BY THE BODY'S OWN ID rather than the URL's: the
-                  // body is what the page is drawing, and one source of truth for "which thesis is this"
-                  // cannot disagree with itself.
-                  const mine = list.reviews.filter((review) => review.thesisId === body.thesis.thesisId);
-                  return (
-                    <OwedStrip
-                      theses={mine}
-                      // THE CORPUS-WIDE ENTRIES ARE `/research`'S REGION 1, NOT THIS PAGE'S. §29 :890–:894 gives
-                      // CONTENT_MOVED to the door — they are computed over the corpus and name no thesis — and
-                      // §11 :402–:406 lists this region's kinds as the thesis reviews alone.
-                      evidence={[]}
-                      notEvaluable={[]}
-                      // THE CLAIM IS THE PAGE'S OWN — the Q-G join of `/research` reads it from the theses list;
-                      // here the body under the heading already carries it, so no join and no second read.
-                      claimOf={() => claimOf(body)}
-                      locale={locale}
-                    />
-                  );
-                }}
-              </ResearchFetchBoundary>
+              {/* THIS THESIS'S ENTRIES (§11 :402), off the body the page is already drawing — no keeping by id,
+                  because the read is per-thesis and cannot carry another thesis's row. */}
+              <OwedStrip
+                theses={body.reviews}
+                // THE CORPUS-WIDE ENTRIES ARE `/research`'S REGION 1, NOT THIS PAGE'S. §29 :890–:894 gives
+                // CONTENT_MOVED to the door — they are computed over the corpus and name no thesis — and
+                // §11 :402–:406 lists this region's kinds as the thesis reviews alone.
+                evidence={[]}
+                notEvaluable={[]}
+                // THE CLAIM IS THE PAGE'S OWN — the Q-G join of `/research` reads it from the theses list;
+                // here the body under the heading already carries it, so no join and no second read.
+                claimOf={() => claimOf(body)}
+                locale={locale}
+              />
             </section>
 
             {/* THE TRANSCRIPT'S DOOR — §11 :408 as ruled 2026-09-21: ONE line beneath WHAT IS OWED, carrying the

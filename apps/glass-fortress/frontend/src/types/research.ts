@@ -381,6 +381,17 @@ export interface ThesisContext {
   analysis: AnalysisState;
   framings: { framingId: string; question: string; provision: string | null; by: Researcher; createdAt: string }[];
   history: Turn[];
+  /**
+   * WHAT THIS THESIS OWES — A4 :1476, ruled 2026-09-22 (the researcher, R71); ui §11 :402.
+   *
+   * `owed` IS THE COUNT AND `reviews` THE ENTRIES, mirroring A4 :1523 — one name, one meaning, on both
+   * `/api/research/*` envelopes this file parses. The page used to read `/api/research/reviews` a second time and
+   * keep the entries naming this thesis; that read is gone.
+   *
+   * The ROW is `ThesisOwedEntry` — `E` with the record and `owedSince` paired by kind, all of it free.
+   */
+  owed: number;
+  reviews: ThesisOwedEntry[];
 }
 
 // ---------------------------------------------------------------------------
@@ -503,11 +514,14 @@ export interface CitedOn {
   published: boolean;
 }
 
-export type ThesisReview = {
-  owedSince: string;
-  author: string;
-  mine: boolean;
-} & (
+/**
+ * ONE THING OWED, AS THE ENTRY ALONE — thesis A4's `E`, the union BOTH gated doors are built on.
+ *
+ * THE TWO DOORS SERVE THE SAME `E` AND NOT THE SAME ROW, and each row says which fields it adds: `ThesisReview`
+ * below is A4 :1523's, `ThesisOwedEntry` is A4 :1476's. Everything the working view adds is FREE from the rows
+ * that read already loads; everything the list adds costs it reads of its own.
+ */
+export type ThesisReviewEntry =
   | {
       kind: 'FLAGGED';
       thesisId: string;
@@ -516,16 +530,6 @@ export type ThesisReview = {
       mentionId: string;
       reasons: FlagReason[];
       command: string;
-      material: {
-        versionId: string;
-        record: NamedRecord;
-        pin: ContentVersion;
-        current: ContentVersion | null;
-        moved: Moved | null;
-        cause: Cause[];
-        /** E3's last decision about the record, or none — its fields are the decision pane's, not this step's. */
-        decision: unknown;
-      };
     }
   | {
       kind: 'STALE_TRAJECTORY';
@@ -535,12 +539,6 @@ export type ThesisReview = {
       citedOn: CitedOn[];
       state: TrajectoryCurrency['state'];
       command: string;
-      material: {
-        citedOn: CitedOn[];
-        /** The cited pass; `changes` is the pass's own material and is not narrowed here. */
-        cited: { claimText: string; url: string; finalState: string; changes: unknown; computation: { id: string; computedAt: string } };
-        currency: TrajectoryCurrency;
-      };
     }
   | {
       kind: 'UNARGUED';
@@ -549,8 +547,63 @@ export type ThesisReview = {
       versionId: string;
       mentionId: string;
       command: string;
-      material: { versionId: string; record: NamedRecord; pin: string };
-    }
+    };
+
+/** FLAGGED's material: the pin beside CURRENT, what moved, why, and what E3 last decided about the record. */
+export interface FlaggedMaterial {
+  versionId: string;
+  record: NamedRecord;
+  pin: ContentVersion;
+  current: ContentVersion | null;
+  moved: Moved | null;
+  cause: Cause[];
+  /** E3's last decision about the record, or none — its fields are the decision pane's, not this step's. */
+  decision: unknown;
+}
+
+/** STALE_TRAJECTORY's material: the cited pass beside the newest one. */
+export interface StaleMaterial {
+  citedOn: CitedOn[];
+  /** The cited pass; `changes` is the pass's own material and is not narrowed here. */
+  cited: { claimText: string; url: string; finalState: string; changes: unknown; computation: { id: string; computedAt: string } };
+  currency: TrajectoryCurrency;
+}
+
+/** UNARGUED's material: the citation to argue — the record at its pin. */
+export interface UnarguedMaterial {
+  versionId: string;
+  record: NamedRecord;
+  pin: string;
+}
+
+/**
+ * A4 :1476's ROW — `E` plus the RECORD and `owedSince`, **PAIRED PER KIND** (the researcher, 2026-09-22,
+ * „approve c, rule the record in”).
+ *
+ *   FLAGGED           { record, owedSince: null }   its date AND its material are the CITATION SHEET's (§11 :404)
+ *   UNARGUED          { record, owedSince }         the date is HEAD's own `createdAt`
+ *   STALE_TRAJECTORY  { record: null, owedSince }   a trajectory has no record — `/research`'s shape for the arm
+ *
+ * THREE ARMS AND NOT TWO NULLABLE FIELDS. `record: R | null` beside `owedSince: ISO | null` describes FOUR
+ * combinations where the appendix names three, and a type that admits a shape the design does not is a type
+ * read off an implementation. FLAGGED carries no date because computing it needs `decision.at` and
+ * `material.movedAt` — evidence-side rows this read never loads — and `publishedAt` alone is a LOWER BOUND,
+ * which would claim a flag had been open longer than it has.
+ */
+export type ThesisOwedEntry =
+  | (Extract<ThesisReviewEntry, { kind: 'FLAGGED' }> & { record: NamedRecord; owedSince: null })
+  | (Extract<ThesisReviewEntry, { kind: 'UNARGUED' }> & { record: NamedRecord; owedSince: string })
+  | (Extract<ThesisReviewEntry, { kind: 'STALE_TRAJECTORY' }> & { record: null; owedSince: string });
+
+/** A4 :1523's element — the entry, the instant it became owed, the material, and whose thesis it is on. */
+export type ThesisReview = {
+  owedSince: string;
+  author: string;
+  mine: boolean;
+} & (
+  | (Extract<ThesisReviewEntry, { kind: 'FLAGGED' }> & { material: FlaggedMaterial })
+  | (Extract<ThesisReviewEntry, { kind: 'STALE_TRAJECTORY' }> & { material: StaleMaterial })
+  | (Extract<ThesisReviewEntry, { kind: 'UNARGUED' }> & { material: UnarguedMaterial })
 );
 
 export interface ThesisReviewList {

@@ -5,14 +5,27 @@ import { useTranslations } from 'next-intl';
 import { CopyableCode } from '@/components/CopyableCode';
 import { PlatformMark, type MarkKind } from '@/components/thesis/PlatformMark';
 import { formatCaptureDate, formatDate } from '@/lib/format';
-import type { ContentUnit, EvidenceReview, FlagReason, NamedRecord, NotEvaluable, ThesisReview, TrajectoryCurrency } from '@/types/research';
+import type { ContentUnit, EvidenceReview, FlagReason, NamedRecord, NotEvaluable, ThesisOwedEntry, ThesisReview, TrajectoryCurrency } from '@/types/research';
 
 // ---------------------------------------------------------------------------
 // WHAT I OWE — docs/gf-ui-flows.md §29 :890–:894 and §11 :402–:408; thesis T6 :881–:882 ("stop-shaped …
 // material, old beside new, and one command to paste"); UI plan :717–:719.
 //
-// ONE STRIP, TWO SUBJECTS. This is region 1 of `/research` and region 2 of the working view — the same rows
-// over a different set — so it takes its entries as a value and knows nothing about which page drew it.
+// ONE STRIP, TWO SUBJECTS. This is region 1 of `/research` and region 2 of the working view — so it takes its
+// entries as a value and knows nothing about which page drew it.
+//
+// THE TWO SUBJECTS ARE THE SAME ENTRY UNDER DIFFERENT COVER, SINCE 2026-09-22 (the researcher, R71). `/research`
+// reads `list_thesis_reviews`, whose element is A4 :1523's `E` PLUS what that list pays reads to render — the
+// instant, the MATERIAL and the author. The working view reads its own thesis's `reviews`, A4 :1476's
+// `E & { record, owedSince }`, every field of it free off the rows that read already loads.
+//
+// SO THE RECORD HAS TWO HOMES AND ONE MEANING: `material.record` on the list's row, `record` on the working
+// view's. This file reads whichever the entry has and draws ONE `RecordName` either way — a second component,
+// or a page that drew the record only when a material rode with it, would be the same rule twice.
+//
+// AND `owedSince` IS NULLABLE ON ONE ARM ONLY. FLAGGED's date is the CITATION SHEET's (ui §11 :404), because it
+// is computed FROM the material (`thesisReviews.ts` :228) and `publishedAt` alone would OVERSTATE how long the
+// flag has been open. Nothing is defaulted: a null instant draws NO line rather than a date nobody computed.
 //
 // ONE COMMAND, OR SEVERAL, AND THE BODY DECIDES. §29 :892–:894 gives a thesis review "ONE COMMAND with a copy
 // button" and the corpus-wide entries "the commands", plural — and the two envelopes say exactly that
@@ -105,7 +118,8 @@ function OwedEntry({
   kind: OwedKind;
   /** The thesis's claim, joined from the theses read — null when that body does not carry it (Q-G). */
   claim: string | null;
-  owedSince: string;
+  /** The instant the thing became owed, where the entry carries one — `null` draws no line (A4 :1476 carries none). */
+  owedSince: string | null;
   commands: readonly string[];
   /** The author's handle when the entry is on a COLLEAGUE'S thesis — the command is theirs to run (§11 :407). */
   author: string | null;
@@ -121,9 +135,11 @@ function OwedEntry({
           {claim}
         </p>
       )}
-      <p data-owed-since dir="auto" className="text-xs text-ink-muted">
-        {t('since', { date: formatDate(owedSince, locale) })}
-      </p>
+      {owedSince === null ? null : (
+        <p data-owed-since dir="auto" className="text-xs text-ink-muted">
+          {t('since', { date: formatDate(owedSince, locale) })}
+        </p>
+      )}
       {author === null ? null : (
         <p data-owed-by-author className="text-xs text-ink-muted">
           {t('byAuthor', { handle: author })}
@@ -138,6 +154,61 @@ function OwedEntry({
       </div>
     </li>
   );
+}
+
+/**
+ * WHAT A THESIS ENTRY SHOWS BENEATH ITS HEADING — the kind's own facts, and its MATERIAL where the entry carries
+ * one (T6 :881–:882, "material, old beside new, and one command to paste").
+ *
+ * THE KIND IS NARROWED FIRST AND THE MATERIAL SECOND, in that order and in one place: `reasons` and `state` are on
+ * EVERY entry of their kind (A4 :1476 and :1523 alike), while the record, the chunks and the cited claim come from
+ * `list_thesis_reviews`' extra reads. Narrowing the other way round would need the same reasons rendered twice.
+ */
+function ThesisEntryDetail({ review, locale }: { review: ThesisReview | ThesisOwedEntry; locale: string }) {
+  const t = useTranslations('research.owed');
+  const flag = useTranslations('theses.sheet.flag');
+
+  if (review.kind === 'FLAGGED') {
+    return (
+      <>
+        <RecordName record={'material' in review ? review.material.record : review.record} locale={locale} />
+        <ul className="flex flex-col gap-1">
+          {review.reasons.map((reason) =>
+            FLAG_REASON_KEYS[reason] === undefined ? null : (
+              <li key={reason} data-flag-reason={reason} className="text-xs text-ink-muted">
+                {flag(FLAG_REASON_KEYS[reason])}
+              </li>
+            ),
+          )}
+        </ul>
+        {'material' in review ? (
+          <>
+            <Chunks label={t('affirmed')} units={review.material.pin.chunks} />
+            {review.material.current === null ? null : <Chunks label={t('current')} units={review.material.current.chunks} />}
+          </>
+        ) : null}
+      </>
+    );
+  }
+
+  if (review.kind === 'STALE_TRAJECTORY') {
+    return (
+      <>
+        {/* THE CITED CLAIM'S OWN WORDS — the corpus's text, not a label, so it carries `dir="auto"` and no key.
+            What the newest pass says about it is a MARK, the one the thesis page draws. */}
+        {'material' in review ? (
+          <p data-cited-claim dir="auto" className="text-xs text-ink">
+            {review.material.cited.claimText}
+          </p>
+        ) : null}
+        <span data-currency={review.state}>
+          <PlatformMark kind={currencyMark(review.state)} />
+        </span>
+      </>
+    );
+  }
+
+  return <RecordName record={'material' in review ? review.material.record : review.record} locale={locale} />;
 }
 
 /** The chunks affirmed beside the chunks now — the "old beside new" T6 :881 asks for, and nothing derived. */
@@ -182,8 +253,11 @@ export function OwedStrip({
   claimOf,
   locale,
 }: {
-  /** The thesis reviews this view draws — already kept by whatever the page keeps by: a scope, or one thesis. */
-  theses: readonly ThesisReview[];
+  /**
+   * The thesis entries this view draws — `/research`'s, which carry their author and material, or the working
+   * view's, which carry the record and a date on the arms that have one.
+   */
+  theses: readonly (ThesisReview | ThesisOwedEntry)[];
   /** The corpus-wide entries, `/research`'s region 1 alone; the working view passes none. */
   evidence: readonly EvidenceReview[];
   notEvaluable: readonly NotEvaluable[];
@@ -191,8 +265,9 @@ export function OwedStrip({
   claimOf: (thesisId: string) => string | null;
   locale: string;
 }) {
+  // `theses.sheet.flag` LEFT WITH THE ROWS THAT READ IT: the flag's sentences are `ThesisEntryDetail`'s now, and
+  // a translator held here for a string nothing here draws is a namespace this component does not use.
   const t = useTranslations('research.owed');
-  const flag = useTranslations('theses.sheet.flag');
 
   return (
     // THE REGION AND ITS HEADING ARE THE PAGE'S, not this component's — so a heading is on the page while its
@@ -213,38 +288,10 @@ export function OwedStrip({
               claim={claimOf(review.thesisId)}
               owedSince={review.owedSince}
               commands={[review.command]}
-              author={review.mine ? null : review.author}
+              author={'author' in review && !review.mine ? review.author : null}
               locale={locale}
             >
-              {review.kind === 'FLAGGED' ? (
-                <>
-                  <RecordName record={review.material.record} locale={locale} />
-                  <ul className="flex flex-col gap-1">
-                    {review.reasons.map((reason) =>
-                      FLAG_REASON_KEYS[reason] === undefined ? null : (
-                        <li key={reason} data-flag-reason={reason} className="text-xs text-ink-muted">
-                          {flag(FLAG_REASON_KEYS[reason])}
-                        </li>
-                      ),
-                    )}
-                  </ul>
-                  <Chunks label={t('affirmed')} units={review.material.pin.chunks} />
-                  {review.material.current === null ? null : <Chunks label={t('current')} units={review.material.current.chunks} />}
-                </>
-              ) : null}
-              {review.kind === 'STALE_TRAJECTORY' ? (
-                <>
-                  {/* THE CITED CLAIM'S OWN WORDS — the corpus's text, not a label, so it carries `dir="auto"`
-                      and no key. What the newest pass says about it is a MARK, the one the thesis page draws. */}
-                  <p data-cited-claim dir="auto" className="text-xs text-ink">
-                    {review.material.cited.claimText}
-                  </p>
-                  <span data-currency={review.state}>
-                    <PlatformMark kind={currencyMark(review.state)} />
-                  </span>
-                </>
-              ) : null}
-              {review.kind === 'UNARGUED' ? <RecordName record={review.material.record} locale={locale} /> : null}
+              <ThesisEntryDetail review={review} locale={locale} />
             </OwedEntry>
           ))}
           {evidence.map((review) => (
