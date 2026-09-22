@@ -154,7 +154,7 @@ The identity module: `DOC_ID` and `COMMITMENT` as one importable symbol each ove
 SHA-256, the shared test vector beside them for the browser's half. The extractor: `CURRENT_EXTRACTOR`
 is a dependency choice — a PDF text library, an OCR engine that reads Hebrew — and this step makes
 it, judged by `extractor-coverage` over a fixture set that holds one of each of §3's four kinds (a
-PDF with a text layer, a scan, a paste, a photograph no engine reads) and by nothing this plan — **RULED 2026-09-22: FIVE kinds; the fifth is a SPREADSHEET (the real XLSX), COMPUTED by deterministic cell serialisation per sheet (flows §3 :284)** —
+PDF with a text layer, a scan, a paste, a photograph no engine reads) — **RULED 2026-09-23 (the researcher): THERE IS NO PASTE. the paste is RETIRED, so the fixture set is FOUR kinds: a PDF with a text layer, a scan, a SPREADSHEET, and a file no engine reads. The step's dated doc carries FOUR counts.** — and by nothing this plan — **RULED 2026-09-22: FIVE kinds; the fifth is a SPREADSHEET (the real XLSX), COMPUTED by deterministic cell serialisation per sheet (flows §3 :284)** —
 says; the plan picks nothing. `DocumentContentVersion`'s one writer, `derivedFrom` AT_RECEIPT or
 HELD_BYTES, a re-derivation with identical text not a new row; the derivation pass over HELD bytes
 for when `CURRENT_EXTRACTOR` moves, in the deployment, writing versions and never a decision; the
@@ -166,7 +166,7 @@ text, and the call is made here, through `CURRENT(d)`, with the thesis suite gre
 *Verified by:* the A1 contract green; `one-hash-two-implementations`' server half against the
 vector, and `NAME_MISMATCH` observed to fire when one byte of the vector is altered;
 `verdict-rule-one-spelling` with its decoy, a second spelling planted and caught; `extractor-coverage`
-run over the fixture set with the FIVE counts in the step's dated doc (:157) — the photograph counted as
+run over the fixture set with the FOUR counts in the step's dated doc (:157) — the photograph counted as
 bytes-only, never as a failure; the derivation pass observed to write a second version for one
 HELD fixture under a moved `CURRENT_EXTRACTOR` and none for a SEALED one.
 
