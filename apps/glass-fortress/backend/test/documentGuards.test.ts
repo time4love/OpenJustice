@@ -1,7 +1,8 @@
 import { HISTORY, SCHEMA, decoysFor, problemsWith, type CheckSpec } from './migrationChecks';
+import { SRC, readCode, tsFiles } from './walk/scan';
 
 // ---------------------------------------------------------------------------
-// THE DOCUMENT LAYER'S GUARDS THAT A MERGE MUST PASS — document refactor step 28.
+// THE DOCUMENT LAYER'S GUARDS THAT A MERGE MUST PASS — document refactor steps 28 and 29.
 //
 // WHY THIS FILE IS IN THE UNIT PROJECT, and it is the whole reason it exists. A CHECK
 // constraint is invisible to Prisma and to `db:check-drift`, so a case holding one is the
@@ -150,5 +151,59 @@ describe('no migration of this layer carries a transaction statement — the fil
     // `test/migrationsOneTransaction.test.ts` holds this across every migration; this case
     // is the document layer saying it of its own, where a reader of this file will look.
     expect(/^\s*(BEGIN|COMMIT)\b/im.test(migration.sql)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// STEP 29 (a) — ONE SYMBOL FOR THE EXTRACTOR, AND THE SCAN IS EXACT-CASE.
+//
+// A1 :1247-:1248 gives `CURRENT_EXTRACTOR` one importable symbol, for the reason
+// `ANCHOR_SCHEME` has one (`lib/anchoredCaptureHash.ts` :54-:58): the rule and its name
+// move together, or a second place to change is left behind. Its VALUE is part (b)'s
+// dependency choice and is null until then.
+//
+// WHY EXACT-CASE IS THE WHOLE POINT. `src/walk/derivations.ts` :305 and :357 take a
+// LOWERCASE PARAMETER `currentExtractor` — the CORPUS's extractor, whose constant is
+// `TEXT_EXTRACTION_VERSION` in `lib/captureDocument.ts`, a different symbol for a
+// different layer. A case-insensitive scan matches that parameter, reports a "second
+// spelling" that is not one, and sends a builder to delete a correct local. A scan that
+// lies is worse than no scan, so both directions are held below: the document symbol has
+// exactly one declaration, AND the corpus's local is present and is not counted.
+// ---------------------------------------------------------------------------
+
+const declarations = (symbol: string, source: string): number =>
+  (source.match(new RegExp(`export const ${symbol}\\b`, 'g')) ?? []).length;
+
+describe('A1 :1247-:1248 — CURRENT_EXTRACTOR has ONE importable symbol (step 29a)', () => {
+  const sources = tsFiles(SRC).map((file) => ({ file, code: readCode(file) }));
+
+  it('reads the source tree it scans — a silent zero would make every case below vacuous', () => {
+    // THE FLOOR: the tree has files at all, and one of them is the module in question.
+    expect(sources.length).toBeGreaterThan(100);
+    expect(sources.some(({ file }) => file.endsWith('lib/documentExtractor.ts'))).toBe(true);
+  });
+
+  it('exactly ONE module declares it, and it is lib/documentExtractor.ts', () => {
+    const declaring = sources.filter(({ code }) => declarations('CURRENT_EXTRACTOR', code) > 0);
+    expect(declaring.map(({ file }) => file.slice(SRC.length + 1))).toEqual(['lib/documentExtractor.ts']);
+    expect(declarations('CURRENT_EXTRACTOR', declaring[0]?.code ?? '')).toBe(1);
+  });
+
+  it('the CORPUS\'s lowercase `currentExtractor` is PRESENT and is NOT counted — the exact-case half', () => {
+    const derivations = sources.find(({ file }) => file.endsWith('walk/derivations.ts'));
+    if (derivations === undefined) throw new Error('src/walk/derivations.ts is not in the tree — the scan has no subject');
+    // It is there, as a parameter, twice (:305 and :357) — the FLOOR on this direction.
+    expect(derivations.code).toContain('currentExtractor');
+    // And it declares none of the document layer's symbol.
+    expect(declarations('CURRENT_EXTRACTOR', derivations.code)).toBe(0);
+  });
+
+  it('DETECTS a second declaration planted elsewhere, and does NOT fire on the lowercase local', () => {
+    const planted = "export const CURRENT_EXTRACTOR = 'v1-some-other-place';";
+    expect(declarations('CURRENT_EXTRACTOR', planted)).toBe(1);
+    // The decoy that proves the case-sensitivity: the corpus's spelling, planted as a
+    // declaration, must still not count. A loose scan would report it and be wrong.
+    const lowercasePlant = "export const currentExtractor = 'the corpus\'s, a different thing';";
+    expect(declarations('CURRENT_EXTRACTOR', lowercasePlant)).toBe(0);
   });
 });
