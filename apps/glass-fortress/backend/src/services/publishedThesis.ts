@@ -296,9 +296,34 @@ export interface VersionCitations {
   cited: CitedMention[];
 }
 
+/**
+ * The mention rows this resolver reads — the shape `services/thesisRows.MentionRow` already carries.
+ *
+ * It is a PARAMETER rather than a query so the gated read can hand rows it has already loaded. The type is
+ * spelled here, structurally, rather than imported from `thesisRows`: this module is the PUBLIC page's and
+ * must not depend on the gated read's loader (the standing rule that a module holding a client depends on the
+ * pure one, never the other way).
+ */
+export interface CitationMention {
+  id: string;
+  versionId: string;
+  kind: 'EVIDENCE' | 'TRAJECTORY';
+  name: string;
+  contentVersionHash: string | null;
+  debateSession: { status: string; recordFileHash: string; thesisId: string; promotedOverObjection: boolean } | null;
+}
+
 /** What `citationsByVersion` answers: each version's citations, and the cited pages of the whole set. */
 export interface ResolvedCitations {
   byVersion: Map<string, VersionCitations>;
+  /**
+   * Every EVIDENCE name asked for, resolved to the record the corpus holds — the ROWS, not a verdict.
+   *
+   * It rides this answer because FINGERPRINT(head) is computed over the same records (`criticMaterial.ts`
+   * :102) and resolving them twice in one read walked the corpus twice. A `ResolvedRecord` is an OBSERVATION,
+   * which evidence A3 :1060–:1063 permits sharing; every predicate over it is still CALLED (A3 :1413–:1414).
+   */
+  records: Map<string, ResolvedRecord>;
   /**
    * Every cited page of every version asked for, DEDUPLICATED BY URL — thesis A4 :1476's union.
    *
@@ -326,12 +351,7 @@ export interface ResolvedCitations {
  */
 export async function citationsByVersion(thesisId: string, versionIds: readonly string[]): Promise<ResolvedCitations> {
   const wanted = [...new Set(versionIds)];
-  // An entry for every id asked for, so a version that cites nothing is an empty list and never a missing key.
-  const byVersion = new Map<string, VersionCitations>(wanted.map((id) => [id, { citations: [], cited: [] }]));
-  // url → trackedUrlId, one entry per cited page.
-  const pages = new Map<string, string>();
-  if (wanted.length === 0) return { byVersion, pages: [] };
-
+  if (wanted.length === 0) return citationsFrom(thesisId, [], wanted);
   const mentions = await prisma.thesisMention.findMany({
     where: { versionId: { in: wanted } },
     select: {
@@ -343,6 +363,35 @@ export async function citationsByVersion(thesisId: string, versionIds: readonly 
       debateSession: { select: { status: true, recordFileHash: true, thesisId: true, promotedOverObjection: true } },
     },
   });
+  return citationsFrom(thesisId, mentions, wanted);
+}
+
+/**
+ * THE RESOLVER ITSELF, over mention rows the caller already holds — `citationsByVersion` is this with the one
+ * query in front of it.
+ *
+ * THE SPLIT IS WHAT REMOVES A READ, NOT A SECOND RESOLVER. The gated read loads every version's mentions once
+ * (`services/thesisRows`), and asking this function to read them again was one of the duplicate reads
+ * `docs/gf-thesis-read-cost-2026-09-22.md` measured. Both doors run THIS body, so there is one resolution and
+ * one citation shape (A4 :1476).
+ *
+ * `mentions` may name versions outside `versionIds`; they are filtered here rather than by the caller, so the
+ * caller cannot get the filter wrong and the loud guard below still means what it says.
+ */
+export async function citationsFrom(
+  thesisId: string,
+  allMentions: readonly CitationMention[],
+  versionIds: readonly string[],
+): Promise<ResolvedCitations> {
+  const wanted = [...new Set(versionIds)];
+  // An entry for every id asked for, so a version that cites nothing is an empty list and never a missing key.
+  const byVersion = new Map<string, VersionCitations>(wanted.map((id) => [id, { citations: [], cited: [] }]));
+  // url → trackedUrlId, one entry per cited page.
+  const pages = new Map<string, string>();
+  if (wanted.length === 0) return { byVersion, records: new Map(), pages: [] };
+
+  const asked = new Set(wanted);
+  const mentions = allMentions.filter((m) => asked.has(m.versionId));
   const trajectoryIds = mentions.filter((m) => m.kind === 'TRAJECTORY').map((m) => m.name);
   const { resolved } = await resolveTrajectoryCitations(trajectoryIds);
 
@@ -353,9 +402,14 @@ export async function citationsByVersion(thesisId: string, versionIds: readonly 
   // this makes the evidence half the shape its neighbour already had, ten lines away in the same loop.
   const evidenceMentions = mentions.filter((m) => m.kind !== 'TRAJECTORY');
   const names = evidenceMentions.map((m) => m.name);
-  const records = await recordsByName(names);
-  const reports = await verifiedFor(names);
-  const flags = await flaggedFor(evidenceMentions.map((m) => m.id));
+  // SIBLINGS, NOT A SEQUENCE. None of the three reads the others' answer — they are three plurals over the
+  // same name set — and awaited in turn they cost the SUM of their round trips. Only `heldTextsFor` depends on
+  // one of them (it needs each record's capture id), so it alone waits.
+  const [records, reports, flags] = await Promise.all([
+    recordsByName(names),
+    verifiedFor(names),
+    flaggedFor(evidenceMentions.map((m) => m.id)),
+  ]);
   const held = await heldTextsFor(
     evidenceMentions.flatMap((mention) => {
       const record = records.get(mention.name);
@@ -368,9 +422,9 @@ export async function citationsByVersion(thesisId: string, versionIds: readonly 
   for (const mention of mentions) {
     const entry = byVersion.get(mention.versionId);
     if (entry === undefined) {
-      // A LOUD GUARD, never a silent skip: the query filters on `wanted`, so a row naming anything else means
-      // the filter is defective — and a citation quietly dropped here is a citation the centre draws as
-      // `unresolved` with nothing to say why (`CLAUDE.md`, the `requireSnapshotIdentity` pattern).
+      // A LOUD GUARD, never a silent skip: `mentions` is filtered to `wanted` above, so a row naming anything
+      // else means the filter is defective — and a citation quietly dropped here is a citation the centre
+      // draws as `unresolved` with nothing to say why (`CLAUDE.md`, the `requireSnapshotIdentity` pattern).
       throw new Error(`publishedThesis: mention ${mention.id} names version ${mention.versionId}, which was not asked for.`);
     }
     entry.cited.push({ kind: mention.kind, name: mention.name, debate: mention.debateSession });
@@ -391,7 +445,13 @@ export async function citationsByVersion(thesisId: string, versionIds: readonly 
     entry.citations.push(evidenceCitation(thesisId, mention, record, reports, flags, held));
   }
 
-  return { byVersion, pages: [...pages].map(([url, trackedUrlId]) => ({ trackedUrlId, url })) };
+  // The map `recordsByName` answers has an entry for every name asked for, `null` where the corpus derives
+  // nothing — and the loop above has already thrown on any such name, so every entry here is a record.
+  const resolvedRecords = new Map<string, ResolvedRecord>();
+  for (const [name, record] of records) {
+    if (record !== null) resolvedRecords.set(name, record);
+  }
+  return { byVersion, records: resolvedRecords, pages: [...pages].map(([url, trackedUrlId]) => ({ trackedUrlId, url })) };
 }
 
 /**

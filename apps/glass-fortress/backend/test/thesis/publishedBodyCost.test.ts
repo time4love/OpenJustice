@@ -21,7 +21,7 @@ import {
   DIFF_ROW_BETWEEN_AFTER,
   PAGE,
 } from '../helpers/corpusFixture';
-import { ATTEMPT, MENTION, THESIS, VERSION } from './fixtures';
+import { ATTEMPT, MENTION, NOTE, THESIS, VERSION } from './fixtures';
 import { AS_PUBLISHED, delegateCalls, resetTools, seedThesis } from './tools';
 import { mentionRow } from './rows';
 
@@ -204,15 +204,12 @@ describe('the public thesis body costs the same whatever it cites', () => {
 // shape case in `reads.test.ts` and pays eight reads twice over, on the researcher's own page. A per-mention
 // `citationRefsOf` loop would pass those cases too, at one query per citation.
 //
-// THE CITATIONS ARE VARIED ON PUBLISHED, AND THE HEAD IS HELD AT ONE, FOR A MEASURED REASON. The gated body
-// has a SECOND per-citation cost that is not the resolution's and predates it: `criticMaterial.ts` :60–:62
-// resolves HEAD's cited records ONE AT A TIME (`resolveRecordByName` in a loop), and each call makes the four
-// reads `recordsByName` makes — `trackedUrl.findMany`, `urlSnapshot.findMany`, `urlVersionDiff.findMany`,
-// `evidence.findMany`. Measured on the code of 2026-09-21 BEFORE this chunk: a head citing two records cost 34
-// delegate calls and one citing six cost 50, four per citation, and the same 16 appears after. Varying the
-// citations on PUBLISHED holds that arm constant, so what these cases measure is the RESOLUTION and nothing
-// else. The N+1 itself is reported, not fixed here: it is the analysis arm's, shared with `run_analysis`'s
-// refusal, and rewriting it is not this chunk.
+// THE CITATIONS WERE VARIED ON PUBLISHED AND THE HEAD HELD AT ONE, and the reason is now HISTORY rather than a
+// constraint. The gated body had a SECOND per-citation cost that was not the resolution's: `criticMaterial`'s
+// `loadHead` resolved HEAD's cited records ONE AT A TIME, four reads each. That N+1 was fixed on 2026-09-21
+// (PR #560) and the analysis arm stopped resolving records of its own at UI-8 chunk A, where `headFrom` takes
+// the records the citation resolver already returned. G4 below holds the head's own axis directly, which is
+// what the old shape could not do; G1–G3 keep varying PUBLISHED so each still measures exactly one axis.
 //
 // THE COUNT IS `delegateCalls()` for the reason the block above states: `asked` is blind to the delegates the
 // citation path reaches through `recordsByName`, and an instrument blind to them would go green over a fix
@@ -309,5 +306,134 @@ describe('the gated working-view body costs the same whatever it cites', () => {
       second: 'two:6:6',
       grew: 0,
     });
+  });
+
+  /** `count` NOTE rows on the thesis — the cheapest turn to multiply, and each one a turn of the transcript. */
+  function seedTurns(count: number): void {
+    seedGated(1);
+    store.notes = Array.from({ length: count }, (_, index) => ({
+      ...NOTE,
+      id: `note-${String(index)}`,
+      thesisId: THESIS.id,
+      framingId: null,
+      createdAt: new Date(Date.UTC(2026, 8, 10, 9, index)),
+    }));
+  }
+
+  async function callsOverTurns(count: number): Promise<{ calls: number; turns: number }> {
+    seedTurns(count);
+    const { thesisContextOf } = await import('../../src/mcp/tools/getThesisContext');
+    const before = delegateCalls();
+    const body = await thesisContextOf({ thesisId: THESIS.id });
+    const calls = delegateCalls() - before;
+    const turns = 'history' in body ? body.history.length : -1;
+    return { calls, turns };
+  }
+
+  it('G4 — the count does not grow with the number of TURNS: a thesis of forty turns costs what one of four does, and the transcript really grew', async () => {
+    // UI-8 chunk A's own property. The transcript was a LOADER of fourteen serial reads (`thesisPredicates`'
+    // `history`, before this chunk); it is now a pure composition over rows the read already holds. A body that
+    // re-read per turn, or that kept a second loader beside the shared one, fails here and nowhere else.
+    //
+    // THE FLOOR IS ON THE TURNS, NOT ONLY ON THE CALLS. "The count does not grow with turns" is satisfied by a
+    // transcript that is EMPTY in both worlds — the R70 lesson, stated as a number: the large world must really
+    // carry more turns than the small one, or this case measures nothing.
+    const few = await callsOverTurns(4);
+    const many = await callsOverTurns(40);
+    expect(few.turns).toBeGreaterThanOrEqual(4);
+    expect(many.turns - few.turns).toBe(36);
+    expect({ few: few.calls, many: many.calls, grew: many.calls - few.calls }).toEqual({ few: few.calls, many: few.calls, grew: 0 });
+  });
+
+  it('G4b — THE TRANSCRIPT COSTS ZERO QUERIES: composed over rows already loaded, it reaches no delegate at all', async () => {
+    // THIS is UI-8 chunk A's property, and G4 above is not it. "The count does not grow with turns" was ALREADY
+    // true before this chunk — `thesisPredicates.history` made its fourteen reads whatever the turn count was —
+    // so a decoy that puts the loading back passes G4 by adding a CONSTANT. Said plainly rather than left for a
+    // reviewer to find: G4 holds a property this chunk preserved; G4b holds the one it created.
+    const { transcriptOf } = await import('../../src/services/thesisPredicates');
+    const { loadThesisRows } = await import('../../src/services/thesisRows');
+    seedTurns(12);
+
+    // THE CONTROL: the LOAD is not free, so a zero below is the composer's purity and not a dead counter.
+    const beforeLoad = delegateCalls();
+    const rows = await loadThesisRows(THESIS.id);
+    expect(delegateCalls() - beforeLoad).toBeGreaterThan(0);
+    if (rows === null) throw new Error('the world seeds a thesis and the loader answered none');
+
+    const before = delegateCalls();
+    const turns = transcriptOf(rows, { currentFingerprint: null });
+    // A FLOOR ON THE SUBJECT: a composer handed an empty world reaches no delegate either, and would pass this
+    // for the wrong reason.
+    expect(turns.length).toBeGreaterThanOrEqual(12);
+    expect(delegateCalls() - before).toBe(0);
+  });
+
+  it('G7 — THE CEILING: the gated body over six citations costs AT MOST 21 delegate calls, so a read put back is caught even though it adds no growth', async () => {
+    // EVERY OTHER CASE HERE MEASURES GROWTH, AND GROWTH IS BLIND TO A CONSTANT. A read restored on the gated
+    // path — the analysis arm asking the analyses table again, a `findUnique` per version, the transcript
+    // loading for itself — adds the SAME call in every world, so G1 to G6 all stay green over it. DEV's decoy
+    // D5 (2026-09-22) is exactly that shape. Only a ceiling sees it.
+    //
+    // IT IS A RATCHET AND NOT AN EQUALITY, deliberately. `toBeLessThanOrEqual` reddens on a read ADDED and
+    // never on one removed, so a later chunk that makes the body cheaper does not have to edit this line to
+    // stay green — and a fixture that legitimately grows fails loudly rather than being quietly re-baselined.
+    // MEASURED, not counted: 21 on this six-citation world, 2026-09-22, against 39 counted from the code of
+    // `e536878` on the same shape (thesis 1 + four keyed reads 4 + handles 1 + citations 10 + two version rows
+    // 2 + the analysis arm 8 + the transcript 13). Lower it when a chunk earns it.
+    const calls = await gatedCallsFor(6);
+    expect(calls).toBeLessThanOrEqual(21);
+    // The floor G0 states, repeated here so the ceiling cannot be satisfied by a blinded counter.
+    expect(calls).toBeGreaterThan(10);
+  });
+
+  it("G6 — THE WRITERS' path too: `headFingerprint` does not grow with the head's citations, and it is the read's own two steps", async () => {
+    // THE GAP THIS CLOSES, found by DEV's own decoy D6 reddening NOTHING. G1–G5 all measure `thesisContextOf`,
+    // which hands `headFrom` the records the citation resolver already returned — so a per-citation resolution
+    // reintroduced inside `criticMaterial` is invisible to every one of them. `headFingerprint` is the OTHER
+    // caller (`runAnalysis.ts` :72, `draftFoiaRequest.ts` :70, `publicationEvaluation.ts` :113), and it is the
+    // one that resolves records of its own.
+    async function fingerprintCallsWithHeadCiting(count: number): Promise<number> {
+      seedPublishedCiting(count);
+      const { headFingerprint } = await import('../../src/services/criticMaterial');
+      const before = delegateCalls();
+      const headed = await headFingerprint(THESIS.id, VERSION.id);
+      // THE VACUITY GUARD: the fingerprint is really DEFINED over really-resolved records, so a call that threw
+      // its way out or answered AWAITING_DERIVATION cannot pass by resolving nothing.
+      if (!headed.defined) throw new Error(`the world seeds ${String(count)} resolvable citations and the fingerprint was undefined`);
+      expect(headed.head.records.length).toBe(count);
+      return delegateCalls() - before;
+    }
+    const two = await fingerprintCallsWithHeadCiting(2);
+    const six = await fingerprintCallsWithHeadCiting(6);
+    expect({ two, six, grew: six - two }).toEqual({ two, six: two, grew: 0 });
+  });
+
+  it("G5 — the count does not grow with HEAD's citations either: the analysis arm takes the records the resolver already returned and resolves none of its own", async () => {
+    // The axis G1–G3 could not measure while `loadHead` walked the corpus once per HEAD citation. It is the
+    // same property on the other version, and it is what makes `headFrom` PURE rather than merely smaller.
+    async function withHeadCiting(count: number): Promise<number> {
+      seedPublishedCiting(6);
+      const published = store.mentions;
+      store.versions = [...store.versions, { ...VERSION, id: HEAD_VERSION, contentHash: 'content-hash-head' }];
+      store.thesis = store.thesis === null ? null : { ...store.thesis, headVersionId: HEAD_VERSION };
+      store.theses = store.theses.map((t) => ({ ...t, headVersionId: HEAD_VERSION }));
+      store.mentions = [
+        ...published,
+        ...citations(count).map((cited, index) =>
+          mentionRow({ ...MENTION, id: `head-mention-${String(index)}`, versionId: HEAD_VERSION, name: cited.name, contentVersionHash: cited.pin }, false),
+        ),
+      ];
+      const { thesisContextOf } = await import('../../src/mcp/tools/getThesisContext');
+      const before = delegateCalls();
+      const body = await thesisContextOf({ thesisId: THESIS.id });
+      // THE VACUITY GUARD: the head really cites what this world says it does, so a body answering `head: null`
+      // cannot pass by doing nothing.
+      if (!('head' in body) || body.head === null) throw new Error('the world seeds a head and the body answered none');
+      expect(body.head.mentions.length).toBe(count);
+      return delegateCalls() - before;
+    }
+    const one = await withHeadCiting(1);
+    const six = await withHeadCiting(6);
+    expect({ one, six, grew: six - one }).toEqual({ one, six: one, grew: 0 });
   });
 });

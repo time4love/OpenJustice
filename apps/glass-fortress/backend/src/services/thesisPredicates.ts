@@ -11,7 +11,7 @@ import {
   type RecordContent,
 } from './evidencePredicates';
 import { namedRecordOf } from './debateState';
-import { handlesOf } from './publishedThesis';
+import type { ThesisRows } from './thesisRows';
 import {
   analysisTurns,
   debateTurns,
@@ -589,9 +589,14 @@ export async function reviews(researcherId: string, scope: ListScope = 'mine'): 
  * the read answers WHAT HAPPENED and not merely THAT something did — it served `{ kind, id, createdAt,
  * researcherId }` and a page could render nothing from it without a second read per row.
  *
- * THE COMPOSITION IS `services/thesisTranscript`'s, one builder per thread, and this function is the LOADER.
+ * THE COMPOSITION IS `services/thesisTranscript`'s, one builder per thread, and this function COMPOSES.
  * `get_framing` and `get_debate` call the same two builders for their own threads (A4 :1459; evidence :1123),
  * so three doors tell one story.
+ *
+ * IT LOADS NOTHING. It was the LOADER as well as the composer, and its fourteen serial awaits were a third of
+ * the gated read's cost (`docs/gf-thesis-read-cost-2026-09-22.md`); every one of them is now a wave of
+ * `services/thesisRows.loadThesisRows`, which the same read already pays for its state arm and its
+ * fingerprint. The composition below is unchanged, turn for turn.
  *
  * A framing's rounds and its notes name the FRAMING, not the thesis; they are the thesis's history because the
  * framing is attached to it (R47 D11). `since` is STRICT: what happened AFTER the instant given (R6) — and it
@@ -606,108 +611,29 @@ export interface HistoryOptions {
   currentFingerprint?: string | null;
 }
 
-export async function history(thesisId: string, options: HistoryOptions = {}): Promise<Turn[]> {
-  const framings = await prisma.framing.findMany({
-    where: { thesisId },
-    select: { id: true, question: true, provision: true, fromRunId: true, researcherId: true, createdAt: true },
-  });
-  const framingIds = framings.map((f) => f.id);
-  const versions = await prisma.thesisVersion.findMany({
-    where: { thesisId },
-    select: {
-      id: true,
-      claim: true,
-      text: true,
-      contentHash: true,
-      parentVersionId: true,
-      createdById: true,
-      createdAt: true,
-    },
-  });
-  const versionIds = versions.map((v) => v.id);
-  // THE MENTIONS IN ONE QUERY, attached here rather than nested in the select above. `get_thesis_context`
-  // reads them the same way, so the two callers ask the same table the same question — and a version's
-  // citations are a set this function groups, not a shape the version row carries.
-  const mentionRows =
-    versionIds.length === 0
-      ? []
-      : await prisma.thesisMention.findMany({
-          where: { versionId: { in: versionIds } },
-          select: { versionId: true, kind: true, name: true, contentVersionHash: true, debateSessionId: true },
-        });
+export function transcriptOf(rows: ThesisRows, options: HistoryOptions = {}): Turn[] {
+  const { thesis, versions, framings, rounds, debates, debateEvents, analyses, decisions, attempts, withdrawals, notes } = rows;
+
+  // THE MENTIONS PROJECTED BACK TO THE FIVE THE CONTRACT NAMES, and this is a guard rather than tidiness.
+  // A4 :1476's VERSION body is the STORED rows `{ versionId, kind, name, contentVersionHash, debateSessionId }`;
+  // the loader's row is WIDER (it carries `id` and a nested `debateSession` for the citation resolver), and
+  // `versionTurns` (`thesisTranscript.ts` :565) passes `version.mentions` STRAIGHT THROUGH to the wire. Handing
+  // it the wide row would put a mention id and another thesis's `debateSession.thesisId` into the transcript
+  // without a line of the appendix asking for either.
+  const mentionRows = rows.mentions.map((m) => ({
+    versionId: m.versionId,
+    kind: m.kind,
+    name: m.name,
+    contentVersionHash: m.contentVersionHash,
+    debateSessionId: m.debateSessionId,
+  }));
   const versionsWithMentions = versions.map((version) => ({
     ...version,
     mentions: mentionRows.filter((m) => m.versionId === version.id),
   }));
-
-  const rounds =
-    framingIds.length === 0
-      ? []
-      : await prisma.framingRound.findMany({
-          where: { framingId: { in: framingIds } },
-          select: { id: true, framingId: true, sequence: true, type: true, content: true, researcherId: true, createdAt: true },
-        });
-  const debates = await prisma.debateSession.findMany({
-    where: { thesisId },
-    select: {
-      id: true,
-      researcherId: true,
-      createdAt: true,
-      closedAt: true,
-      status: true,
-      promotedOverObjection: true,
-      recordSnapshotId: true,
-      recordDiffId: true,
-      recordSnapshot: { select: { waybackTimestamp: true, trackedUrl: { select: { url: true } } } },
-      recordDiff: {
-        select: {
-          trackedUrl: { select: { url: true } },
-          beforeSnapshot: { select: { waybackTimestamp: true } },
-          afterSnapshot: { select: { waybackTimestamp: true } },
-        },
-      },
-      evidence: { select: { fileHash: true } },
-    },
-  });
-  // THE EVENTS AND THE PIN IN THEIR OWN QUERIES, for the same reason the mentions are: one question per
-  // table, grouped here. `loadDebate` (services/debateState) nests them because it loads ONE session; this
-  // loads every session of a thesis, and a nested select per row is a query per row.
-  const debateIds = debates.map((d) => d.id);
-  const debateEvents =
-    debateIds.length === 0
-      ? []
-      : await prisma.debateEvent.findMany({
-          where: { sessionId: { in: debateIds } },
-          orderBy: { createdAt: 'asc' },
-          select: { id: true, sessionId: true, type: true, content: true, createdAt: true },
-        });
   const debatePins = mentionRows.filter((m) => m.debateSessionId !== null);
-  const analyses =
-    versionIds.length === 0
-      ? []
-      : await prisma.thesisAnalysis.findMany({ where: { versionId: { in: versionIds } } });
-  const decisions = await prisma.thesisGapDecision.findMany({ where: { thesisId } });
-  const attempts = await prisma.publicationAttempt.findMany({ where: { thesisId } });
-  const withdrawals = await prisma.withdrawal.findMany({ where: { thesisId } });
-  const thesisNotes = await prisma.note.findMany({ where: { thesisId } });
-  const framingNotes =
-    framingIds.length === 0 ? [] : await prisma.note.findMany({ where: { framingId: { in: framingIds } } });
-
-  // EVERY RESEARCHER THE TRANSCRIPT NAMES, resolved to a handle in ONE query — a turn carries a handle and
-  // never an id (§4 :167), and `handleOf` throws on a row whose author does not exist rather than reading as
-  // an anonymous author (R47 §6-R8).
-  const handles = await handlesOf([
-    ...framings.map((f) => f.researcherId),
-    ...rounds.map((r) => r.researcherId),
-    ...versions.map((v) => v.createdById),
-    ...debates.map((d) => d.researcherId),
-    ...analyses.map((a) => a.researcherId),
-    ...decisions.map((d) => d.researcherId),
-    ...attempts.map((a) => a.researcherId),
-    ...withdrawals.map((w) => w.researcherId),
-    ...[...thesisNotes, ...framingNotes].map((n) => n.researcherId),
-  ]);
-  const voices = voicesOf(handles, options.callerId ?? null, thesisId);
+  const handles = rows.handles;
+  const voices = voicesOf(handles, options.callerId ?? null, thesis.id);
 
   const built: BuiltTurn[] = [
     ...framings.flatMap((framing) =>
@@ -735,7 +661,7 @@ export async function history(thesisId: string, options: HistoryOptions = {}): P
     ...gapTurns(decisions, voices),
     ...publicationTurns(attempts, voices),
     ...withdrawalTurns(withdrawals, voices),
-    ...noteTurns([...thesisNotes, ...framingNotes], voices),
+    ...noteTurns(notes, voices),
   ];
 
   const since = options.since;

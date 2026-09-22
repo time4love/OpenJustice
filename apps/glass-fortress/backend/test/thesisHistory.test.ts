@@ -6,7 +6,8 @@ jest.mock('../src/factories/LLMFactory', () => (require('./thesis/tools') as typ
 
 import { addNoteHandler } from '../src/mcp/tools/addNote';
 import { getThesisContextHandler } from '../src/mcp/tools/getThesisContext';
-import { CRITIC_PROMPT_VERSION, fingerprint, history } from '../src/services/thesisPredicates';
+import { CRITIC_PROMPT_VERSION, fingerprint, transcriptOf } from '../src/services/thesisPredicates';
+import { loadThesisRows } from '../src/services/thesisRows';
 import { DIFF_NAME } from './helpers/corpusFixture';
 import { resetDouble, store, written } from './helpers/evidenceDouble';
 import { ANALYSIS, AUTHOR, FRAMING, NOTE, THESIS, VERSION } from './thesis/fixtures';
@@ -33,6 +34,13 @@ beforeEach(() => {
 
 const at = (minute: number): Date => new Date(Date.UTC(2026, 8, 10, 9, minute));
 
+/** The seeded world as ROWS — the one query, so the composer under test is pure (UI-8 chunk A). */
+const rowsOf = async () => {
+  const rows = await loadThesisRows(THESIS.id);
+  if (rows === null) throw new Error('the world seeds a thesis and the loader answered none');
+  return rows;
+};
+
 describe('HISTORY(t) — the framing notes and the boundary', () => {
   it("a note on a framing ATTACHED to the thesis is a NOTE of its history; a note on an unattached framing is not (D11)", async () => {
     seedThesis();
@@ -43,7 +51,7 @@ describe('HISTORY(t) — the framing notes and the boundary', () => {
     ];
     // ATTRIBUTION IS NOW A VOICE, not an id (A4 :1476, R66): the assertion is the same fact — this note is the
     // author's — read through the handle the transcript carries, because `handleOf` resolves AUTHOR to it.
-    const entries = await history(THESIS.id);
+    const entries = transcriptOf(await rowsOf());
     const notes = entries.flatMap((e) => (e.kind === 'NOTE' && e.by.voice === 'RESEARCHER' ? [[e.id, e.by.handle]] : []));
     expect(notes).toEqual([['note-on-the-framing', 'חוקר_א']]);
   });
@@ -54,7 +62,7 @@ describe('HISTORY(t) — the framing notes and the boundary', () => {
       { ...NOTE, id: 'note-at-since', createdAt: at(30) },
       { ...NOTE, id: 'note-after-since', createdAt: at(31) },
     ];
-    const ids = (await history(THESIS.id, { since: at(30) })).map((e) => e.id);
+    const ids = transcriptOf(await rowsOf(), { since: at(30) }).map((e) => e.id);
     expect(ids).toEqual(['note-after-since']);
   });
 });

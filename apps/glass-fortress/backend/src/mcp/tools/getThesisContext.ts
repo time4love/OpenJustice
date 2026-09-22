@@ -1,18 +1,17 @@
 import { z } from 'zod';
-import { prisma } from '../../lib/prisma';
 import type { Prisma, ThesisGapDecision } from '@prisma/client';
-import { headFingerprint } from '../../services/criticMaterial';
-import { currentAnalysis, gapList, history, unargued, type GapEntry } from '../../services/thesisPredicates';
+import { fingerprintOf, headFrom } from '../../services/criticMaterial';
+import { currentAnalysis, gapList, transcriptOf, unargued, type GapEntry } from '../../services/thesisPredicates';
 import { getResearcherId } from '../../context/researcherContext';
 import { publicationState, thesisState, type ThesisState } from '../../lib/thesisView';
 import {
-  citationsByVersion,
-  handlesOf,
+  citationsFrom,
   requireCitations,
   type EvidenceCitation,
   type ResolvedCitations,
   type TrajectoryCitation,
 } from '../../services/publishedThesis';
+import { loadThesisRows, versionOf, type ThesisRows } from '../../services/thesisRows';
 import { voicesOf, type ModelVoice, type Researcher, type Turn, type Voices } from '../../services/thesisTranscript';
 import { answer, refusal, type Refusal } from './thesisRefusals';
 
@@ -140,67 +139,31 @@ interface ThesisContext {
 
 /** THE ONE FUNCTION behind the tool and `GET /api/research/theses/:id` (UI-3). */
 export async function thesisContextOf(input: GetThesisContextInput): Promise<ThesisContext | Refusal<'NO_THESIS'>> {
-  const thesis = await prisma.thesis.findUnique({
-    where: { id: input.thesisId },
-    select: {
-      id: true,
-      provision: true,
-      createdById: true,
-      headVersionId: true,
-      publishedVersionId: true,
-      publishedAt: true,
-      publicInterestStatement: true,
-      createdAt: true,
-    },
-  });
-  if (thesis === null) {
+  // ONE LOAD FOR THE WHOLE ANSWER (`services/thesisRows`, the plan's :779 clause). The state arm, the
+  // fingerprint and the transcript are three readings of ONE set of rows, and reading them three times is what
+  // `docs/gf-thesis-read-cost-2026-09-22.md` measured: 39 delegate calls, almost every table read twice or
+  // more. Everything below is now a lookup, a filter or a CALLED predicate over `rows`.
+  const rows = await loadThesisRows(input.thesisId);
+  if (rows === null) {
     return refusal('NO_THESIS', `No thesis ${input.thesisId}. list_theses names the theses you can read.`);
   }
-
-  // FOUR READS, ONE WAIT — every one keyed on `thesis.id` and none reading another's answer. The same shape
-  // `publicRecordOf` carries, and for the same measured reason: awaited in turn they cost the SUM of four
-  // round trips (2026-09-21, run B: ~2 s of a 32 s read) where the wall should be the slowest of them.
-  const [decisions, framings, versions, withdrawals] = await Promise.all([
-    prisma.thesisGapDecision.findMany({ where: { thesisId: thesis.id } }),
-    prisma.framing.findMany({
-      where: { thesisId: thesis.id },
-      select: { id: true, question: true, provision: true, researcherId: true, createdAt: true },
-    }),
-    prisma.thesisVersion.findMany({
-      where: { thesisId: thesis.id },
-      select: { id: true, createdById: true, createdAt: true },
-    }),
-    prisma.withdrawal.findMany({
-      where: { thesisId: thesis.id },
-      select: { createdAt: true, reason: true },
-    }),
-  ]);
-
-  // EVERY RESEARCHER THIS ANSWER NAMES, in one query, resolved to a handle. `by: P` replaces `createdById` and
-  // `researcherId` on every arm of this read (A4 :1476: "a researcher — NEVER an id on the wire"), because
-  // §4 :167 bars an id from being rendered and a page cannot show what it is not given.
-  const handles = await handlesOf([
-    thesis.createdById,
-    ...framings.map((f) => f.researcherId),
-    ...versions.map((v) => v.createdById),
-    ...decisions.map((d) => d.researcherId),
-  ]);
+  const { thesis, versions, framings, decisions, withdrawals } = rows;
   const caller = getResearcherId();
-  const voices = voicesOf(handles, caller, thesis.id);
+  const voices = voicesOf(rows.handles, caller, thesis.id);
 
   // BOTH VERSIONS THROUGH THE ONE RESOLVER, IN ONE CALL (A4 :1476). `citationsByVersion` asks each of its
   // plurals once for the whole set, so the cost of this read does not grow with the number of citations NOR
   // with the second version; and its `pages` over these two ids IS the union the envelope owes. Calling a
   // single-version resolver twice would have paid eight reads twice over for the same answer.
-  const cited = await citationsByVersion(
+  const cited = await citationsFrom(
     thesis.id,
+    rows.mentions,
     [thesis.headVersionId, thesis.publishedVersionId].filter((id): id is string => id !== null),
   );
-  const head = thesis.headVersionId === null ? null : await versionView(thesis.id, thesis.headVersionId, voices, cited);
-  const published =
-    thesis.publishedVersionId === null ? null : await versionView(thesis.id, thesis.publishedVersionId, voices, cited);
+  const head = thesis.headVersionId === null ? null : versionView(rows, thesis.headVersionId, voices, cited);
+  const published = thesis.publishedVersionId === null ? null : versionView(rows, thesis.publishedVersionId, voices, cited);
 
-  const analysed = head === null ? null : await analysisOf(thesis.id, head.view.versionId, voices);
+  const analysed = head === null ? null : analysisOf(rows, head.view.versionId, voices, cited);
   const analysis = analysed?.state ?? ({ state: 'NONE' } as const);
 
   return {
@@ -246,7 +209,7 @@ export async function thesisContextOf(input: GetThesisContextInput): Promise<The
     // THE TRANSCRIPT, from the one builder set. `currentFingerprint` is handed in rather than recomputed, so an
     // ANALYSIS turn's `current` and the `analysis` arm above answer from ONE fingerprint — two computations of
     // FINGERPRINT(head) in one body is the second spelling that drifts.
-    history: await history(thesis.id, {
+    history: transcriptOf(rows, {
       since: input.since === undefined ? undefined : new Date(input.since),
       callerId: caller,
       currentFingerprint: analysed?.fingerprint ?? null,
@@ -266,15 +229,18 @@ export async function getThesisContextHandler(input: GetThesisContextInput): Pro
  * each one is current (A4 :1476) and computing FINGERPRINT(head) twice in one answer is the second spelling
  * that drifts. `null` when the head has none — awaiting derivation is not a fingerprint.
  */
-async function analysisOf(
-  thesisId: string,
+function analysisOf(
+  rows: ThesisRows,
   headVersionId: string,
   voices: Voices,
-): Promise<{ state: AnalysisState; fingerprint: string | null }> {
-  const headed = await headFingerprint(thesisId, headVersionId);
+  cited: ResolvedCitations,
+): { state: AnalysisState; fingerprint: string | null } {
+  const headed = fingerprintOf(headFrom(rows, headVersionId, cited.records));
   if (!headed.defined) return { state: { state: 'AWAITING_DERIVATION', name: headed.name }, fingerprint: null };
 
-  const analyses = await prisma.thesisAnalysis.findMany({ where: { versionId: headVersionId } });
+  // THE HEAD'S ANALYSES, FILTERED FROM THE ROWS. The loader's wave 2 reads every version's analyses for the
+  // transcript's ANALYSIS turns, so asking the table again for one version's was a round trip for rows in hand.
+  const analyses = rows.analyses.filter((a) => a.versionId === headVersionId);
   const current = currentAnalysis(headVersionId, analyses, headed.fingerprint);
   if (current !== null) {
     return {
@@ -319,18 +285,15 @@ function latestOf<T extends { createdAt: Date }>(rows: readonly T[]): T | null {
  * A TRAJECTORY citation gains `pin: null, argued: false` — the two fields every mention of A4 :1476 carries,
  * and the only difference between the gated arm and the public `TrajectoryCitation`.
  */
-async function versionView(
-  thesisId: string,
+function versionView(
+  rows: ThesisRows,
   versionId: string,
   voices: Voices,
   cited: ResolvedCitations,
-): Promise<{ view: VersionView; cited: Parameters<typeof unargued>[1] }> {
-  const version = await prisma.thesisVersion.findUnique({
-    where: { id: versionId },
-    select: { id: true, text: true, claim: true, contentHash: true, createdAt: true, createdById: true },
-  });
+): { view: VersionView; cited: Parameters<typeof unargued>[1] } {
+  const version = versionOf(rows, versionId);
   if (version === null) {
-    throw new Error(`get_thesis_context: thesis ${thesisId} points at version ${versionId}, which does not exist.`);
+    throw new Error(`get_thesis_context: thesis ${rows.thesis.id} points at version ${versionId}, which does not exist.`);
   }
   const resolved = requireCitations(cited, versionId);
   const mentions = resolved.citations.map((citation): ResolvedMention =>

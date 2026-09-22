@@ -23,7 +23,7 @@ corpus with holes, and every byte a page shows is a route's body it did not comp
 switch risks is a reader's view on staging, where there is no reader.
 
 What is not cheaper is the suite, and here it is worse than the thesis's: **the frontend has no test runner**
-(A5 :1053–:1055). Twenty-eight instruments are named and none exists, so the first step is the harness, and
+(A5 :1194–:1196). Twenty-eight instruments are named and none exists, so the first step is the harness, and
 every page step after it writes its instruments before its components, exactly as §4's rule 4 has the
 acceptance suite written first. Rule 4's second clause reads the other way here as it did at the switch: a
 page is done when its instruments are green, and no page is done before.
@@ -89,9 +89,9 @@ named in its `**STATUS:**` line; the plan carries the pointer and never the find
 
 ### UI-1 · The harness
 
-**Contract:** A5 :1052–:1055 ("the frontend has no test runner today … the plan's first step is the harness —
+**Contract:** A5 :1194–:1196 ("the frontend has no test runner today … the plan's first step is the harness —
 jest for the components and scans, a browser exercise for the pages — and no instrument below exists until it
-does"); §38 `name-never-glass-fortress`; §41 :963–:964 and A5 :1089–:1090 (the browser exercise); refactor plan
+does"); §38 `name-never-glass-fortress`; §41 :1102–:1103 and A5 :1230–:1231 (the browser exercise); refactor plan
 §4 :540–:545 (a scan carries a decoy; a scan that matches nothing is vacuity).
 
 **What lands.** A jest project in the frontend workspace and nothing in `src/`:
@@ -452,7 +452,7 @@ imports the labelled container — a decoy import caught), `notice-only`, `no-do
 375 px, in the dated doc: run B's published thesis rendered whole from its live body — the statement and disclaimer first,
 the claim as heading, every chip resolved, the pages linked to `/corpus?page=` (a 404 until UI-7, recorded), the VERIFY
 disclosure's hashes equal to `list_findings`' through the connector; its call page; its version page; a made-up id the one
-sentence; **the three-voices reading test of §41 :961–:962 — the researcher reads the page and says whether the researcher's
+sentence; **the three-voices reading test of §41 :1100–:1101 — the researcher reads the page and says whether the researcher's
 words and the platform's marks read apart — recorded verbatim**; WITHDRAWN provoked in the fixture only, since a withdrawal
 on staging is the author's act and not this step's. **With the page rendered, thesis plan :327 is CLOSED and the thesis plan's
 DoD line gains the pointer.**
@@ -796,7 +796,7 @@ the extraction sheet opened three deep on one capture, its rules equal to `get_a
 provoked signed out and `returnTo` bringing the reader back; the 403 provoked in the fixture only (no unapproved account is
 created for it); the history's size at phone width recorded (§41). Nothing written, nothing paid.
 
-**STATUS:** OPEN. Closes with `docs/gf-ui-step-8-<date>.md`: the history size measured, the library chosen if any, the exercise. **The read's COST is measured and recorded in `docs/gf-thesis-read-cost-2026-09-22.md`** — 39 delegate calls, the body assembled three times, a ~550 ms per-query floor from a laptop and ~2 s deployed; it carries the target shape and two rulings it left open, of which ONE REMAINS: whether the working view's second read (`/api/research/reviews`, unlisted by §10 :370–:371) becomes `owed` on A4 :1476's envelope — STILL OPEN, and chunk B waits on it. **RULED 2026-09-22 (the researcher, R71): THE LOADER REBUILD (chunk A) IS THIS STEP'S WORK and its record closes HERE, inside UI-8 — not beside #547.** The cold read had recommended the opposite (a backend cost change filed beside #547); the researcher ruled it back into UI-8, so `gate:ui-8` stays the gate for it, no issue is filed for it, and `docs/gf-ui-step-8-<date>.md` closes on the loader as well as on the history size and the exercise. #547 (`list_corpus`/`list_pages` load the whole scope) is a SEPARATE defect and is untouched by this ruling. The dated doc is not edited to match — a findings record is never edited, and the plan is what decides. **The history SIZE measurement this line already owes was NOT taken.** **RE-BRIEFED 2026-09-16** against the design canvas, pages 1 and 5 — docs/gf-ui-design-session-2026-09-16.md §4.
+**STATUS:** OPEN. Closes with `docs/gf-ui-step-8-<date>.md`: the history size measured, the library chosen if any, the exercise. **The read's COST is measured and recorded in `docs/gf-thesis-read-cost-2026-09-22.md`** — 39 delegate calls, the body assembled three times, a ~550 ms per-query floor from a laptop and ~2 s deployed; it carries the target shape and two rulings it left open, **BOTH NOW CLOSED (the researcher, R71, 2026-09-22)**. The working view's second read (`/api/research/reviews`, unlisted by §10 :370–:371) is RESOLVED as a FIELD, not a read: A4 :1476's envelope gains `owed: number` and `reviews: E[]`, **mirroring A4 :1523 so one name keeps one meaning**, and `ResearchThesis.tsx` :99 is deleted in chunk B; §10's CLOSED LIST OF READS is unchanged. See §10 :369 and §11 :406. **This line itself was stale for one commit** — it was amended earlier the same day to say the question REMAINED open, and the ruling followed within the hour: a plan line that tracks open questions goes stale the moment one is answered, which is the CHECKPOINT rule's own case and is recorded here rather than quietly overwritten. **RULED 2026-09-22 (the researcher, R71): THE LOADER REBUILD (chunk A) IS THIS STEP'S WORK and its record closes HERE, inside UI-8 — not beside #547.** The cold read had recommended the opposite (a backend cost change filed beside #547); the researcher ruled it back into UI-8, so `gate:ui-8` stays the gate for it, no issue is filed for it, and `docs/gf-ui-step-8-<date>.md` closes on the loader as well as on the history size and the exercise. #547 (`list_corpus`/`list_pages` load the whole scope) is a SEPARATE defect and is untouched by this ruling. The dated doc is not edited to match — a findings record is never edited, and the plan is what decides. **The history SIZE measurement this line already owes was NOT taken.** **RE-BRIEFED 2026-09-16** against the design canvas, pages 1 and 5 — docs/gf-ui-design-session-2026-09-16.md §4.
 
 ### UI-9 · `/about` rewritten, `/safety` interim, `/researchers` corrected
 
@@ -1034,7 +1034,7 @@ check, runs at UI-2 and UI-3 as at every backend step and is expected to say "No
 migration. A frontend step's `LAND` is not done until the staging FRONTEND deploy reads `SUCCESS` — the service the backend's
 deploy polls never name — and the exercise runs against that deploy.
 
-**The browser exercise, defined once** (A5 :1089–:1090; §41 :963–:964; the document plan's precedent :491–:493). A session's
+**The browser exercise, defined once** (A5 :1230–:1231; §41 :1102–:1103; the document plan's precedent :491–:493). A session's
 browser tools against the staging frontend, the staging cookie set through `/unlock`, the viewport 375 × 812. For every page
 the step lands, in the order A1 lists them:
 
@@ -1054,7 +1054,7 @@ the step lands, in the order A1 lists them:
    of this step. Nothing on staging is written by the exercise; a research act needed for a state (a withdrawal, a second
    publication) is the researcher's, asked for and recorded as theirs.
 
-**The reading test** (§41 :961–:962) is part of UI-5's exercise and is the researcher's: the public thesis page is read once
+**The reading test** (§41 :1100–:1101) is part of UI-5's exercise and is the researcher's: the public thesis page is read once
 by them, before it ships, and their answer — whether the researcher's words and the platform's marks read apart — is
 recorded verbatim. **The measurements** — the chronology's density (UI-7), the history's size at phone width (UI-8), the
 chain check's press rate (from UI-7, read from the backend's request log) and the copy controls' use (read from the next

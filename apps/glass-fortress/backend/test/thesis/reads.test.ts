@@ -7,7 +7,7 @@ jest.mock('../../src/factories/LLMFactory', () => (require('./tools') as typeof 
 import { AFTER, BEFORE, CURRENT_VERSION, DIFF_NAME, DIFF_ROW, PAGE, URL } from '../helpers/corpusFixture';
 import { resetDouble, store, written, type Row } from '../helpers/evidenceDouble';
 import { built } from './absent';
-import type { ThesisGapDecisionRow, ThesisPredicatesModule, ThesisRow, ThesisVersionRow } from './contract';
+import type { ThesisGapDecisionRow, ThesisPredicatesModule, ThesisRow, ThesisRowsShape, ThesisVersionRow } from './contract';
 import {
   AUTHOR,
   BOTH_EVIDENCE_MENTION,
@@ -48,6 +48,14 @@ import {
   seedThesis,
   tripped,
 } from './tools';
+import { loadThesisRows } from '../../src/services/thesisRows';
+
+/** The seeded world as ROWS — the one query, so the composer under test is pure (UI-8 chunk A). */
+const thesisRowsOf = async (): Promise<ThesisRowsShape> => {
+  const rows = await loadThesisRows(THESIS.id);
+  if (rows === null) throw new Error('the world seeds a thesis and the loader answered none');
+  return rows;
+};
 
 // ---------------------------------------------------------------------------
 // THE READS AND THE NOTE — docs/gf-thesis-flows.md A4 :1426–:1431, :1476–:1479,
@@ -277,14 +285,14 @@ describe('get_thesis_context — A4 :1476–:1479, GATED (thesis step 20)', () =
     // to a row's own createdAt would pin a strict-or-inclusive boundary A3 :1407
     // never states.
     const since = new Date(Date.UTC(2026, 8, 10, 9, 12, 30));
-    const p = await built<ThesisPredicatesModule>('services/thesisPredicates', ['history']);
+    const p = await built<ThesisPredicatesModule>('services/thesisPredicates', ['transcriptOf']);
     // HISTORY as the predicate answers it, in the JSON a tool returns — dates as ISO.
     const asJson = (entries: readonly unknown[]): unknown[] => entries.map((e) => JSON.parse(JSON.stringify(e)) as unknown);
     // DECLARED EDIT, 2026-09-20 (R66): the CALL SHAPE only — `history` takes its options as an object since
     // A4 :1476's ruling. Not one assertion of this case moved; it still holds the strict boundary and its own
     // vacuity guard on both sides of the instant.
-    const after = asJson(await p.history(THESIS.id, { since }));
-    const before = asJson(await p.history(THESIS.id)).filter((entry) => !containsDeep(after, entry));
+    const after = asJson(p.transcriptOf(await thesisRowsOf(), { since }));
+    const before = asJson(p.transcriptOf(await thesisRowsOf())).filter((entry) => !containsDeep(after, entry));
     // THE VACUITY GUARD: the date must have rows on BOTH sides, or the case holds nothing.
     expect([after.length > 0, before.length > 0]).toEqual([true, true]);
     const answer = answerOf(
