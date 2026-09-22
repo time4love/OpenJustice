@@ -386,6 +386,37 @@ describe('the gated working-view body costs the same whatever it cites', () => {
     expect(calls).toBeGreaterThan(10);
   });
 
+  it('G8 — `owed` AND `reviews` COST ZERO QUERIES: REVIEWS for this thesis is a fold over rows the read already holds (A4 :1476)', async () => {
+    // THE PROPERTY UI-8 CHUNK B CREATED, and G7's ceiling alone does not hold it: a `reviewsOf` that read for
+    // itself would add the SAME calls in every world, which G1-G6 are blind to by construction — and while the
+    // ceiling at 21 would catch it TODAY, it is a ratchet with headroom and a cheaper chunk later would hide the
+    // read again. This case names the property directly: the fold reaches NO delegate at all.
+    //
+    // THE CONTROL IS THE LOAD, exactly as G4b's is: the rows and the citations are NOT free, so a zero below is
+    // this function's purity and not a dead counter.
+    const { loadThesisRows } = await import('../../src/services/thesisRows');
+    const { citationsFrom } = await import('../../src/services/publishedThesis');
+    const { reviewsOf } = await import('../../src/services/thesisPredicates');
+    seedGated(6);
+
+    const beforeLoad = delegateCalls();
+    const rows = await loadThesisRows(THESIS.id);
+    if (rows === null) throw new Error('the world seeds a thesis and the loader answered none');
+    const cited = await citationsFrom(
+      THESIS.id,
+      rows.mentions,
+      [rows.thesis.headVersionId, rows.thesis.publishedVersionId].filter((id): id is string => id !== null),
+    );
+    expect(delegateCalls() - beforeLoad).toBeGreaterThan(0);
+
+    const before = delegateCalls();
+    const entries = reviewsOf(rows, cited);
+    // A FLOOR ON THE SUBJECT: this world really owes something, so a `reviewsOf` that answered `[]` — which
+    // reaches no delegate either — cannot pass this for the wrong reason.
+    expect(entries.length).toBeGreaterThan(0);
+    expect(delegateCalls() - before).toBe(0);
+  });
+
   it("G6 — THE WRITERS' path too: `headFingerprint` does not grow with the head's citations, and it is the read's own two steps", async () => {
     // THE GAP THIS CLOSES, found by DEV's own decoy D6 reddening NOTHING. G1–G5 all measure `thesisContextOf`,
     // which hands `headFrom` the records the citation resolver already returned — so a per-citation resolution

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Prisma, ThesisGapDecision } from '@prisma/client';
 import { fingerprintOf, headFrom } from '../../services/criticMaterial';
-import { currentAnalysis, gapList, transcriptOf, unargued, type GapEntry } from '../../services/thesisPredicates';
+import { currentAnalysis, gapList, reviewsOf, transcriptOf, unargued, type GapEntry, type OwedEntry } from '../../services/thesisPredicates';
 import { getResearcherId } from '../../context/researcherContext';
 import { publicationState, thesisState, type ThesisState } from '../../lib/thesisView';
 import {
@@ -135,6 +135,39 @@ interface ThesisContext {
    * region. The gated door must not take a second read for a fact its own read can carry (ui §6.1 :241).
    */
   pages: { trackedUrlId: string; url: string }[];
+  /**
+   * WHAT THIS THESIS OWES, AND THE ENTRIES — A4 :1476, ruled 2026-09-22 (the researcher, R71).
+   *
+   * THE SHAPE MIRRORS A4 :1523 DELIBERATELY: `owed` is the COUNT and `reviews` the entries, `E` being that
+   * envelope's own union, so ONE NAME KEEPS ONE MEANING across the two doors — the frontend parses `owed` as a
+   * number on both (`types/research.ts` :557). `{ owed: 0, reviews: [] }` is an answer, never a refusal
+   * (ui §11 :406).
+   *
+   * IT IS A FIELD ON THIS READ AND NOT A READ, which is why ui §10 :370-:371's CLOSED LIST is untouched: the
+   * working view used to take a SECOND read of `/api/research/reviews` and keep the entries naming this thesis,
+   * paying a pass over EVERY thesis on the platform for one thesis's rows. The precedent is ui §6.1 :241, where
+   * `list_corpus`' `page` gained `public: bool` "without a second read", and A4 :1476's own `pages` clause: the
+   * gated door must not take a second read for a fact its own read can carry.
+   *
+   * PER-THESIS, NEVER REVIEWS(researcher). A3 :1408 scopes that predicate to theses the caller AUTHORS, and
+   * ui §11 :407-:408 requires these entries on a COLLEAGUE's thesis too — so `reviewsOf` is called with the rows
+   * and nothing about the caller.
+   *
+   * WHAT EACH ENTRY CARRIES is ui §11 :404's per-kind list, all of it free: the RECORD from the `recordsByName`
+   * pass `citationsFrom` already made, `owedSince` from HEAD's `createdAt` (UNARGUED) or the trajectory currency
+   * the same resolver returned (STALE_TRAJECTORY). FLAGGED's date is the CITATION SHEET's, because computing it
+   * needs the evidence-side material this read does not load and `publishedAt` alone would OVERSTATE how long
+   * the flag has been open.
+   */
+  owed: number;
+  /**
+   * PAIRED PER KIND, and the type says so — A4 :1476 as amended 2026-09-22 ("approve c, rule the record in"):
+   * FLAGGED `{ record, owedSince: null }` · UNARGUED `{ record, owedSince }` · STALE_TRAJECTORY
+   * `{ record: null, owedSince }`. Typing it as two independently nullable fields would describe four
+   * combinations where the appendix names three, and an envelope that admits a shape the design does not is an
+   * envelope read off an implementation.
+   */
+  reviews: OwedEntry[];
 }
 
 /** THE ONE FUNCTION behind the tool and `GET /api/research/theses/:id` (UI-3). */
@@ -165,6 +198,10 @@ export async function thesisContextOf(input: GetThesisContextInput): Promise<The
 
   const analysed = head === null ? null : analysisOf(rows, head.view.versionId, voices, cited);
   const analysis = analysed?.state ?? ({ state: 'NONE' } as const);
+  // THIS THESIS'S ENTRIES OF REVIEWS — A4 :1476, over the rows and the resolutions already in hand. The count is
+  // this body's own list and never another scope's: ui §7.1 :326's `owed` counts EVERY researcher's entries at
+  // `all`, which is a different question from the one this envelope answers.
+  const owedHere = reviewsOf(rows, cited);
 
   return {
     thesis: {
@@ -215,6 +252,11 @@ export async function thesisContextOf(input: GetThesisContextInput): Promise<The
       currentFingerprint: analysed?.fingerprint ?? null,
     }),
     pages: cited.pages,
+    // ZERO EXTRA QUERIES (A4 :1476): FLAGGED from the `flaggedFor` answer `citationsFrom` already computed,
+    // STALE_TRAJECTORY from the currency its one trajectory resolver already holds, UNARGUED from the head's own
+    // mention rows — all of them loaded above for the body this read owes anyway.
+    owed: owedHere.length,
+    reviews: owedHere,
   };
 }
 

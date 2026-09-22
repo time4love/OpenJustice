@@ -26,7 +26,7 @@ const DIFF_RECORD = { url: 'https://example.gov/two/', before: '20220301120000',
 
 /** `list_thesis_reviews` at `all` — all three kinds, each with its material and its ONE command (A4 :1523). */
 export const thesisReviewsOwed: ThesisReviewList = {
-  owed: 4,
+  owed: 5,
   reviews: [
     {
       kind: 'FLAGGED',
@@ -95,6 +95,23 @@ export const thesisReviewsOwed: ThesisReviewList = {
         },
         currency: { state: 'NOT_FOLLOWED_BY_LATEST' },
       },
+    },
+    {
+      // AN UNARGUED CITATION ON THE CALLER'S OWN THESIS — added 2026-09-22 (UI-8 chunk B round 2), because the
+      // WORKING VIEW's entries are this list's entries for one thesis, and that page must be able to draw the
+      // arm that carries BOTH a record and a date (ui §11 :404). Its instant is that thesis's HEAD `createdAt`
+      // (`thesisContext.ts` :378), which is what `thesisReviews.ts` :196 computes for this arm — so the two
+      // fixtures describe ONE world rather than two that merely look alike.
+      kind: 'UNARGUED',
+      thesisId: 'cmu0aaaa00011112222333344',
+      name: 'record-four',
+      versionId: 'version-2',
+      mentionId: 'mention-4',
+      command: 'open_debate thesisId=cmu0aaaa00011112222333344',
+      owedSince: '2026-02-01T08:00:00.000Z',
+      author: AUTHOR,
+      mine: true,
+      material: { versionId: 'version-2', record: CAPTURE_RECORD, pin: 'pin-four' },
     },
     {
       kind: 'UNARGUED',

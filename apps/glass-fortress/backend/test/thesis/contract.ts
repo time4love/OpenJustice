@@ -123,6 +123,8 @@ export const MODULES = {
       trajectoryCurrent: fn(23),
       publishableVersion: fn(23),
       reviews: fn(24),
+      // UI-8 chunk B: REVIEWS for ONE thesis over rows already loaded — A4 :1476's `owed` and `reviews`.
+      reviewsOf: fn(24),
       // FINGERPRINT's last input (A3 :1378) — exported so a case can compute the
       // fingerprint the version's CURRENT analysis must carry, rather than guess it.
       CRITIC_PROMPT_VERSION: value(22),
@@ -394,12 +396,10 @@ export const TURN_KINDS_EXPECTED: readonly Turn['kind'][] = [
   'NOTE',
 ];
 
-export interface ReviewEntry {
-  kind: 'FLAGGED' | 'STALE_TRAJECTORY' | 'UNARGUED';
-  thesisId: string;
-  name: string;
-  command: string;
-}
+export type ReviewEntry =
+  | { kind: 'FLAGGED'; thesisId: string; name: string; command: string; versionId: string; mentionId: string; reasons: string[] }
+  | { kind: 'STALE_TRAJECTORY'; thesisId: string; name: string; command: string; citedOn: { versionId: string; published: boolean }[]; state: string }
+  | { kind: 'UNARGUED'; thesisId: string; name: string; command: string; versionId: string; mentionId: string };
 
 /**
  * `list_thesis_reviews`' ANSWER, as JSON (A4 :1523–:1525; T6 :868–:878): REVIEWS(caller),
@@ -421,15 +421,30 @@ export interface ReviewEntry {
  * owed with NO_FRAMING's, create_thesis's and `since`'s; step 17's dated record
  * names it.
  */
-export interface ThesisReviewListEntry extends ReviewEntry {
+export type ThesisReviewListEntry = ReviewEntry & {
   owedSince: string;
   material: Record<string, unknown>;
-}
+};
 
 export interface ThesisReviewList {
   owed: number;
   reviews: ThesisReviewListEntry[];
 }
+
+/**
+ * The GATED read's row — A4 :1476's `E & { record, owedSince }`, PAIRED PER KIND (the researcher, 2026-09-22).
+ *
+ * The three combinations are spelled as three arms, not as two nullable fields: two nullables describe FOUR
+ * shapes where the appendix names THREE, and a suite that accepted the fourth would grade a wire the design
+ * does not describe.
+ */
+export type OwedEntryShape =
+  | (Extract<ReviewEntry, { kind: 'FLAGGED' }> & { record: NamedRecordShape; owedSince: null })
+  | (Extract<ReviewEntry, { kind: 'UNARGUED' }> & { record: NamedRecordShape; owedSince: Date })
+  | (Extract<ReviewEntry, { kind: 'STALE_TRAJECTORY' }> & { record: null; owedSince: Date });
+
+/** A record as evidence A1 names it — its page and its timestamps, never a row id. */
+export type NamedRecordShape = { url: string; capture: string } | { url: string; before: string; after: string };
 
 /** The loader's rows, as the suite hands them — imported so the suite and the module cannot drift. */
 export type ThesisRowsShape = import('../../src/services/thesisRows').ThesisRows;
@@ -456,6 +471,16 @@ export interface ThesisPredicatesModule {
   // block states above it is PURE and SYNC. `loadThesisRows` is the question about the database.
   transcriptOf(rows: ThesisRowsShape, options?: { since?: Date; callerId?: string | null; currentFingerprint?: string | null }): Turn[];
   reviews(researcherId: string): Promise<ReviewEntry[]>;
+  // PURE and SYNC, by the purity rule this block states: every input is a row the caller already loaded, which
+  // is the whole of A4 :1476's "ZERO EXTRA QUERIES". `resolved` is `ResolvedCitations`, structurally.
+  reviewsOf(
+    rows: ThesisRowsShape,
+    resolved: {
+      flags: ReadonlyMap<string, { flagged: boolean; reasons: string[] }>;
+      trajectories: ReadonlyMap<string, TrajectoryCurrency>;
+      records: ReadonlyMap<string, unknown>;
+    },
+  ): OwedEntryShape[];
 }
 
 /**

@@ -7,6 +7,9 @@ import { phrasePresent } from '../lib/htmlText';
 import { flaggedByClassifier } from '../lib/investigativeCategories';
 import type { ComputeResult, ChangeSpan, TrajectoryGroup } from './claimTrajectory';
 import { CLASSIFICATION_KEYS } from './recordDiff';
+// TYPE-ONLY, and it must stay that way: `evidenceReviews` imports THIS module for its loaders, so a value
+// import here would close a runtime cycle. A type import is erased.
+import type { NamedRecord } from './evidenceReviews';
 import {
   currentVersionOf,
   narrowed,
@@ -489,6 +492,24 @@ export interface ResolvedRecord {
   capture: TimelineCapture | null;
   pair: { before: TimelineCapture; after: TimelineCapture } | null;
   diff: TimelineDiff | null;
+}
+
+/**
+ * THE RECORD AS EVIDENCE A1 NAMES IT — its page and its timestamps — from what the ONE resolver found.
+ *
+ * LIFTED HERE 2026-09-22 (UI-8 chunk B round 2) from `thesisReviews.ts` :166–:170, verbatim and behaviour for
+ * behaviour. It was private there, and the gated thesis read now needs the same naming for `reviews[].record`
+ * (thesis A4 :1476 as amended). Importing it from `thesisReviews` would have closed a runtime cycle — that
+ * module imports `thesisPredicates`, which is the caller — and writing it a second time is the defect this
+ * repository names most often. It belongs beside `ResolvedRecord`, which is this module's own type.
+ *
+ * `debateState.namedRecordOf` is NOT this function: it names a record from a DEBATE ROW's two relations. Two
+ * loaders, one naming rule, each over the rows it holds.
+ */
+export function namedRecordOf(resolved: ResolvedRecord): NamedRecord {
+  if (resolved.capture !== null) return { url: resolved.page.url, capture: resolved.capture.capture };
+  if (resolved.pair !== null) return { url: resolved.page.url, before: resolved.pair.before.capture, after: resolved.pair.after.capture };
+  throw new Error(`corpusReads: ${resolved.fileHash} resolved to neither a capture nor a pair (evidence A1).`);
 }
 
 /**

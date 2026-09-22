@@ -827,4 +827,43 @@ describe('REVIEWS(researcher) — what an author owes, on their own theses (thes
     const p = await predicates('reviews');
     expect(await p.reviews(AUTHOR)).toEqual([]);
   });
+
+  // -------------------------------------------------------------------------
+  // `reviewsOf`'s STALE DATE — thesis A4 :1476 as amended 2026-09-22, and `thesisReviews.ts` :253–:259's rule
+  // over the rows the gated read already holds: the obligation begins at the LATER of the citing instant and
+  // the newer pass.
+  //
+  // IT IS A SECOND SPELLING OF THAT RULE AND IT IS GRADED HERE. The LIST's spelling is held by
+  // `thesisReviews.test.ts` :300; this one is the gated read's, and the two doors were ruled to have two
+  // SOURCES (2026-09-22) — so an ungraded copy is exactly the drift that ruling makes possible.
+  //
+  // BOTH DIRECTIONS, because one world grades neither: with the pass EARLIER than the citing instant a
+  // `laterOf` replaced by "the pass" fails, and with it LATER a `laterOf` replaced by "the citing instant"
+  // fails. A single world is satisfied by whichever half it happens to pick.
+  // -------------------------------------------------------------------------
+  it('`reviewsOf` dates a STALE_TRAJECTORY at the LATER of the citing instant and the newer pass — both directions', async () => {
+    const owedSinceWithPassAt = async (latestComputedAt: string): Promise<Date> => {
+      seedReviews({ head: TRAJECTORY_VERSION, published: null });
+      const p = await built<ThesisPredicatesModule>('services/thesisPredicates', ['reviewsOf']);
+      const rows = await loadThesisRows(THESIS.id);
+      if (rows === null) throw new Error('the world seeds a thesis and the loader answered none');
+      const entries = p.reviewsOf(rows, {
+        flags: new Map(),
+        trajectories: new Map([[TRAJECTORY_ID, { ...CURRENCIES.RECOMPUTED_DISAGREES, latestComputedAt }]]),
+        records: new Map(),
+      });
+      // THE FLOOR ON THE SUBJECT: the world really owes ONE stale trajectory and nothing else, so the date
+      // below is that entry's and an empty list cannot pass by having no date to disagree with.
+      expect(entries.map((entry) => [entry.kind, entry.name])).toEqual([['STALE_TRAJECTORY', TRAJECTORY_ID]]);
+      const owedSince = entries.at(0)?.owedSince;
+      if (owedSince === null || owedSince === undefined) throw new Error('a STALE_TRAJECTORY entry carries a date on every arm');
+      return owedSince;
+    };
+
+    // THE CITING INSTANT IS HEAD's own `createdAt` — `at(15)`, and the fixture's pass is five days before it.
+    expect(await owedSinceWithPassAt('2026-09-05T00:00:00.000Z')).toEqual(TRAJECTORY_VERSION.createdAt);
+    // AND A PASS THAT LANDED AFTER THE CITATION MOVES THE DATE TO THE PASS: the obligation cannot predate the
+    // finding that created it.
+    expect(await owedSinceWithPassAt('2026-09-20T00:00:00.000Z')).toEqual(new Date('2026-09-20T00:00:00.000Z'));
+  });
 });
