@@ -46,6 +46,8 @@ import type {
   Voice,
 } from '@/types/research';
 import { ASSESSOR_VERDICTS, FLAG_REASONS, GAP_DECISIONS, GATES, NOT_EVALUABLE_REASONS, OUTCOMES, THREAD_STEPS, TURN_KINDS } from '@/types/research';
+// ONE CITATION PARSER FOR BOTH DOORS (A4 :1476's one citation shape) — called, never re-spelled.
+import { citation } from '@/lib/thesisBody';
 
 // ---------------------------------------------------------------------------
 // THE GATED BODIES AT THE BOUNDARY — one `parseX` per read, written to the appendix envelope and to the
@@ -249,19 +251,27 @@ function elementFill(value: unknown, at: string): ElementFill {
 const elementFills = (value: unknown, at: string): ElementFill[] | null =>
   value === null || value === undefined ? null : list(value, at).map((one, index) => elementFill(one, `${at}[${String(index)}]`));
 
-function mention(value: unknown, at: string): Mention {
-  const row = object(value, at);
-  const kind = oneOf(row.kind, ['EVIDENCE', 'TRAJECTORY'] as const, `${at}.kind`);
-  if (kind === 'EVIDENCE') {
-    return { kind, name: text(row.name, `${at}.name`), pin: maybeText(row.pin, `${at}.pin`), argued: flag(row.argued, `${at}.argued`) };
-  }
-  const trajectory: Mention = { kind, name: text(row.name, `${at}.name`), pin: null, argued: false };
-  if (row.resolves !== undefined) trajectory.resolves = flag(row.resolves, `${at}.resolves`);
-  if (row.currency !== undefined) trajectory.currency = trajectoryCurrency(row.currency, `${at}.currency`);
-  return trajectory;
-}
+/**
+ * A VERSION'S CITATIONS — the PUBLIC parser, CALLED (`lib/thesisBody.ts`' `citation`), never re-spelled.
+ *
+ * WHAT THIS REPLACED, because the shape of the defect is the point. The reader here used to keep four fields
+ * — `kind`, `name`, `pin`, `argued` — and drop `record`, `content`, `verified`, `flag` and `overObjection`,
+ * all of which `get_thesis_context` has served since R70 (`getThesisContext.ts` :71's `ResolvedMention`).
+ * Nothing failed: the parser succeeded, the body was valid, the page drew, and the fields were simply gone.
+ * That is the schema-fields-dropped class `CLAUDE.md` names as a systematic risk, and a parser is exactly
+ * where it hides, because a parser that narrows looks identical to a parser that validates.
+ */
+const mentions = (value: unknown, at: string): Mention[] => list(value, at).map((one, index) => citation(one, `${at}[${String(index)}]`));
 
-const mentions = (value: unknown, at: string): Mention[] => list(value, at).map((one, index) => mention(one, `${at}[${String(index)}]`));
+/** The cited page rows — `{ trackedUrlId, url }`, A4 :1476's union, deduplicated by the backend. */
+const citedPages = (value: unknown, at: string): { trackedUrlId: string; url: string }[] =>
+  list(value, at).map((one, index) => {
+    const row = object(one, `${at}[${String(index)}]`);
+    return {
+      trackedUrlId: text(row.trackedUrlId, `${at}[${String(index)}].trackedUrlId`),
+      url: text(row.url, `${at}[${String(index)}].url`),
+    };
+  });
 
 /**
  * A VERSION TURN'S MENTION — the STORED row, and a DIFFERENT shape from the resolved one above (Q-D).
@@ -559,6 +569,7 @@ export function parseThesisContext(value: unknown): ThesisContext {
     },
     head: body.head === null || body.head === undefined ? null : versionView(body.head, 'thesis context.head'),
     published: body.published === null || body.published === undefined ? null : versionView(body.published, 'thesis context.published'),
+    pages: citedPages(body.pages, 'thesis context.pages'),
     unargued: names(body.unargued, 'thesis context.unargued'),
     gapList: list(body.gapList, 'thesis context.gapList').map((one, index) => gapEntry(one, `thesis context.gapList[${String(index)}]`)),
     analysis: analysisState(body.analysis, 'thesis context.analysis'),

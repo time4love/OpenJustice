@@ -57,7 +57,16 @@ function citationRef(value: unknown, at: string): CitationRef {
   return { kind: text(row.kind, `${at}.kind`), name: text(row.name, `${at}.name`), pin: maybeText(row.pin, `${at}.pin`) };
 }
 
-function citation(value: unknown, at: string): Citation {
+/**
+ * ONE CITATION, PARSED ONCE FOR BOTH DOORS — exported 2026-09-22 (R73 chunk 2).
+ *
+ * A4 :1476 rules ONE citation shape, "public and gated", so there is one parser for it. The gated working
+ * view's `get_thesis_context` serves `V.mentions` in exactly this shape (`getThesisContext.ts` :71), and
+ * `lib/researchBody.ts` CALLS this rather than spelling a second reader of the same fields — a second
+ * spelling of one rule is this repository's dominant defect shape, and a reader is where it costs most:
+ * the narrow copy that stood in `researchBody.ts` dropped five fields in silence.
+ */
+export function citation(value: unknown, at: string): Citation {
   const row = object(value, at);
   const kind = text(row.kind, `${at}.kind`);
   if (kind === 'TRAJECTORY') {

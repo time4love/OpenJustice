@@ -5,6 +5,9 @@ import { useTranslations } from 'next-intl';
 import { CopyableCode } from '@/components/CopyableCode';
 import { DeclareTabs, usePaneLayer, usePaneSelection } from '@/components/shell/RightPane';
 import { ProvisionName } from '@/components/thesis/ProvisionName';
+import { recordTabs } from '@/components/thesis/PaneTabs';
+import { ThesisText } from '@/components/thesis/ThesisText';
+import { TickLine } from '@/components/thesis/TickLine';
 import { useAsyncData } from '@/hooks/useAsyncData';
 import { researchFetch } from '@/lib/researchFetch';
 import { parseThesisContext } from '@/lib/researchBody';
@@ -176,7 +179,18 @@ export function ResearchThesis({ thesisId, locale }: { thesisId: string; locale:
                 is the very rule that kept the line below inert until this chunk. Each remaining tab arrives
                 with its content. */}
             <DeclareTabs
-              tabs={[{ id: TRANSCRIPT_TAB_ID, label: t('tab.transcript'), content: <Transcript turns={body.history} locale={locale} /> }]}
+              tabs={[
+                { id: TRANSCRIPT_TAB_ID, label: t('tab.transcript'), content: <Transcript turns={body.history} locale={locale} /> },
+                // THE CITED RECORDS, FROM THE SAME DECLARATION — and this is the chunk's acceptance criterion,
+                // not a convenience. A chip's press calls `useOpenRecord` (`PaneTabs.tsx` :75–:82), which
+                // selects `record:<kind>:<name>`; `RightPane.tsx` :114–:116 falls back to `tabs.at(0)` for a
+                // tab the page does not declare. Without these, every press in the centre would raise the
+                // layer and show the TRANSCRIPT — a dead press wearing a live one's clothes, which is the
+                // very defect (R59 · F3, `TickLine.tsx` :16–:20) the dated tick was unified to remove.
+                //
+                // THE TRANSCRIPT STAYS FIRST, so it keeps being the pane's default for free (§14 :486).
+                ...recordTabs({ citations: body.head?.mentions ?? [], pages: body.pages, locale }),
+              ]}
             />
 
             {/* THE TRANSCRIPT'S DOOR — §11 :408 as ruled 2026-09-21: ONE line beneath WHAT IS OWED, carrying
@@ -191,6 +205,33 @@ export function ResearchThesis({ thesisId, locale }: { thesisId: string; locale:
                 §11 :408 requires the line at EVERY width for that reason, and the swipe stays "a second way"
                 rather than the way. */}
             <TranscriptDoor turns={body.history.length} />
+
+            {/* THE CENTRE — plan :739 (i)–(ii), read off APPROVED BOARD ד2, and plan :1205–:1206: "the TICK
+                LINE of the cited captures under the byline; the text with each citation a DATED TICK carrying
+                one status dot".
+
+                IT IS A CALL, NOT A BUILD. `components/thesis/*` is UI-5's and KEEP: the centre is the PUBLIC
+                thesis column, so the working view renders the same two components the public page renders at
+                `theses/[id]/page.tsx` :141 and :144 — no second column, no second chip, no second read
+                (A4 :1476, "the `V` shape is now the ONE citation shape, public and gated").
+
+                WHAT IT DRAWS IS HEAD'S, and only HEAD's: the PUBLISHED toggle and the version diff are
+                plan :739 (iii) and sit BELOW THE FREEZE LINE — not built, not stubbed, and no dead control
+                left where they will go. `pages` is the UNION of both versions' cited pages so that the
+                toggle, when it is built, changes no link.
+
+                NOT DRAWN, each for its own reason at :739: the public-interest statement and the LEGAL
+                DISCLAIMER (COMPLIANCE.md :92 names the PUBLIC pages, and a gated working view is not one) ·
+                THE APPEALS · THE CASE and HISTORY (their gated home is the transcript) · THE PAGES · the
+                VERIFY disclosure (its gated home is the ANALYSIS tab, §11 :421). */}
+            {body.head === null ? null : (
+              <section data-region="centre" className="flex flex-col gap-4">
+                <TickLine citations={body.head.mentions} locale={locale} />
+                <article className="reading">
+                  <ThesisText text={body.head.text} citations={body.head.mentions} pages={body.pages} locale={locale} />
+                </article>
+              </section>
+            )}
           </>
         )}
       </ResearchFetchBoundary>
