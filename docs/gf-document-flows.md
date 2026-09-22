@@ -279,7 +279,7 @@ extractor can read the bytes, the bytes themselves.**
 
 ```
 PDF with a text layer   the extractor reads it                       deterministic
-image, scan, photo      an OCR ENGINE reads it                       deterministic at a version
+image, scan, photo      an OCR ENGINE reads it                       deterministic at a version   ← **RULED 2026-09-23 (the researcher): `ocr-none` SHIPS IN v1 — no OCR engine is chosen, so a scan and a photograph alike derive NO computed text: the content version IS the bytes and its hash is the name, and a quoted span from one is UNCHECKED with the reason (A3 :1386). The reason is not quality but the GATE: a weak engine turns a true quote with one misread letter into a blocking ABSENT under DOCUMENT_QUOTES_PRESENT (A6 :1536), while `ocr-none` leaves an honest, non-blocking UNCHECKED. The record, the two gates any future engine must pass, and the full analysis: `docs/gf-extractor-ruling-2026-09-23.md`.**
 paste                   the bytes ARE the text — decoded as UTF-8; one version, by construction   ← **RULED 2026-09-23 (the researcher): THERE IS NO PASTE. THIS ROW IS RETIRED: the kinds are FOUR — a PDF with a text layer, a scan, a SPREADSHEET (:284), and a file no engine reads.**
 none of the above       no COMPUTED text exists; the content version IS the bytes, and its hash — **RULED 2026-09-22 (the researcher): a SPREADSHEET (XLSX, CSV) is NOT this row — its cells serialised deterministically, sheet by sheet, at a pinned version are COMPUTED text (`docs/gf-document-design-session-2026-09-22.md` §3)**
                         is the name — the researcher reads the image, and so does the assessor
@@ -839,7 +839,7 @@ whether that is enough is counsel's question, pointed at from here.
 **A FOIA answer and a submission differ here only in what a researcher usually decides.** A
 held FOIA answer is a public record lawfully obtained and will usually be opened in full; a
 sealed submission usually will not be; the platform encodes neither "usually", allows the same
-three openings to both, and records which was chosen and by whom.
+three openings to both, and records which was chosen and by whom. — **RULED 2026-09-23 (the researcher): A SCANNED DOCUMENT IS OPENED TO BYTES. It is the researcher's STANDING DECISION and not a platform rule — this clause's point stands, and nothing is encoded. It exists because under `ocr-none` a scan's quoted span is UNCHECKED, so a reader can neither be shown a machine-checked quote nor open the file unless the opening is BYTES (A5 :1511 refuses `/bytes` below it). Opening to BYTES serves the file with `{ docId, salt }` beside it (A5 :1509–:1510), so a stranger reproduces the commitment and reads the quote with their own eyes. `docs/gf-extractor-ruling-2026-09-23.md`.**
 
 **What the public read resolves a `#doc_` citation to** — the frontend's to render, this
 document's to specify, in the shape of thesis T5's page:
