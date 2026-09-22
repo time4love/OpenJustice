@@ -80,9 +80,18 @@ describe('A3 :1372 — evidence A3’s predicates are CALLED over CURRENT(d), ne
     expect(respelled).toEqual([]);
   });
 
+  // CORRECTED, R74 chunk 3. This named `thesisAssertions|verdictRule|claimVerdict` and the
+  // symbol lives in NONE of them: thesis step 19 built it at `src/lib/verdict.ts` :28-:41,
+  // whose own docstring :12-:15 says so. As written the case was satisfiable ONLY by creating
+  // a second spelling under one of those names — which is the defect `verdict-rule-one-spelling`
+  // (A7 :1579-:1581) exists to catch, so the case demanded what its own instrument forbids.
+  //
+  // WHY THE WRONG NAME WAS PLAUSIBLE, because it will be again: `test/verdictRule.test.ts` :1
+  // reads `import { verdict, verdictInAny } from '../src/lib/verdict'`. THE TEST IS NAMED
+  // verdictRule; THE MODULE IS verdict. A name read off a test file is not the module's.
   it('THE VERDICT RULE IS THESIS STEP 19’S — this module calls it and declares no second one', async () => {
     const source = await predicateSource();
-    expect(source).toMatch(/from '.*(thesisAssertions|verdictRule|claimVerdict)'/);
+    expect(source).toMatch(/from '.*lib\/verdict'/);
     expect(source).not.toMatch(/export (const|function) (verdictRule|computeVerdict)\b/);
   });
 });

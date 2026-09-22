@@ -59,6 +59,32 @@ import { Prisma } from '@prisma/client';
 export const ANCHOR_SCHEME = 'DOCUMENT_SHA256';
 
 /**
+ * THE REGISTRY CATEGORY ON EVERY DOCUMENT ENTRY — the second meaning, self-describing.
+ *
+ * Document flows A1 `:1245–:1246`: "one constant, one importable symbol, beside
+ * ANCHOR_SCHEME; WRITES_ALLOWED reads index 0 only and is unchanged." Added at document
+ * refactor step 28; its first WRITER is step 31's caller of the anchoring module.
+ *
+ * WHY A SECOND CATEGORY IS NOT A SECOND MEANING SMUGGLED IN. Evidence §8 gives a fresh
+ * registry one meaning from index zero and puts the scheme in every entry's category
+ * precisely so that "a future change of meaning is SELF-DESCRIBING on the same contract".
+ * A document's name is the same hash function over bytes with a different second witness
+ * — checkable against the ORIGINAL by whoever holds one, never against the archive — so
+ * it is a second meaning, and it goes on the same contract under its own category, which
+ * says which (document flows §4 `:487–:495`).
+ *
+ * `WRITES_ALLOWED` IS UNCHANGED AND STILL READS INDEX 0 ALONE (`services/anchorSnapshots.ts`
+ * `writesAllowed`). It asks whether this contract is the one the walk rotated to; a
+ * document entry never sits at index 0 on a rebuilt registry, because the walk anchors
+ * the first capture before any document can arrive.
+ *
+ * `anchors-explainable` (A7 `:1554–:1556`) is what holds the pair honest: every entry's
+ * category is one of these two, and every commitment entry is reproduced by one
+ * `Document` row's `(docId, salt)`. Extended at step 31, not here.
+ */
+export const DOCUMENT_COMMITMENT = 'DOCUMENT_COMMITMENT';
+
+/**
  * A capture, reduced to what the anchoring rule reads.
  *
  * The type is the enumeration mechanism. When the anchor moves to

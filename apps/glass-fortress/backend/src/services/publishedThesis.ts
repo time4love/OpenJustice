@@ -1,3 +1,4 @@
+import type { MentionType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { provisionTitleOf } from '../lib/provisions';
 import type { ChunkSide } from '../lib/diffChunking';
@@ -307,7 +308,19 @@ export interface VersionCitations {
 export interface CitationMention {
   id: string;
   versionId: string;
-  kind: 'EVIDENCE' | 'TRAJECTORY';
+  /**
+   * `MentionType`, NOT A HAND-WRITTEN UNION — widened at document refactor step 28, which
+   * added DOCUMENT to the enum. The union here said `'EVIDENCE' | 'TRAJECTORY'` and was a
+   * SECOND SPELLING of the schema's enum that happened to agree with it while there were
+   * two kinds; the compiler named this site the moment there were three, which is the
+   * enumeration `anchoredCaptureHash.ts` :64-:67 describes — "a compiler's list is complete
+   * and a grep's is not".
+   *
+   * THIS READER HANDLES TWO OF THE THREE AND REFUSES THE THIRD BY NAME, below. A `#doc_`
+   * mention has no writer until step 33 and no resolver until step 34, so the refusal is
+   * unreachable today and becomes reachable the moment step 33 lands without step 34.
+   */
+  kind: MentionType;
   name: string;
   contentVersionHash: string | null;
   debateSession: { status: string; recordFileHash: string; thesisId: string; promotedOverObjection: boolean } | null;
@@ -420,7 +433,10 @@ export async function citationsFrom(
   // forbids a caller re-deriving it; a batching helper in this file would be a second spelling of VERIFIED and
   // FLAGGED, which is what the one-symbol scan refuses. The trajectory half above has always been plural —
   // this makes the evidence half the shape its neighbour already had, ten lines away in the same loop.
-  const evidenceMentions = mentions.filter((m) => m.kind !== 'TRAJECTORY');
+  // `=== 'EVIDENCE'`, never `!== 'TRAJECTORY'`: with three kinds those stopped being the
+  // same set, and "not a trajectory" would have swept a DOCUMENT mention into the evidence
+  // resolver silently. Step 28 made the difference real; the explicit arm below names it.
+  const evidenceMentions = mentions.filter((m) => m.kind === 'EVIDENCE');
   const names = evidenceMentions.map((m) => m.name);
   // SIBLINGS, NOT A SEQUENCE. None of the three reads the others' answer — they are three plurals over the
   // same name set — and awaited in turn they cost the SUM of their round trips. Only `heldTextsFor` depends on
@@ -456,6 +472,18 @@ export async function citationsFrom(
           : { kind: 'TRAJECTORY', name: mention.name, resolves: true, claimText: t.claimText, url: t.url, transitions: t.transitions, current: trajectoryCurrent(t.currency) },
       );
       continue;
+    }
+    if (mention.kind === 'DOCUMENT') {
+      // A LOUD GUARD, and it is the `requireSnapshotIdentity` pattern again. A `#doc_`
+      // mention resolves to §7 :848-:860's block, which `resolve_record` answers at
+      // DOCUMENT STEP 34; until then nothing here can say what it cites. Unreachable
+      // today — step 33 builds the parser that writes one — and this refuses by NAME
+      // rather than letting a document fall through the evidence path and be reported
+      // as a corpus record nobody holds.
+      throw new Error(
+        `publishedThesis: version ${mention.versionId} cites a DOCUMENT (#doc_), which document refactor step 34 resolves. ` +
+          'Step 28 added the mention kind; no reader answers it yet.',
+      );
     }
     const record = records.get(mention.name) ?? null;
     if (record === null) {

@@ -2,7 +2,13 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SRC } from '../walk/scan';
 import { built } from './built';
-import { INSTRUMENTS, RETIRED_DOCUMENT_NAMES } from './contract';
+import {
+  INSTRUMENTS,
+  NO_SENDER_IDENTITY_COLUMNS,
+  NO_SENDER_IDENTITY_MODELS,
+  RETIRED_DOCUMENT_NAMES,
+} from './contract';
+import { modelBody, schemaText } from './schema';
 
 // ---------------------------------------------------------------------------
 // A7 :1543-:1584 and plan §4 :406-:413 — THE SCANS, EACH WITH ITS DECOY.
@@ -80,19 +86,43 @@ describe('A7 :1549-:1560 — the instruments this round owes, and the step each 
 });
 
 describe('A7 :1567-:1569 — `no-sender-identity`, the SCHEMA half, which binds from step 28', () => {
+  // CORRECTED, R74 chunk 3 — see `contract.ts`' NO_SENDER_IDENTITY_MODELS block for why.
+  // The subject is the TWO MODELS A7 names, never the whole schema text: `Whistleblower`
+  // is LIVE until step 36 (plan :141, "Nothing is removed here"; plan §4 :410 puts its
+  // absence at step 36), and scanning the file caught it at step 29 for a step-36 reason.
+
   it('neither Arrival nor Document has a column for an address, an account, a name or a contact', async () => {
     await anchor();
-    const schema = readFileSync(join(SRC, '..', 'prisma', 'schema.prisma'), 'utf8');
-    const banned = ['encryptedContact', 'senderIp', 'senderName', 'contactEmail'];
-    for (const column of banned) expect(schema).not.toContain(column);
+    const schema = schemaText();
+    for (const model of NO_SENDER_IDENTITY_MODELS) {
+      const body = modelBody(schema, model);
+      // THE FLOOR: the model was FOUND. A renamed or absent model would otherwise make
+      // every column assertion below it pass over an empty string.
+      expect(body).not.toBe('');
+      for (const column of NO_SENDER_IDENTITY_COLUMNS) expect(body).not.toContain(column);
+    }
   });
 
-  it('THE DECOY: a fixture schema carrying a contact column is caught (plan §4 :410)', async () => {
+  it('THE DECOY: a contact column planted in EITHER model is caught, and one outside them is not', async () => {
     await anchor();
-    const schema = readFileSync(join(SRC, '..', 'prisma', 'schema.prisma'), 'utf8');
-    // The decoy the builder plants is a `contact` column on Document; this case states
-    // the property the decoy must trip, so the scan is not vacuous on an empty schema.
-    expect(schema.length).toBeGreaterThan(1000);
+    const schema = schemaText();
+    // THE FLOOR: ten column shapes examined, so a shortened list cannot pass vacuously.
+    expect(NO_SENDER_IDENTITY_COLUMNS).toHaveLength(10);
+    for (const model of NO_SENDER_IDENTITY_MODELS) {
+      const planted = schema.replace(
+        new RegExp(`(model ${model} \\{)`),
+        '$1\n  encryptedContact String',
+      );
+      expect(planted).not.toBe(schema);
+      expect(modelBody(planted, model)).toContain('encryptedContact');
+    }
+    // AND THE OTHER DIRECTION, which is what the old whole-file scan got wrong: the SAME
+    // column standing in `Whistleblower` — where it stands today, `schema.prisma` :434 —
+    // does not trip this half. Its removal is step 36's (plan §4 :410).
+    expect(schema).toContain('encryptedContact');
+    for (const model of NO_SENDER_IDENTITY_MODELS) {
+      expect(modelBody(schema, model)).not.toContain('encryptedContact');
+    }
   });
 });
 

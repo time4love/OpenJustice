@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { SRC } from '../walk/scan';
 import { built } from './built';
 import { NEVER_RAISED_FOR_A_DOCUMENT } from './contract';
+import { modelBody, schemaText } from './schema';
 
 // ---------------------------------------------------------------------------
 // A4 :1452-:1470 — THE AMENDED TOOLS, BY THEIR ADDED ARMS ONLY.
@@ -73,8 +74,7 @@ describe('A2 :1339-:1341 — DebateSession gains recordCommitment, and the key M
 
   it('the column exists on DebateSession — step 28’s schema (plan :138-:139)', async () => {
     await gate();
-    const text = readFileSync(join(SRC, '..', 'prisma', 'schema.prisma'), 'utf8');
-    const model = /model DebateSession \{[\s\S]*?\n\}/.exec(text)?.[0] ?? '';
+    const model = modelBody(schemaText(), 'DebateSession');
     // THE FLOOR: the model was found at all, so a renamed model cannot pass this vacuously.
     expect(model).toContain('recordFileHash');
     expect(model).toContain('recordCommitment');
@@ -82,8 +82,7 @@ describe('A2 :1339-:1341 — DebateSession gains recordCommitment, and the key M
 
   it('EXACTLY ONE of recordSnapshotId · recordDiffId · recordCommitment is set, matching the record’s kind', async () => {
     await gate();
-    const text = readFileSync(join(SRC, '..', 'prisma', 'schema.prisma'), 'utf8');
-    const model = /model DebateSession \{[\s\S]*?\n\}/.exec(text)?.[0] ?? '';
+    const model = modelBody(schemaText(), 'DebateSession');
     const arms = ['recordSnapshotId', 'recordDiffId', 'recordCommitment'].filter((arm) => model.includes(arm));
     // Three arms, as Evidence's three are — and the CHECK that holds "exactly one" lives in
     // the migration, per evidence A2 :1935-:1936's precedent for Evidence_one_record_key.
