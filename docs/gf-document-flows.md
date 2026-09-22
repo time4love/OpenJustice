@@ -160,7 +160,7 @@ SEALED   INTAKE, always. The browser strips the file's metadata, computes DOC_ID
          MEMORY, recomputes DOC_ID and refuses on mismatch, derives what §3 lets it derive, zeroes
          the plaintext, discards the key, and pins the CIPHERTEXT to IPFS. What the platform
          holds at rest: the name, the CID of the sealed copy, and the content (§3). Never the file
-HELD     RESEARCHER, always. The file arrives in plaintext through MCP, attributed; the server
+HELD     RESEARCHER, always. The file arrives in plaintext through MCP, attributed; the server — **RULED 2026-09-22 (the researcher; `docs/gf-document-design-session-2026-09-22.md` §1–§2): the BYTES arrive through the researcher's UPLOAD DIALOG into the platform's private bucket, keyed by DOC_ID, because claude.ai cannot pass a file to an MCP tool; the TOOL CALL names the object and is the attributed act (§9 :998). A paste alone arrives as text in the call**
          computes DOC_ID and keeps the bytes. What it holds at rest: the name, the bytes, and the
          content
 ```
@@ -281,7 +281,7 @@ extractor can read the bytes, the bytes themselves.**
 PDF with a text layer   the extractor reads it                       deterministic
 image, scan, photo      an OCR ENGINE reads it                       deterministic at a version
 paste                   the bytes ARE the text — decoded as UTF-8; one version, by construction
-none of the above       no COMPUTED text exists; the content version IS the bytes, and its hash
+none of the above       no COMPUTED text exists; the content version IS the bytes, and its hash — **RULED 2026-09-22 (the researcher): a SPREADSHEET (XLSX, CSV) is NOT this row — its cells serialised deterministically, sheet by sheet, at a pinned version are COMPUTED text (`docs/gf-document-design-session-2026-09-22.md` §3)**
                         is the name — the researcher reads the image, and so does the assessor
 ```
 
@@ -995,7 +995,7 @@ at one weight would tell a reader the opposite of what it means — the rebuild 
 against `DIRECT` as a peer of `WAYBACK`. What a researcher holds of such a page is bytes with two
 assertions, and that is a document.
 
-**The researcher's door, one tool for every document a researcher holds:**
+**The researcher's door, one tool for every document a researcher holds:** **RULED 2026-09-22 (the researcher; `docs/gf-document-design-session-2026-09-22.md` §2): the door has TWO HALVES and ONE ACT. The UPLOAD DIALOG — a DIALOG under ui §1 :36–:38, opened by a link the chat hands over, gated, in no navigation — computes DOC_ID in the browser over the file as given (A1), obtains a SIGNED UPLOAD URL from a gated route for that key, uploads the file straight into the platform's private bucket (§12 :1185), and hands back the `add_document` command to paste; under thesis §2 :126–:132 the object is CACHE until the tool runs. The tool reads the object by `docId`, recomputes DOC_ID and refuses `NAME_MISMATCH`, and writes the Document and the Arrival — the one attributed act. An object no row names is swept after a lifetime, an operational parameter of flows A8's kind. A paste needs no dialog: its text rides the call. The dialog's link rides `list_documents`' envelope; A4 gains no tool.**
 
 ```
 Claude       → add_document({ bytes, mimeType, assertedUrl?, assertedAt?, derivedFrom? })
@@ -1010,7 +1010,7 @@ backend      REFUSES NO_RESEARCHER · NO_BYTES · UNSUPPORTED_TYPE · TOO_LARGE 
              HELD from now (§2)
              records the ASSERTIONS as the researcher's, attributed: assertedUrl — the page these
              bytes are said to show · assertedAt — when it is said to have shown them ·
-             derivedFrom — the document this one is said to be a redaction or a transcription of
+             derivedFrom — the document this one is said to be a redaction or a transcription of — **RULED 2026-09-22 (the researcher): a MEDIA file (audio, video) is a HELD document whose content is its bytes; its TRANSCRIPT is a second document, a paste, derivedFrom it, and is what a thesis cites; speech-to-text is an OPINION on the media's version, never an extractor, until a two-draw agreement measurement says otherwise (`docs/gf-document-design-session-2026-09-22.md` §4)**
              (§7). None is verified; each is shown as whose it is
              ← { commitment, docId, custody: HELD, content: { contentVersionHash, text | null },
                  anchored: bool, equalsCapture: { url, capture } | null }
@@ -1182,7 +1182,7 @@ Each is named so that it is not read as a gap. None is decided here; each says w
 - **Save Page Now** — the factual layer's, if it is ever built; §9 says what would and would not
   change here.
 - **The pinning service and the storage** — infrastructure. The design requires content addressing
-  of the sealed copy and that the platform can release its own pin, and names no provider.
+  of the sealed copy and that the platform can release its own pin, and names no provider. **RULED 2026-09-22 (the researcher; `docs/gf-document-design-session-2026-09-22.md` §2): the STORAGE for HELD bytes is one PRIVATE BUCKET per environment, in the same Supabase project as that environment's database, so it sits on the `DATABASE_URL` axis `assertOperationalContext` already checks; objects keyed by DOC_ID; held or cache by whether a Document row exists — derived, never a column; no public read. The sealed copy's pin is unchanged and lives nowhere in it.**
 - **Operational parameters** — the size cap, the supported types, the rate limit on the receipt's
   paid read; flows A8's kind, not judgements.
 - **The Prosecutor's reading of documents** — its material gains every document's COMPUTED text
@@ -1264,7 +1264,7 @@ Document                                                                    ⚠�
   commitment               @unique — the public name (A1)
   salt                     Bytes — GATED
   cid                      String? — the sealed copy's content address; set on a sealed arrival
-  bytes                    storage reference | null — set on a held arrival; null after SHED
+  bytes                    storage reference | null — set on a held arrival; null after SHED — **RULED 2026-09-22: the reference is the bucket object keyed by DOC_ID (§12 :1185); the same object was the dialog's CACHE before this row existed (§9 :998)**
   mimeType · byteLength
   receivedAt               the first arrival's moment
   verifiedAtReceipt        DateTime? — the SEALED stamp: DOC_ID recomputed in memory then (§2)
@@ -1401,7 +1401,7 @@ undefined the tool refuses `AWAITING_DERIVATION` (HELD, no version under the cur
 or `SHED` (naming cause and date), never a guess. Every paid call is named as one.
 
 ```
-add_document({ bytes, mimeType, assertedUrl?, assertedAt?, derivedFrom? })   WRITE · ⚠️ to build
+add_document({ bytes, mimeType, assertedUrl?, assertedAt?, derivedFrom? })   WRITE · ⚠️ to build — **RULED 2026-09-22: the argument is `docId` (the bucket object the upload dialog wrote) OR `text` (a paste), exactly one; `NO_BYTES` covers a `docId` naming no object; `NAME_MISMATCH` when the object's bytes do not hash to it (§9 :998)**
   does      §9: DOC_ID · HELD · content derived or owed · salt · commitment written or owed ·
             an Arrival(door = RESEARCHER) · the assertions recorded as the caller's
   returns   { commitment, docId, custody: 'HELD', content: { contentVersionHash, text | null } |

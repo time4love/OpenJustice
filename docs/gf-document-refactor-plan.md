@@ -106,7 +106,7 @@ after step 11 is a defect in step 11.
 | — | `document-recomputable`, `commitments-owed`, `no-plaintext-at-rest`, `no-sender-identity`, `one-hash-two-implementations`, `verdict-rule-one-spelling`; `anchors-explainable`, `opinions-not-facts`, `retired-names` extended; the four `forensics:*` measurements | A7, §12 |
 | `/safety`: the CID anchored on Base, structured metadata for the research team, no identity stored | rewritten to what §2, §4, §5 and §8 build — the frontend's, at the step §3 names | §12 |
 
-## 3. THE STEPS — EACH BUILDS ON CLEAN GROUND; THE THIRTY-SIXTH REMOVES WHAT IS LEFT
+## 3. THE STEPS — EACH BUILDS ON CLEAN GROUND; THE THIRTY-SIXTH REMOVES WHAT IS LEFT — **RULED 2026-09-22 (the researcher; `docs/gf-document-design-session-2026-09-22.md` §6): the RESEARCHER'S DOOR ROUND is 27 · 28 · 29 · 30 with the upload dialog as its page · 33 with the `#doc_` chip · 31 on staging with the production pass HELD · 34. The PUBLIC DOOR — 32 · 35 with the intake and withdrawal dialogs — is its own later round, commissioned by a published call on production. The run follows the door.**
 
 ### 27 · The acceptance suite, failing — and the rotation read from the chain
 
@@ -154,7 +154,7 @@ The identity module: `DOC_ID` and `COMMITMENT` as one importable symbol each ove
 SHA-256, the shared test vector beside them for the browser's half. The extractor: `CURRENT_EXTRACTOR`
 is a dependency choice — a PDF text library, an OCR engine that reads Hebrew — and this step makes
 it, judged by `extractor-coverage` over a fixture set that holds one of each of §3's four kinds (a
-PDF with a text layer, a scan, a paste, a photograph no engine reads) and by nothing this plan
+PDF with a text layer, a scan, a paste, a photograph no engine reads) and by nothing this plan — **RULED 2026-09-22: FIVE kinds; the fifth is a SPREADSHEET (the real XLSX), COMPUTED by deterministic cell serialisation per sheet (flows §3 :284)** —
 says; the plan picks nothing. `DocumentContentVersion`'s one writer, `derivedFrom` AT_RECEIPT or
 HELD_BYTES, a re-derivation with identical text not a new row; the derivation pass over HELD bytes
 for when `CURRENT_EXTRACTOR` moves, in the deployment, writing versions and never a decision; the
@@ -179,7 +179,7 @@ recorded as the caller's and verified by nothing; `existed` on a known DOC_ID, o
 further Arrival. The commitment is OWED: step 31 builds what pays it, so every document this step
 receives is owed by construction and every read says so. `read_document`'s HELD shape;
 `list_documents`, GATED; `describe_document`, paid, on the researcher's word, appending an OPINION
-to CURRENT(d); EQUALS_CAPTURE read on demand.
+to CURRENT(d); EQUALS_CAPTURE read on demand. **RULED 2026-09-22 (the researcher; flows §9 :998, A4 :1404, §12 :1185): this step ALSO builds the UPLOAD DIALOG — the gated page that hashes in the browser, takes a signed upload URL from a gated route, uploads to the bucket by DOC_ID, and hands back the command — with the bucket, the signed-URL route, the sweep of unclaimed objects, and `add_document`'s `docId | text` argument; the dialog's link rides `list_documents`' envelope, so no tool is added. The step ENDS AT A PAGE: the real XLSX and the paper uploaded from a browser against staging and read back through the connector.**
 
 *Verified by:* the §9 and A4 contract green; on staging, the four fixture kinds of step 29 sent
 through `add_document`, each answering `anchored: false` and the photograph `text: null`;
@@ -188,7 +188,7 @@ with zero captures; the second send of one file answering `existed: true` with o
 and two Arrivals; `document-recomputable` exit 0 over them; `commitments-owed` exit 2 listing
 exactly them — the debt step 31 pays.
 
-### 31 · Standing — the anchoring module's second caller, and the pass that pays what is owed
+### 31 · Standing — the anchoring module's second caller, and the pass that pays what is owed — **RULED 2026-09-22: IN the researcher's door round, exercised on STAGING (Sepolia); the PRODUCTION pass is held until the researcher's word (`docs/gf-document-design-session-2026-09-22.md` §5)**
 
 By addition on the walk's anchoring module: a caller taking `(commitment, DOCUMENT_COMMITMENT)`;
 `submit` keeps one caller and `WRITES_ALLOWED` is evaluated in the module, unchanged; the `walk`
