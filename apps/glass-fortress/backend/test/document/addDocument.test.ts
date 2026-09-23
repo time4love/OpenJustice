@@ -4,11 +4,29 @@ import { ADD_DOCUMENT_REFUSALS } from './contract';
 // ---------------------------------------------------------------------------
 // A4 :1404-:1411 and §9 :998-:1017 — THE RESEARCHER'S DOOR. This is the round's centre.
 //
-// THE ARGUMENT IS `docId` OR `text`, EXACTLY ONE, NEVER `bytes` (RULED 2026-09-22 at
-// :1404 and §9 :998): claude.ai cannot hand a file to an MCP tool, so the UPLOAD DIALOG
-// puts the bytes in the bucket and the TOOL CALL NAMES THE OBJECT. The tool READS the
-// object; it never receives bytes — so the backend's 20 MB JSON limit is irrelevant on
-// the way in and TOO_LARGE is read from the OBJECT'S OWN SIZE.
+// THE ARGUMENT IS `docId`, REQUIRED, AND NEVER `bytes` — RULED 2026-09-23 (the researcher)
+// at A4 :1404: *"THERE IS NO PASTE. THE `text` ARM IS RETIRED: the argument is `docId`,
+// REQUIRED — the bucket object the upload dialog wrote — and there is no second arm, so
+// `TOO_LARGE` is read from the object's size in every case and every HELD document has a
+// bucket key."*
+//
+// THE REASONING THAT SURVIVES THE RULING, because it is what made the dialog necessary in
+// the first place: claude.ai cannot hand a file to an MCP tool, so the UPLOAD DIALOG puts
+// the bytes in the bucket and the TOOL CALL NAMES THE OBJECT. The tool READS the object; it
+// never receives bytes — so the backend's 20 MB JSON limit is irrelevant on the way in and
+// TOO_LARGE is read from the OBJECT'S OWN SIZE. What the ruling changed is that this is now
+// true of EVERY call rather than of one arm out of two: with no second arm there is no path
+// into the corpus that skips the dialog, so `bytes` is ALWAYS a bucket key, and custody
+// (A2 :1274), the HELD invariant (A2 :1276) and `document-recomputable` each have ONE shape
+// instead of two.
+//
+// THIS FILE WAS WRITTEN TO THE SUPERSEDED RULING OF 2026-09-22 and kept specifying the
+// two-armed argument after PR #573 retired the paste — because that commit was DOCS-ONLY,
+// and `gf-refactor-plan.md` §4 rule 1 ("a test asserting a retired concept is deleted in
+// the commit that retires the concept") was therefore not honoured. §4 rule 4 makes that
+// dangerous rather than untidy: the acceptance suite is written first FROM THE CONTRACT, so
+// a developer opening step 30 and turning this file green would have built the retired arm
+// — correctly by the file and wrongly by the ruling.
 //
 // `title` IS REQUIRED (A2 :1271, A4 :1404) — the fourth assertion, the name a person
 // recognises the document by, proposed by Claude and approved by the researcher IN THE
@@ -35,7 +53,6 @@ interface Refusal {
 
 interface AddDocumentArgs {
   docId?: string;
-  text?: string;
   title?: string;
   mimeType?: string;
   assertedUrl?: string;
@@ -55,28 +72,27 @@ const isRefusal = (answer: AddDocumentResult | Refusal): answer is Refusal =>
 const OBJECT_IN_BUCKET = '0x' + 'a1'.repeat(32);
 const TITLE = 'the supplementary dataset of the cardiac risk-communication paper, 2026';
 
-describe('A4 :1404 — the argument is docId OR text, EXACTLY ONE, and never bytes', () => {
+describe('A4 :1404 — the argument is docId, REQUIRED, and never bytes', () => {
   it('a docId names the bucket object the dialog wrote, and the tool READS it', async () => {
     const { addDocument } = await tool();
     const answer = await addDocument({ docId: OBJECT_IN_BUCKET, title: TITLE, mimeType: 'application/pdf' }, 'res_1');
     expect(isRefusal(answer)).toBe(false);
   });
 
-  it('a paste arrives as TEXT in the call and needs no dialog (§9 :998)', async () => {
-    const { addDocument } = await tool();
-    const answer = await addDocument({ text: 'a pasted transcript', title: TITLE, mimeType: 'text/plain' }, 'res_1');
-    expect(isRefusal(answer)).toBe(false);
-  });
+  // TWO CASES WERE DELETED HERE, NOT REWRITTEN — §4 rule 1, in the rule's own words: a test
+  // asserting a retired concept is DELETED, "never modified to pass". They were "a paste
+  // arrives as TEXT in the call and needs no dialog" and "BOTH is a refusal — exactly one".
+  // The first asserted the retired arm directly. The second could only exist while there
+  // were two arms to conflict; with one, there is nothing for a second to conflict with, and
+  // rewriting it would have been a case invented to fill a gap the ruling closed.
 
-  it('BOTH is a refusal — exactly one, and the tool does not choose for the caller', async () => {
+  it('a call with NO docId is NO_BYTES — the REQUIRED-argument case', async () => {
+    // It was "NEITHER is NO_BYTES" while the argument was one of two. Under the ruling there
+    // is no "neither": `docId` is REQUIRED, so its absence is the whole of the refusal, and
+    // `NO_BYTES` covers it exactly as it covers a `docId` naming no object (A4 :1404). The
+    // code does not move; what it means does.
     const { addDocument } = await tool();
-    const answer = await addDocument({ docId: OBJECT_IN_BUCKET, text: 'x', title: TITLE, mimeType: 'text/plain' }, 'res_1');
-    expect(isRefusal(answer) && answer.code).toBe('NO_BYTES');
-  });
-
-  it('NEITHER is NO_BYTES', async () => {
-    const { addDocument } = await tool();
-    const answer = await addDocument({ title: TITLE, mimeType: 'text/plain' }, 'res_1');
+    const answer = await addDocument({ title: TITLE, mimeType: 'application/pdf' }, 'res_1');
     expect(isRefusal(answer) && answer.code).toBe('NO_BYTES');
   });
 
@@ -183,9 +199,20 @@ describe('A4 :1407-:1409 — what the tool RETURNS, and what it says about the d
   });
 
   it('the content is the derived version, or NULL while it is owed (A4 :1407-:1408)', async () => {
+    // A4 :1407-:1408 names exactly two answers — `{ contentVersionHash, text | null }`, or
+    // `null` while the derivation is owed — and this case now asserts THOSE, over a `docId`.
+    // It used to call the tool with a pasted string and assert the content came back equal
+    // to it, which under the ruling is a world that cannot exist: EVERY document is a bucket
+    // object, so the content comes from the EXTRACTOR reading those bytes and never from the
+    // call. A caller cannot hand the platform the text of its own document — that is the
+    // COMPUTED register's whole line (§3 :299-:305).
     const { addDocument } = await tool();
-    const answer = await addDocument({ text: 'a paste is its own text', title: TITLE, mimeType: 'text/plain' }, 'res_1');
-    expect(!isRefusal(answer) && answer.content?.text).toBe('a paste is its own text');
+    const answer = await addDocument({ docId: OBJECT_IN_BUCKET, title: TITLE, mimeType: 'application/pdf' }, 'res_1');
+    if (isRefusal(answer)) throw new Error(`expected a document, got ${answer.code}`);
+    if (answer.content === null) return; // AWAITING_DERIVATION — the second arm, and an answer.
+    expect(typeof answer.content.contentVersionHash).toBe('string');
+    // `text` is the extractor's output, or NULL where the content IS the bytes (§3 :284).
+    expect(answer.content.text === null || typeof answer.content.text === 'string').toBe(true);
   });
 
   it('the assertions are recorded as the CALLER’S and VERIFIED BY NOTHING (§9 :1011-:1014)', async () => {

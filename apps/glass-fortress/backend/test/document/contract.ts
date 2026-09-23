@@ -136,7 +136,7 @@ export const MODULES = {
     step: 29,
     exports: {
       custody: fn(29),
-      recomputable: fn(29),
+      recomputableDocument: fn(29),
       recomputableEvidence: fn(29),
       currentVersion: fn(29),
       verdict: fn(29),

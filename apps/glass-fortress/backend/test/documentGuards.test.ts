@@ -1,3 +1,7 @@
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { CURRENT_EXTRACTOR, extract } from '../src/lib/documentExtractor';
+import { FIXTURES, FIXTURE_KINDS, docIdOf } from './documentFixtureBytes';
 import { HISTORY, SCHEMA, decoysFor, problemsWith, type CheckSpec } from './migrationChecks';
 import { SRC, readCode, tsFiles } from './walk/scan';
 
@@ -205,5 +209,242 @@ describe('A1 :1247-:1248 — CURRENT_EXTRACTOR has ONE importable symbol (step 2
     // declaration, must still not count. A loose scan would report it and be wrong.
     const lowercasePlant = "export const currentExtractor = 'the corpus\'s, a different thing';";
     expect(declarations('CURRENT_EXTRACTOR', lowercasePlant)).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// STEP 29 (b) — `verdict-rule-one-spelling`, A7 :1579-:1581, plan §4 :411.
+//
+// "one importable symbol computes PRESENT | ABSENT | UNCHECKED, and PassageVerdict,
+// the framing assessor's audit and the critic's audit call it; nothing else spells
+// it." The symbol is THESIS STEP 19'S — `src/lib/verdict.ts` :28 — and document step
+// 29 adds NOTHING to it (plan :162-:164); what this step adds is its FIRST CALLER
+// WITH NULL TEXT, and this scan, which the plan assigns to step 29 rather than to
+// the step that built the rule.
+//
+// IT SCANS FOR A DECLARATION AND NOT FOR THE WORDS, and the difference is the whole
+// instrument. `src/lib/phraseVerifiedRate.ts` NARROWS a stored verdict and prints
+// the three names — it reads them, it does not compute one — so a scan keyed on the
+// literals appearing together would report it as a second spelling and send a
+// builder to break a correct module. A scan that lies is worse than no scan, which
+// is the lesson the exact-case guard above was written from. Both directions are
+// held: exactly one module DECLARES the union, and the module that merely reads the
+// values is asserted present and NOT counted.
+// ---------------------------------------------------------------------------
+
+/** A declaration of the union — the three values as alternatives, not as mentions. */
+const UNION = /'PRESENT'\s*\|\s*'ABSENT'\s*\|\s*'UNCHECKED'/;
+
+describe('A7 :1579-:1581 — the verdict rule has ONE spelling (step 29b)', () => {
+  const sources = tsFiles(SRC).map((file) => ({ file, code: readCode(file) }));
+
+  it('reads the source tree it scans — a silent zero would make every case below vacuous', () => {
+    expect(sources.length).toBeGreaterThan(100);
+    expect(sources.some(({ file }) => file.endsWith('lib/verdict.ts'))).toBe(true);
+  });
+
+  it('exactly ONE module declares PRESENT | ABSENT | UNCHECKED, and it is thesis step 19’s', () => {
+    const declaring = sources.filter(({ code }) => UNION.test(code));
+    expect(declaring.map(({ file }) => file.slice(SRC.length + 1))).toEqual(['lib/verdict.ts']);
+  });
+
+  it('the document layer CALLS it rather than spelling it — A3 :1385-:1386 over CURRENT(d).text', () => {
+    const predicates = sources.find(({ file }) => file.endsWith('services/documentPredicates.ts'));
+    if (predicates === undefined) throw new Error('services/documentPredicates.ts is not in the tree — the scan has no subject');
+    expect(predicates.code).toMatch(/from '\.\.\/lib\/verdict'/);
+    expect(UNION.test(predicates.code)).toBe(false);
+  });
+
+  it('a module that READS the three values is present and is NOT counted — the other direction', () => {
+    const reader = sources.find(({ file }) => file.endsWith('lib/phraseVerifiedRate.ts'));
+    if (reader === undefined) throw new Error('lib/phraseVerifiedRate.ts is not in the tree — the scan has no negative subject');
+    // It narrows a STORED verdict and names all three; it computes none.
+    expect(reader.code).toContain("'UNCHECKED'");
+    expect(UNION.test(reader.code)).toBe(false);
+  });
+
+  it('DETECTS a second spelling planted elsewhere, and does not fire on a mention', () => {
+    expect(UNION.test("export type Verdict = 'PRESENT' | 'ABSENT' | 'UNCHECKED';")).toBe(true);
+    expect(UNION.test("if (v !== 'PRESENT' && v !== 'ABSENT' && v !== 'UNCHECKED') return null;")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// STEP 29 (b) — THE FIXTURE SET IS FOUR KINDS, AND IT IS REPRODUCIBLE.
+//
+// The researcher ruled the fixtures SYNTHETIC and generated (2026-09-23), and the
+// point of generating them is that the bytes can be CHECKED rather than trusted:
+// `extractor-coverage` measures the extractor over these exact files, so a fixture
+// that drifted would move a measurement without anyone editing a number.
+//
+// `test/documentFixtureBytes.ts` is their only author. These cases regenerate every
+// file in memory and refuse a byte that differs, which is what makes "deterministic"
+// a property a merge holds. THEY ARE IN THE UNIT PROJECT for this file's own reason:
+// the `document` project is not in `npm test` until step 36, so a case living there
+// would hold nothing a merge must pass.
+// ---------------------------------------------------------------------------
+
+describe('the four fixture kinds — plan :157 as amended 2026-09-23 (step 29b)', () => {
+  const DIRECTORY = join(__dirname, '..', 'fixtures', 'documents');
+  const manifest = JSON.parse(readFileSync(join(DIRECTORY, 'manifest.json'), 'utf8')) as {
+    kinds: number;
+    fixtures: { kind: string; file: string; mimeType: string; byteLength: number; docId: string }[];
+  };
+
+  it('is FOUR kinds — the paste was retired 2026-09-23 and the set is not five', () => {
+    // THE FLOOR and the ceiling at once: a set that lost a kind, or kept the paste,
+    // fails here rather than in a count nobody reads.
+    expect(FIXTURE_KINDS).toEqual(['PDF_TEXT_LAYER', 'SCAN', 'SPREADSHEET', 'UNREADABLE']);
+    expect(manifest.kinds).toBe(4);
+    expect(manifest.fixtures).toHaveLength(4);
+  });
+
+  it('the manifest names exactly the files on disk, and every kind exactly once', () => {
+    const onDisk = readdirSync(DIRECTORY).filter((name) => name !== 'manifest.json').sort();
+    expect(manifest.fixtures.map((f) => f.file).sort()).toEqual(onDisk);
+    expect([...new Set(manifest.fixtures.map((f) => f.kind))]).toHaveLength(4);
+  });
+
+  it.each(FIXTURE_KINDS)('%s: the committed bytes are EXACTLY what the generator produces', (kind) => {
+    const fixture = FIXTURES.find((f) => f.kind === kind);
+    if (fixture === undefined) throw new Error(`${kind} is not in FIXTURES — the generator and the kinds disagree`);
+    const committed = readFileSync(join(DIRECTORY, fixture.file));
+    const regenerated = fixture.bytes();
+    // `equals` and not a hash comparison: the failure then says which file, and a
+    // byte count, rather than two digests a reader has to diff by eye.
+    expect(committed.equals(regenerated)).toBe(true);
+  });
+
+  it.each(FIXTURE_KINDS)('%s: the manifest’s docId is the sha256 of the committed bytes', (kind) => {
+    const entry = manifest.fixtures.find((f) => f.kind === kind);
+    const fixture = FIXTURES.find((f) => f.kind === kind);
+    if (entry === undefined || fixture === undefined) throw new Error(`${kind} is missing from the manifest or the generator`);
+    const committed = readFileSync(join(DIRECTORY, fixture.file));
+    expect(docIdOf(committed)).toBe(entry.docId);
+    expect(committed.length).toBe(entry.byteLength);
+  });
+
+  it('DETECTS a drifted fixture — one byte changed is caught, which is the whole point', () => {
+    const fixture = FIXTURES.at(0);
+    if (fixture === undefined) throw new Error('the fixture set is empty — the decoy has no subject');
+    const drifted = Buffer.from(fixture.bytes());
+    drifted[drifted.length - 1] = (drifted.at(-1) ?? 0) ^ 0xff;
+    expect(drifted.equals(fixture.bytes())).toBe(false);
+    expect(docIdOf(drifted)).not.toBe(docIdOf(fixture.bytes()));
+  });
+
+  it('EXACTLY ONE kind has NO GROUND TRUTH — the file no engine reads', () => {
+    // RETITLED, round 2. The title said "exactly ONE kind is bytes-only", and under
+    // `ocr-none` TWO are — the SCAN and this one — while the body checks which fixture
+    // has an EMPTY GROUND TRUTH, a different property. A case's title can outlive its
+    // assertion, and a reader grades against the title. The bytes-only COUNT is asserted
+    // by name in the reason-code case below, against the reader's real answers.
+    const groundTruthless = FIXTURES.filter((f) => f.groundTruth === '').map((f) => f.kind);
+    expect(groundTruthless).toEqual(['UNREADABLE']);
+  });
+
+  it('THE THREE KINDS JEST CAN LOAD reach THREE DISTINCT answers — the fourth is named below', async () => {
+    // WHY THIS CASE EXISTS. Round 1's fourth fixture was a PNG, so it took the IMAGE
+    // class and came back `OCR_NONE` with zero characters — the SAME arm, reason and
+    // count as the SCAN. The set the plan builds to judge the extractor (:154-:157)
+    // measured THREE distinguishable outcomes while reporting four kinds, and
+    // `NO_READER_FOR_TYPE` had no fixture at all. The fourth fixture is now an AUDIO file
+    // and the four kinds DO reach four distinct answers — measured under plain Node and
+    // recorded in the step's dated doc.
+    //
+    // THE TITLE SAYS THREE BECAUSE THE CASE ASSERTS THREE, and that is the whole lesson of
+    // the case ten lines above it. Round 2's version was titled "the FOUR kinds reach FOUR
+    // DISTINCT answers" and asserted three — the same defect, committed in the act of
+    // retitling the other one. A title is what a reader grades against.
+    //
+    // THE PDF IS ABSENT FOR A HARNESS REASON, MEASURED AND NAMED, NOT ASSUMED.
+    // `pdfjs-dist` 6.3.289 is ESM-only; `documentExtractor.ts`'s header records the three
+    // load mechanisms measured failing inside jest, including Node's own `createRequire`,
+    // which does not escape jest's `Module._load` hook. Its arm is exercised by
+    // `extractor-coverage` under plain Node. THIS IS STATED RATHER THAN IMPLIED: a case
+    // that looked like four-kind coverage and was not is worse than a gap with a name.
+    const loadable = FIXTURES.filter((fixture) => fixture.mimeType !== 'application/pdf');
+    expect(loadable).toHaveLength(3);
+    // The floor on the exclusion itself: exactly ONE kind is left out, and it is the PDF.
+    expect(FIXTURES.filter((fixture) => fixture.mimeType === 'application/pdf').map((f) => f.kind)).toEqual([
+      'PDF_TEXT_LAYER',
+    ]);
+
+    const answers = await Promise.all(
+      loadable.map(async (fixture) => {
+        const extraction = await extract(fixture.bytes(), fixture.mimeType);
+        return { kind: fixture.kind, reason: extraction.reason ?? 'COMPUTED', computed: extraction.text !== null };
+      }),
+    );
+    expect(answers).toEqual([
+      { kind: 'SCAN', reason: 'OCR_NONE', computed: false },
+      { kind: 'SPREADSHEET', reason: 'COMPUTED', computed: true },
+      { kind: 'UNREADABLE', reason: 'NO_READER_FOR_TYPE', computed: false },
+    ]);
+    // THE FLOOR, as a count so a blinded reader cannot satisfy it: three kinds, three
+    // DISTINCT reasons. Round 1's set would have given two of them the same one.
+    expect(new Set(answers.map((answer) => answer.reason)).size).toBe(3);
+  }, 30000);
+});
+
+// ---------------------------------------------------------------------------
+// STEP 29 (b), ROUND 2 — THE VERSION STRING NAMES EVERY READER'S ENGINE AND BUILD.
+//
+// Ruling §6.6 :198-:206 is explicit that each stage of `CURRENT_EXTRACTOR` names its
+// engine and its build. Round 1 shipped `…-ocr-none-xlsxcells-nfc`: `pdfjs6.3.289`
+// named reader, version AND policy, while the spreadsheet stage was the POLICY ALONE.
+// `exceljs` decodes date serials, shared and inline strings and cached formula
+// results, so AN UPGRADE CAN MOVE EVERY SPREADSHEET'S COMPUTED TEXT WHILE
+// `CURRENT_EXTRACTOR` STANDS STILL — every pinned citation would then name a version
+// that no longer describes what produced it, and `extractor-coverage` cannot see it
+// (it counts WHETHER text was derived, never whether it is right).
+//
+// SO THE STRING IS TIED TO THE MANIFEST, IN BOTH DIRECTIONS. A version bumped in
+// `package.json` without moving the string fails here, and a string naming a version
+// the manifest does not declare fails here too. A caret range fails as well: the
+// string claims a PINNED reader, and a range lets the reader move under it.
+// ---------------------------------------------------------------------------
+
+describe('CURRENT_EXTRACTOR names each reader’s engine AND build (step 29b, round 2)', () => {
+  const manifest = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')) as {
+    dependencies: Record<string, string>;
+  };
+
+  /** Each stage: the declared package, and the prefix the string spells it with. */
+  const STAGES = [
+    { package: 'pdfjs-dist', stage: 'pdfjs' },
+    { package: 'exceljs', stage: 'exceljs' },
+  ] as const;
+
+  it('reads a manifest that really declares both readers — a missing one would make this vacuous', () => {
+    for (const { package: name } of STAGES) {
+      expect(typeof manifest.dependencies[name]).toBe('string');
+    }
+  });
+
+  it('every reader is EXACT-pinned — a range would let the reader move under the version', () => {
+    for (const { package: name } of STAGES) {
+      expect(manifest.dependencies[name]).toMatch(/^\d+\.\d+\.\d+$/);
+    }
+  });
+
+  it('the version string carries each reader’s declared version', () => {
+    for (const { package: name, stage } of STAGES) {
+      expect(CURRENT_EXTRACTOR).toContain(`${stage}${String(manifest.dependencies[name])}`);
+    }
+  });
+
+  it('DETECTS a reader that moved without the string — proven against the shape it exists to catch', () => {
+    const drifted: Record<string, string> = { ...manifest.dependencies, exceljs: '5.0.0' };
+    const carries = STAGES.every(({ package: name, stage }) =>
+      CURRENT_EXTRACTOR.includes(`${stage}${String(drifted[name])}`),
+    );
+    expect(carries).toBe(false);
+    // And the other direction: the real manifest still passes the same predicate.
+    expect(
+      STAGES.every(({ package: name, stage }) =>
+        CURRENT_EXTRACTOR.includes(`${stage}${String(manifest.dependencies[name])}`),
+      ),
+    ).toBe(true);
   });
 });

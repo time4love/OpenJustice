@@ -321,7 +321,7 @@ DocumentContentVersion                                                      ⚠�
   name                    DOC_ID — the document
   text                    String | null — null when the content is the bytes
   contentVersionHash      sha256(utf8(text)) · or = name when text is null
-  extractor · extractorVersion                    provenance: what read the bytes
+  extractor · extractorVersion                    provenance: what read the bytes — **RULED 2026-09-23 (the researcher): and `derivedUnder`, an APPEND-ONLY LIST of every extractor version that REPRODUCED this text. :316–:317 (*a re-derivation yielding identical text is not a new row*) and A3 :1368 (*the version with extractorVersion = CURRENT_EXTRACTOR*) together TRAPPED a held document whose text a new extractor reproduces: no row carried the new version, so CURRENT(d) read AWAITING_DERIVATION forever while the pass reported UNCHANGED, and the document became uncitable under A6 :1531's hard check. Overwriting `extractorVersion` would lose which extractor FIRST produced the text, so the row keeps its identity AND its provenance and the LIST is what CURRENT(d) reads. `readFailed` rides beside it (A2 :1300).**
   derivedAt · derivedFrom  AT_RECEIPT | HELD_BYTES   provenance: whether the bytes were at rest
   opinion                 Json | null — transcription, summary, date, actors, categories, with
                           model and promptVersion; the OPINION register
@@ -995,10 +995,10 @@ at one weight would tell a reader the opposite of what it means — the rebuild 
 against `DIRECT` as a peer of `WAYBACK`. What a researcher holds of such a page is bytes with two
 assertions, and that is a document.
 
-**The researcher's door, one tool for every document a researcher holds:** **RULED 2026-09-22 (the researcher; `docs/gf-document-design-session-2026-09-22.md` §2): the door has TWO HALVES and ONE ACT. The UPLOAD DIALOG — a DIALOG under ui §1 :36–:38, opened by a link the chat hands over, gated, in no navigation — computes DOC_ID in the browser over the file as given (A1), obtains a SIGNED UPLOAD URL from a gated route for that key, uploads the file straight into the platform's private bucket (§12 :1185), and hands back the `add_document` command to paste; under thesis §2 :126–:132 the object is CACHE until the tool runs. The tool reads the object by `docId`, recomputes DOC_ID and refuses `NAME_MISMATCH`, and writes the Document and the Arrival — the one attributed act. An object no row names is swept after a lifetime, an operational parameter of flows A8's kind. A paste needs no dialog: its text rides the call. The dialog's link rides `list_documents`' envelope; A4 gains no tool. **THE LINK CARRIES THE CONTEXT (the researcher, 2026-09-22, at board י1): the backend composes the dialog's URL on the read the conversation came from — `list_documents({ url })` hands a link that prefills the page, `read_document(commitment)` hands a link that prefills derived-from and that document's assertions — and the dialog draws what the link brought AS LABELS, never as fields — the title Claude proposed and the researcher approved in the chat among them — and takes one thing, the file; to change a fact the researcher returns to the conversation for a new link. No picker, the marking page's pattern. ONE document per dialog.**
+**The researcher's door, one tool for every document a researcher holds:** **RULED 2026-09-22 (the researcher; `docs/gf-document-design-session-2026-09-22.md` §2): the door has TWO HALVES and ONE ACT. The UPLOAD DIALOG — a DIALOG under ui §1 :36–:38, opened by a link the chat hands over, gated, in no navigation — computes DOC_ID in the browser over the file as given (A1), obtains a SIGNED UPLOAD URL from a gated route for that key, uploads the file straight into the platform's private bucket (§12 :1185), and hands back the `add_document` command to paste; under thesis §2 :126–:132 the object is CACHE until the tool runs. The tool reads the object by `docId`, recomputes DOC_ID and refuses `NAME_MISMATCH`, and writes the Document and the Arrival — the one attributed act. An object no row names is swept after a lifetime, an operational parameter of flows A8's kind. **RULED 2026-09-23 (the researcher): THERE IS NO PASTE — every document arrives through this dialog, so no arm skips it (A4 :1404).** The dialog's link rides `list_documents`' envelope; A4 gains no tool. **THE LINK CARRIES THE CONTEXT (the researcher, 2026-09-22, at board י1): the backend composes the dialog's URL on the read the conversation came from — `list_documents({ url })` hands a link that prefills the page, `read_document(commitment)` hands a link that prefills derived-from and that document's assertions — and the dialog draws what the link brought AS LABELS, never as fields — the title Claude proposed and the researcher approved in the chat among them — and takes one thing, the file; to change a fact the researcher returns to the conversation for a new link. No picker, the marking page's pattern. ONE document per dialog.**
 
 ```
-Claude       → add_document({ bytes, mimeType, assertedUrl?, assertedAt?, derivedFrom? }) — **CORRECTED 2026-09-22 (a CONFORMING amendment to the block below; ruled at §9 :998 and A4 :1404): the argument is `docId` — the bucket object the upload dialog wrote — OR `text`, a paste, EXACTLY ONE, never `bytes`. `NO_BYTES` covers a `docId` naming no object; `NAME_MISMATCH` fires when the object's bytes do not hash to it. `DOC_ID := sha256(bytes)` at :1007 is UNCHANGED and still exactly true — the server hashes the object's bytes, whatever carried them.**
+Claude       → add_document({ bytes, mimeType, assertedUrl?, assertedAt?, derivedFrom? }) — **CORRECTED 2026-09-22 (a CONFORMING amendment to the block below; ruled at §9 :998 and A4 :1404): the argument is `docId` — the bucket object the upload dialog wrote — REQUIRED, never `bytes` — **RULED 2026-09-23 (the researcher): THERE IS NO PASTE; the `text` arm is RETIRED and there is no second arm (A4 :1404).** `NO_BYTES` covers a `docId` naming no object; `NAME_MISMATCH` fires when the object's bytes do not hash to it. `DOC_ID := sha256(bytes)` at :1007 is UNCHANGED and still exactly true — the server hashes the object's bytes, whatever carried them.**
                                                                           WRITE · ⚠️ to build
 backend      REFUSES NO_RESEARCHER · NO_BYTES · UNSUPPORTED_TYPE · TOO_LARGE (flows A8) ·
                      NOT_SURVEYED (assertedUrl names a page with no TrackedUrl — survey it first;
@@ -1297,7 +1297,7 @@ DocumentContentVersion   append-only, §3's row
   id · commitment
   text                     String | null — null when the content is the bytes
   contentVersionHash       A1
-  extractor · extractorVersion · derivedAt
+  extractor · extractorVersion · derivedAt — **RULED 2026-09-23 (the researcher): plus `derivedUnder String[]`, APPEND-ONLY — every extractor version that reproduced this exact text, appended by the derivation pass when it re-derives to content the row already holds; CURRENT(d) reads MEMBERSHIP of this list and never equality on `extractorVersion` (A3 :1368, §3 :324). And `readFailed Boolean` — the reader was SELECTED and THREW, as against having found no text. A corrupt file of an accepted type is ACCEPTED AS BYTES-ONLY like any other bytes no reader can read (§3 :284) and is NEVER refused: a refusal would turn the platform's own reader failing into a reason to hold nothing, and A5 :1493's `UNREADABLE` is a key that does not open a ciphertext — a different fact that must not share one spelling. `extractor-coverage` counts a broken PDF apart from a photograph by this field (A7 :1591).**
   derivedFrom              AT_RECEIPT | HELD_BYTES
   opinion                  Json | null — the OPINION register: transcription, description,
                            summary, date, actors, categories, model, promptVersion
@@ -1365,8 +1365,8 @@ RECOMPUTABLE(e)           kind DOCUMENT: e.fileHash = sha256(bytes32(d.docId) �
                           Document keyed by e.documentCommitment — evidence A3's predicate, third arm
 ANCHORED(d)               ATTRIBUTED(d.commitment)                             evidence A3
 VERIFIED(d)               RECOMPUTABLE(d) AND ANCHORED(d)
-CURRENT(d)                HELD:   the DocumentContentVersion with extractorVersion =
-                                  CURRENT_EXTRACTOR; none → AWAITING_DERIVATION (evidence A3's name)
+CURRENT(d)                HELD:   the DocumentContentVersion whose `derivedUnder` CONTAINS
+                                  CURRENT_EXTRACTOR; none → AWAITING_DERIVATION (evidence A3's name) — **RULED 2026-09-23 (the researcher): MEMBERSHIP, never equality on `extractorVersion` (A2 :1300, §3 :324) — a re-derivation that reproduces the text APPENDS to the list and moves no row, so the identical-text case is current rather than permanently awaiting.**
                           SEALED: the version with derivedFrom = AT_RECEIPT, forever
                           NONE:   undefined — EVIDENCE_DERIVED fails naming SHED, never AWAITING
 CITATION_CURRENT(m) · ARGUED(m) · NEEDS_REVIEW(e)       evidence A3, unchanged, over CURRENT(d)
@@ -1588,7 +1588,7 @@ retired-names                the factual layer's step-0 scan, extended by A4 and
 ```
 forensics:count-documents -- --env <env>        per thesis, per gap, per door; dismissed share
 forensics:arrivals-age -- --env <env>            ARRIVED entries and their age
-forensics:extractor-coverage -- --env <env>      COMPUTED text against bytes-only, by type and door
+forensics:extractor-coverage -- --env <env>      COMPUTED text against bytes-only, by type and door — **RULED 2026-09-23 (the researcher): a READ THAT FAILED counted APART from bytes no reader was selected for (A2 :1300's `readFailed`) — a broken PDF and a photograph are the same count and not the same fact.**
 forensics:document-openings -- --env <env>       openings by custody; SHED by cause; the §2 equality
 ```
 
