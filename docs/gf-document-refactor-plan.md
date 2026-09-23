@@ -8,7 +8,7 @@ is `docs/gf-document-flows.md`, whose appendix is the contract every step builds
 is `docs/gf-architecture-target.md` §11; the test rules are the refactor plan's §4, unchanged, and
 every rule there binds here; the operating model is its §9. The frontend's cut-over changes —
 the intake dialog, the withdrawal dialog, the `/safety` copy, the public page's rendering of a
-`#doc_` citation — are NAMED here, at the step each must precede, and built elsewhere.
+`#doc_` citation — are NAMED here, at the step each must precede, and built elsewhere. **A step's state is a bold, dated STATUS clause appended to the END of its last *Verified by* line — never a line of its own, which would move every cite below it — and the plan's state is read with `grep -n '\*\*STATUS'`, UNANCHORED (ruled 2026-09-23, `docs/gf-document-step-30-staging-exercise-2026-09-23.md` §9 Q1).**
 
 ---
 
@@ -186,7 +186,7 @@ through `add_document`, each answering `anchored: false` and the photograph `tex
 `NOT_SURVEYED` refused on an unsurveyed URL and the same bytes accepted after a survey of a page
 with zero captures; the second send of one file answering `existed: true` with one Document row
 and two Arrivals; `document-recomputable` exit 0 over them; `commitments-owed` exit 2 listing
-exactly them — the debt step 31 pays.
+exactly them — the debt step 31 pays. **STATUS 2026-09-23:** CLOSED ON THE REDUCED SET → `docs/gf-document-step-30-staging-exercise-2026-09-23.md` §2, §8. MET: the contract green; `NOT_SURVEYED` and the zero-capture survey; `anchored: false` on the two documents sent; the lens; `document-recomputable` exit 0; `commitments-owed` exit 2 over exactly the two. DEFERRED: the PAGE half of the second send and its `existed: true` (#580, #578). OWED: step 29's four fixture kinds through `add_document` on staging, and the photograph's `text: null`. Gate `gate:document-30`: #578–#581.
 
 ### 31 · Standing — the anchoring module's second caller, and the pass that pays what is owed — **RULED 2026-09-22: IN the researcher's door round, exercised on STAGING (Sepolia); the PRODUCTION pass is held until the researcher's word (`docs/gf-document-design-session-2026-09-22.md` §5)**
 
