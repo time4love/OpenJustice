@@ -72,14 +72,17 @@ describe('A7 invariant 4 — NO RESEARCH ACT REACHES THE CHAIN', () => {
 });
 
 describe('A7 invariant 5 — NOTHING DELETES a Document, Arrival, version or decision row', () => {
-  it('no `delete` on any of the eight tables outside the rebuild’s cleanup (plan §4 :413)', async () => {
+  it('no `delete` on any of the nine tables outside the rebuild’s cleanup (plan §4 :413; A2 :1302, :1305)', async () => {
     await anchor();
+    // NINE SINCE STEP 30 — `documentOpinion` joined when the OPINION register became a table
+    // (A2 :1302 as ruled 2026-09-23): append-only, and SHED nulls its body and removes no row
+    // (A2 :1305 as conformed). Ruled the researcher's Q-H, R76.
     const tables = [
       'document', 'arrival', 'arrivalDocument', 'arrivalDecision',
-      'documentContentVersion', 'documentOpeningDecision', 'passageVerdict', 'shed',
+      'documentContentVersion', 'documentOpinion', 'documentOpeningDecision', 'passageVerdict', 'shed',
     ];
-    // THE FLOOR: eight tables named, so a shortened list cannot pass.
-    expect(tables).toHaveLength(8);
+    // THE FLOOR: nine tables named, so a shortened list cannot pass.
+    expect(tables).toHaveLength(9);
     const { readdirSync } = await import('node:fs');
     for (const file of readdirSync(join(SRC, 'services')).filter((f) => f.endsWith('.ts'))) {
       const source = readFileSync(join(SRC, 'services', file), 'utf8');
@@ -134,7 +137,7 @@ describe('§11.7 invariant 3 — the sender holds the ONLY key', () => {
 });
 
 describe('§11.7 invariant 4 — a model’s reading is an OPINION: labelled, never pinned, never published', () => {
-  it('the opinion register is a separate column and no public serve carries it', async () => {
+  it('the opinion register is a separate TABLE (A2 :1302 as ruled) and no public serve carries it', async () => {
     const source = await sourceOf('services/readDocument.ts');
     expect(source).toMatch(/opinion/);
   });

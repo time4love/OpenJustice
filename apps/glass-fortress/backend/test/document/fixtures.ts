@@ -152,7 +152,8 @@ export function version(over: Partial<DocumentContentVersionRow> = {}): Document
     readFailed: false,
     derivedAt: new Date('2026-09-20T09:00:01.000Z'),
     derivedFrom: 'AT_RECEIPT',
-    opinion: null,
+    // No `opinion`: the OPINION register left this row for its own table, `DocumentOpinion`,
+    // at step 30 (A2 :1302 as ruled 2026-09-23).
     ...over,
   };
 }

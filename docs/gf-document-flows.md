@@ -323,7 +323,7 @@ DocumentContentVersion                                                      ⚠�
   contentVersionHash      sha256(utf8(text)) · or = name when text is null
   extractor · extractorVersion                    provenance: what read the bytes — **RULED 2026-09-23 (the researcher): and `derivedUnder`, an APPEND-ONLY LIST of every extractor version that REPRODUCED this text. :316–:317 (*a re-derivation yielding identical text is not a new row*) and A3 :1368 (*the version with extractorVersion = CURRENT_EXTRACTOR*) together TRAPPED a held document whose text a new extractor reproduces: no row carried the new version, so CURRENT(d) read AWAITING_DERIVATION forever while the pass reported UNCHANGED, and the document became uncitable under A6 :1531's hard check. Overwriting `extractorVersion` would lose which extractor FIRST produced the text, so the row keeps its identity AND its provenance and the LIST is what CURRENT(d) reads. `readFailed` rides beside it (A2 :1300).**
   derivedAt · derivedFrom  AT_RECEIPT | HELD_BYTES   provenance: whether the bytes were at rest
-  opinion                 Json | null — transcription, summary, date, actors, categories, with
+  opinion                 Json | null — transcription, summary, date, actors, categories, with — **CONFORMED 2026-09-23 to A2 :1302: one `DocumentOpinion` row per reading, append-only, not a column —**
                           model and promptVersion; the OPINION register
   @@unique([name, contentVersionHash])
 ```
@@ -684,7 +684,7 @@ Claude       → get_arrivals(thesisId)                                        G
              ← each document: name · custody · content — the text, or the bytes if HELD and no
                text derives — · the OPINION, labelled · anchored or owed
              → read_document(commitment)                                     GATED read · ⚠️
-             ← HELD: the bytes, the current content version, the opinions
+             ← HELD: the bytes, the current content version, the opinions — **CONFORMED 2026-09-23 to A4 :1425 as ruled that day: the bytes reach the model as an image block (an image) or a signed download link (every other kind), never inline.**
                SEALED: the receipt content version and its opinion; NO bytes exist to return
 researcher   reads — with Claude, who reads the bytes or the text in the chat; a description
              Claude gives in the conversation is the conversation's, and is recorded as an
@@ -1006,7 +1006,7 @@ backend      REFUSES NO_RESEARCHER · NO_BYTES · UNSUPPORTED_TYPE · TOO_LARGE 
                      NOT_A_DOCUMENT (derivedFrom names no document)
              DOC_ID := sha256(bytes) · HELD · content derived (§3), or owed · a fresh salt ·
              committed through the anchoring module (§4), or owed
-             a DOC_ID already known → the same document, a further arrival; a sealed one is
+             a DOC_ID already known → the same document, a further arrival; a sealed one is — **CONFORMED 2026-09-23 to A2 :1271 and A4 :1409: its assertions stay the first arrival's, and a later call's differing ones are answered as IGNORED —**
              HELD from now (§2)
              records the ASSERTIONS as the researcher's, attributed: assertedUrl — the page these
              bytes are said to show · assertedAt — when it is said to have shown them ·
@@ -1182,7 +1182,7 @@ Each is named so that it is not read as a gap. None is decided here; each says w
 - **Save Page Now** — the factual layer's, if it is ever built; §9 says what would and would not
   change here.
 - **The pinning service and the storage** — infrastructure. The design requires content addressing
-  of the sealed copy and that the platform can release its own pin, and names no provider. **RULED 2026-09-22 (the researcher; `docs/gf-document-design-session-2026-09-22.md` §2): the STORAGE for HELD bytes is one PRIVATE BUCKET per environment, in the same Supabase project as that environment's database, so it sits on the `DATABASE_URL` axis `assertOperationalContext` already checks; objects keyed by DOC_ID; held or cache by whether a Document row exists — derived, never a column; no public read. The sealed copy's pin is unchanged and lives nowhere in it.**
+  of the sealed copy and that the platform can release its own pin, and names no provider. **RULED 2026-09-22 (the researcher; `docs/gf-document-design-session-2026-09-22.md` §2): the STORAGE for HELD bytes is one PRIVATE BUCKET per environment, in the same Supabase project as that environment's database, so it sits on the `DATABASE_URL` axis `assertOperationalContext` already checks; objects keyed by DOC_ID; held or cache by whether a Document row exists — derived, never a column; no public read. The sealed copy's pin is unchanged and lives nowhere in it.** — **RULED 2026-09-23 (the researcher): the bucket COMES TO EXIST BY A MIGRATION — one hand-written insert of `documents` into `storage.buckets`, `public = false`, `file_size_limit` = TOO_LARGE (held equal to the one TypeScript constant by a test), `ON CONFLICT DO NOTHING` — so it deploys itself before the code that needs it, on every environment; `allowed_mime_types` is left unset, the accepted types having one spelling. `db:check-drift` cannot see the storage schema, so `LAND` reads the row from the database with `public = false`. The signed-URL route REFUSES LOUDLY when the bucket is absent and never creates it. No new credential: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` exist and `appEnv.ts` ties them to `DATABASE_URL`'s project.**
 - **Operational parameters** — the size cap, the supported types, the rate limit on the receipt's
   paid read; flows A8's kind, not judgements.
 - **The Prosecutor's reading of documents** — its material gains every document's COMPUTED text
@@ -1268,7 +1268,7 @@ Document                                                                    ⚠�
   mimeType · byteLength
   receivedAt               the first arrival's moment
   verifiedAtReceipt        DateTime? — the SEALED stamp: DOC_ID recomputed in memory then (§2)
-  assertedUrl · assertedAt · derivedFromCommitment · **title — RULED 2026-09-22 (the researcher): the FOURTH assertion, one line, REQUIRED at the researcher's door — the name a person recognises the document by (ui §4 :167), proposed by Claude and approved by the researcher in the conversation, carried by the dialog's link and by the command, never edited in the dialog; a sealed document has none at receipt (step 32's question)**
+  assertedUrl · assertedAt · derivedFromCommitment · **title — RULED 2026-09-22 (the researcher): the FOURTH assertion, one line, REQUIRED at the researcher's door — the name a person recognises the document by (ui §4 :167), proposed by Claude and approved by the researcher in the conversation, carried by the dialog's link and by the command, never edited in the dialog; a sealed document has none at receipt (step 32's question)** — **RULED 2026-09-23 (the researcher): the four assertions are written ONCE, by the FIRST researcher arrival; a later arrival of the same bytes is recorded and attributed and changes none of them (A4 :1409).**
                            String? each — the researcher's door only; attributed through the
                            arrival's researcherId; derivedFromCommitment must name a Document
   custody                  DERIVED, never a column: HELD iff bytes present · SEALED iff cid
@@ -1299,10 +1299,10 @@ DocumentContentVersion   append-only, §3's row
   contentVersionHash       A1
   extractor · extractorVersion · derivedAt — **RULED 2026-09-23 (the researcher): plus `derivedUnder String[]`, APPEND-ONLY — every extractor version that reproduced this exact text, appended by the derivation pass when it re-derives to content the row already holds; CURRENT(d) reads MEMBERSHIP of this list and never equality on `extractorVersion` (A3 :1368, §3 :324). And `readFailed Boolean` — the reader was SELECTED and THREW, as against having found no text. A corrupt file of an accepted type is ACCEPTED AS BYTES-ONLY like any other bytes no reader can read (§3 :284) and is NEVER refused: a refusal would turn the platform's own reader failing into a reason to hold nothing, and A5 :1493's `UNREADABLE` is a key that does not open a ciphertext — a different fact that must not share one spelling. `extractor-coverage` counts a broken PDF apart from a photograph by this field (A7 :1591).**
   derivedFrom              AT_RECEIPT | HELD_BYTES
-  opinion                  Json | null — the OPINION register: transcription, description,
-                           summary, date, actors, categories, model, promptVersion
+  opinion                  Json | null — the OPINION register: transcription, description, — **RULED 2026-09-23 (the researcher): REPLACED by a `DocumentOpinion` table, APPEND-ONLY — one row per paid reading of a version: model · promptVersion · the researcher who spent it · when · the body — so A4 :1438's "appended" is true; this column leaves with step 30's migration.**
+                           summary, date, actors, categories, model, promptVersion — **RULED 2026-09-23 (the researcher): `DocumentOpinion` models BOTH writers the plan names (:160–:162), as `Arrival` models its two doors (:1279, :1283): `by RESEARCHER | RECEIPT`, and a CHECK — `researcherId` REQUIRED iff `RESEARCHER`, NULL iff `RECEIPT`. Step 30 writes the first arm; step 32 writes the second into a schema that already admits it — never a later migration loosening a constraint for a case known now.**
   @@unique([commitment, contentVersionHash])
-  text and opinion are NULLED by SHED; the row, its hash and its provenance stay
+  text and opinion are NULLED by SHED; the row, its hash and its provenance stay — **CONFORMED 2026-09-23 to A2 :1302: SHED nulls the body of every `DocumentOpinion` row of the document and removes no row**
 
 DocumentOpeningDecision  append-only
   id · thesisId · commitment · sequence  @@unique([thesisId, commitment, sequence])
@@ -1406,7 +1406,7 @@ add_document({ bytes, mimeType, assertedUrl?, assertedAt?, derivedFrom? })   WRI
             an Arrival(door = RESEARCHER) · the assertions recorded as the caller's
   returns   { commitment, docId, custody: 'HELD', content: { contentVersionHash, text | null } |
               null (awaiting), anchored, equalsCapture: { url, capture } | null,
-              existed: bool (the same bytes were already a document) }
+              existed: bool (the same bytes were already a document) } — **RULED 2026-09-23 (the researcher): with `existed: true` the answer carries the STORED assertions and returns every value the call gave that differs as IGNORED — never stored, never silently dropped; a differing account belongs in that researcher's citation argument (§1). No migration.**
   refuses   NO_BYTES · UNSUPPORTED_TYPE · TOO_LARGE · NOT_SURVEYED (assertedUrl has no
             TrackedUrl) · NOT_A_DOCUMENT (derivedFrom)
 
@@ -1422,23 +1422,23 @@ dismiss_arrival({ arrivalId, reason, expectedSequence })                    WRIT
             dismiss) · REASON_REQUIRED · STALE_SEQUENCE
 
 read_document({ commitment })                                                GATED · ⚠️ to build
-  returns   HELD:   { custody, docId, bytes, versions: [{ contentVersionHash, text, provenance,
-                      opinion LABELLED }], current, anchored, equalsCapture, assertions }
+  returns   HELD:   { custody, docId, bytes, versions: [{ contentVersionHash, text, provenance, — **RULED 2026-09-23 (the researcher): `read_document` NEVER PUTS BYTES IN THE MODEL'S CONTEXT; `bytes` is not a field of the answer. COMPUTED text rides it; a bytes-only document whose bytes are an IMAGE rides as an MCP image block, because §6 :735–:737 needs the model to see it, under a size cap that is an operational parameter (interaction A8's kind); every other bytes-only kind — PDF, spreadsheet, media — rides as `bytesUrl`, a short-lived signed DOWNLOAD link with its expiry.**
+                      opinion LABELLED }], current, anchored, equalsCapture, assertions } — **SHAPE, RULED 2026-09-23 (the researcher, batch item 15, adopting Fable's two corrections with `by | null`; written by the crossed seat from the step-30 interface and a real body):** `{ custody: 'HELD', commitment, docId, mimeType, byteLength, receivedAt: ISO, assertions: { title, assertedUrl, assertedAt: YYYY-MM-DD | null, derivedFrom: { commitment, title } | null }, arrivals: [{ by: { handle, mine } | null, at: ISO }] oldest first — null for a public-door arrival (step 32), versions: [{ contentVersionHash, text | null, provenance: { extractor, extractorVersion, derivedUnder: string[], readFailed, derivedFrom: 'AT_RECEIPT' | 'HELD_BYTES', derivedAt: ISO }, opinions: [{ model, promptVersion, by: { handle, mine } | null, at: ISO, body | null }] oldest first }], current: { contentVersionHash } | { awaiting: 'AWAITING_DERIVATION' }, bytesUrl: { url, expiresAt: ISO } | null, anchored: boolean — ANCHORED(d) (A3 :1366), false by construction until step 31 and never a literal, equalsCapture: { url, capture } | null, uploadUrl }` — an image with no computed text, within the image cap, rides BESIDE this JSON as an MCP image block, never inside it
             SEALED: { custody, verifiedAtReceipt, cid, version: the AT_RECEIPT one with its
                       opinion LABELLED, anchored } — no bytes exist to return — **RULED 2026-09-22: the HELD shape also carries `uploadUrl`, the dialog's link with this document as derived-from and its assertions as defaults (§9 :998)**
             NONE:   { custody: 'NONE', shed: { cause, at }, hashes only }
   refuses   NOT_A_DOCUMENT
 
-list_documents({ url? })                                                     GATED · ⚠️ to build
-  returns   every document, or every document asserting url, with custody, assertions,
-            current hash, anchored, citedBy, opening; oldest first — **RULED 2026-09-22: and `uploadUrl`, the dialog's link, carrying `url` as the page to prefill when given (§9 :998)**
+list_documents({ url? })                                                     GATED · ⚠️ to build — **RULED 2026-09-23 (the researcher): ui §7.1's shape as-is (ui :323–:328) — `scope: 'mine' | 'all'`, default `mine`; the gated route passes `all`; each row carries `by: { handle, mine }`, never an id**
+  returns   every document, or every document asserting url, with custody, assertions, **— RULED 2026-09-23 (the researcher): and `mimeType` and `byteLength` (A2 :1268) —**
+            current hash, anchored, citedBy, opening; oldest first — **RULED 2026-09-22: and `uploadUrl`, the dialog's link, carrying `url` as the page to prefill when given (§9 :998)** — **SHAPE, RULED 2026-09-23 (the researcher, batch item 15; the crossed seat):** `{ documents: [{ commitment, title | null, custody: 'HELD' | 'SEALED' | 'NONE', mimeType, byteLength, receivedAt: ISO, assertions: { assertedUrl, assertedAt, derivedFrom: { commitment, title } | null } — ONE shape with read_document's, current: contentVersionHash | null, anchored: boolean, citedBy: [{ thesisId, published }], opening: 'PASSAGE' | 'CONTENT' | 'BYTES' | null, by: { handle, mine } | null — the FIRST arrival whose by is not null, read_document's arrivals being the one spelling of both }] oldest first by receivedAt, then commitment; uploadUrl }`
   refuses   NOT_SURVEYED (url given and unknown)
 
 describe_document({ commitment })                                     WRITE · paid · ⚠️ to build
   does      a model reads a HELD document's bytes on the researcher's word and its reading is
             appended as the OPINION of CURRENT(d) — §3's last row; never a citation
-  refuses   NOT_A_DOCUMENT · NOT_HELD (a sealed document was read once, at receipt) ·
-            AWAITING_DERIVATION (an opinion attaches to a version)
+  refuses   NOT_A_DOCUMENT · NOT_HELD (a sealed document was read once, at receipt) · **UNSUPPORTED_TYPE — RULED 2026-09-23 (the researcher): on audio or video, which no model reads; one spelling with `add_document`'s** · **TOO_LARGE — RULED 2026-09-23 (the researcher, adopting Fable's advice with the bound amended to 50 MB): above the DESCRIBER's bound, an operational parameter of interaction A8's kind taken from the provider's documented inline-input limit and recorded with that reason — 50 MB, the default provider's figure for a PDF; one word with `add_document`'s, two thresholds; refused BEFORE any paid call; the refusal says the bound and, where the document has computed text, that `read_document` still serves it; NEVER a silent fall-back to the computed text, whose reading the opinion row would misattribute to the file** ·
+            AWAITING_DERIVATION (an opinion attaches to a version) · **UNSUPPORTED_TYPE also — RULED 2026-09-23 (the researcher): on a document no model reads — a spreadsheet with no computed text — and the refusal CARRIES THE REASON from its version's provenance (A2 :1300): the reader FAILED (`readFailed`), or it found nothing. Same spelling. A model reads an image or a PDF as its file and a spreadsheet through its computed text.**
 
 decide_opening({ thesisId, commitment, opening, expectedSequence })          WRITE · ⚠️ to build
   does      appends DocumentOpeningDecision; in force from the next publish_thesis

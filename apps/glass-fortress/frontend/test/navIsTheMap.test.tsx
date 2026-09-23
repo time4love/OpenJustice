@@ -79,6 +79,8 @@ const NOT_IN_THE_CHROME: readonly RegExp[] = [
   /^\/theses\/[^/]+\/(edit|history)$/,
   /^\/(evidence|figures|forensics|guide|submit)(\/|$)/,
   /^\/article-rules\//,
+  // The upload dialog, the second DIALOG of the class (ui §1 :39, ui A1 :1129): reached by a link the chat hands over only.
+  /^\/upload(\?|$)/,
   /^\/login(\/|$)/,
 ];
 

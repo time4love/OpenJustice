@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { ICONS } from '@/components/glyphs';
+import { usePathname } from '@/i18n/navigation';
+import { dialogOf, type DialogRoute } from '@/lib/dialogRoutes';
 import { SHELL_KEYS, useLocalState } from './localState';
 import { PHONE_QUERY, decideSwipe, pansHorizontally, type SwipePoint } from './paneSwipe';
 import { RightPane, TabsProvider, usePaneLayer, usePaneTabs } from './RightPane';
@@ -279,12 +281,37 @@ function ShellFrame({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * A DIALOG'S FRAME — docs/gf-ui-flows.md §1 :39, RULED 2026-09-22 at board י2: "no sidebar, no right pane, the
+ * site's name as one line and the dialog alone", because its user arrived by a link and is not expected to
+ * navigate. The name is TEXT, not a link, for the same reason. No ☰, no locale control, no pane: nothing here moves.
+ */
+function DialogFrame({ dialog, children }: { dialog: DialogRoute; children: ReactNode }) {
+  const t = useTranslations();
+  const common = useTranslations('common');
+  return (
+    // `.dialog-frame` / `.dialog-body` are `.shell` / `.shell-centre`'s scroll contract (globals.css): the frame
+    // is exactly the viewport and the body is the one scrollport, because `html, body` cannot scroll.
+    <div className="dialog-frame text-ink">
+      <div data-dialog-topbar className="flex h-[var(--chrome-height)] shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-4">
+        <span className="shell-name min-w-0 truncate">{common('appName')}</span>
+        {dialog.label === null ? null : <span className="shrink-0 text-label text-ink-muted">{t(dialog.label)}</span>}
+      </div>
+      <div className="dialog-body">{children}</div>
+    </div>
+  );
+}
+
 export function Shell({ children }: { children: ReactNode }) {
+  // THE ONE BRANCH ON THE ROUTE (ui §1 :39: "one branch in the shell keyed on the dialog routes"). It RE-CHROMES
+  // THE MARKING PAGE too — the ruling binds both dialogs of the class — so that page loses the sidebar and the
+  // pane it carried unruled since §12 :1075. `usePathname` here is the locale-free path, the Sidebar's own read.
+  const dialog = dialogOf(usePathname());
   // The provider wraps the CENTRE's children too, so a page rendered there can declare its tabs into the pane
-  // beside it without the layout knowing anything about that page.
+  // beside it without the layout knowing anything about that page. A dialog keeps the provider and draws no pane.
   return (
     <TabsProvider>
-      <ShellFrame>{children}</ShellFrame>
+      {dialog === null ? <ShellFrame>{children}</ShellFrame> : <DialogFrame dialog={dialog}>{children}</DialogFrame>}
     </TabsProvider>
   );
 }

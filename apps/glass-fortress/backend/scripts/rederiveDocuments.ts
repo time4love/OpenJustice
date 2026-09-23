@@ -16,23 +16,17 @@
  * ON DEMAND, IN THE DEPLOYMENT, like every maintenance act — never scheduled, and
  * never from a laptop. Whether it ever earns a scheduler is §12's measurement.
  *
- * THE BUCKET READER IS NOT BUILT UNTIL STEP 30, which owns the bucket, the
- * signed-URL route and the sweep. Until then this pass has nothing to read and
- * says so rather than reporting a clean sweep over nothing.
+ * THE BUCKET READER IS `documentBucket`'s `readObject` (document step 30): the bytes under the document's key,
+ * or NULL when no object is stored there — the service's `ReadObject` contract, which reports the absence rather
+ * than a sweep it could not perform.
  */
 import 'dotenv/config';
 import { runOperationalScript } from '../src/lib/operationalContext';
+import { readObject } from '../src/services/documentBucket';
 import { formatRederive, rederiveDocuments } from '../src/services/rederiveDocuments';
 
 async function main(): Promise<void> {
-  const report = await rederiveDocuments(() =>
-    Promise.reject(
-      new Error(
-        'rederive-documents: the bucket reader is document step 30’s and is not built. ' +
-          'The pass refuses rather than reporting a sweep it could not perform.',
-      ),
-    ),
-  );
+  const report = await rederiveDocuments((document) => readObject(document.bytes ?? document.docId));
   console.log('');
   console.log(formatRederive(report));
   console.log('');

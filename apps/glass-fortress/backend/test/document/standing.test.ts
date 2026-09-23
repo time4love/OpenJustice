@@ -100,7 +100,10 @@ describe('A3 :1383-:1384 — EQUALS_CAPTURE(d), READ ON DEMAND, naming page and 
   it('names the page and capture when a snapshot’s documentHash EQUALS the docId (§2 :236-:242)', async () => {
     const { equalsCapture } = await standing(['equalsCapture']);
     const document = held();
-    const match = { documentHash: document.docId, url: 'https://example.gov.il/p', capture: '20220805053301' };
+    // EACH SIDE IN THE SPELLING ITS WRITER STORES: a DOC_ID is `0x`-prefixed (A1 :1244) and
+    // `UrlSnapshot.documentHash` is BARE hex (`lib/evidenceIdentity.ts` :46-:47). Seeding both in one
+    // spelling was a world no writer creates, and a raw string comparison passed it (R76 REVIEW's decoy).
+    const match = { documentHash: document.docId.slice(2), url: 'https://example.gov.il/p', capture: '20220805053301' };
     expect(equalsCapture(document, [match])).toEqual({ url: match.url, capture: match.capture });
   });
 

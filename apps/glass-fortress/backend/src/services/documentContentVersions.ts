@@ -1,17 +1,18 @@
-import { Prisma, type DocumentContentVersion, type DocumentDerivedFrom } from '@prisma/client';
+import { Prisma, type DocumentContentVersion, type DocumentDerivedFrom, type DocumentOpinion as DocumentOpinionRow } from '@prisma/client';
 import { z } from 'zod';
 import { contentVersionHashOf } from '../lib/documentIdentity';
 import { CURRENT_EXTRACTOR, extract } from '../lib/documentExtractor';
 
 // ---------------------------------------------------------------------------
-// `DocumentContentVersion`'s ONE WRITER — plan step 29 :158-:161, A2 :1296-:1305.
+// `DocumentContentVersion`'s ONE WRITER, and `DocumentOpinion`'s — plan step 29 :158-:161,
+// A2 :1296-:1305 (the opinion a table since step 30, A2 :1302 as ruled 2026-09-23).
 //
-// CONTENT IS A VERSION, APPEND-ONLY, AND THE NAME NEVER MOVES (§3 :271-:275). Two
-// acts write this table and nothing else does: DERIVATION, which appends a version
-// of the COMPUTED register, and a model's READING, which appends an OPINION beside
-// an existing one. They are separated here because they are separated in the
-// design: one is reproducible from the bytes and is what a citation pins, the other
-// is a model's and is never pinned, never cited and never published (§3 :291-:296).
+// CONTENT IS A VERSION, APPEND-ONLY, AND THE NAME NEVER MOVES (§3 :271-:275). Two acts
+// write the content register and nothing else does: DERIVATION, which appends a version of
+// the COMPUTED register, and a model's READING, which appends an OPINION row beside a
+// version. They are separated here because they are separated in the design: one is
+// reproducible from the bytes and is what a citation pins, the other is a model's and is
+// never pinned, never cited and never published (§3 :291-:296).
 //
 // DERIVATION HAPPENS OUTSIDE THE TRANSACTION, AND THE SUITE CANNOT SEE THAT.
 // Prisma's interactive transaction closes after five seconds by default and a
@@ -98,9 +99,9 @@ export async function deriveContent(
  * `extractorVersion` IS NEVER OVERWRITTEN. It names the extractor that produced this
  * text FIRST — provenance, not a pointer — and the list is what moves.
  *
- * IT WRITES NO OPINION. The OPINION register has its own writer below, because a
- * model's reading is a different register on the same row and folding the two into
- * one call would let a derivation carry a model's words by accident.
+ * IT WRITES NO OPINION. The OPINION register has its own writer below, into its own table
+ * (A2 :1302 as ruled), and folding the two into one call would let a derivation carry a
+ * model's words by accident.
  */
 export async function recordContentVersion(
   tx: Prisma.TransactionClient,
@@ -140,33 +141,33 @@ export async function recordContentVersion(
 }
 
 // ---------------------------------------------------------------------------
-// THE OPINION REGISTER — §3 :293-:296, and COMPLIANCE.md rule 3.
+// THE OPINION REGISTER — §3 :293-:296, and COMPLIANCE.md rule 3. A TABLE SINCE STEP 30.
 //
-// TWO WRITERS AND NO MORE (plan :161-:162): the RECEIPT'S ONE READ of a sealed
-// document, which is the only moment its plaintext exists (step 32), and
-// `describe_document`, a paid call on the researcher's word (step 30). Both write
-// through the one function below, so neither can record a reading that is not
+// A2 :1302-:1303, RULED 2026-09-23: one `DocumentOpinion` row per paid reading of a version,
+// APPEND-ONLY. Under the single `opinion` column this writer used to UPDATE, a second paid
+// reading overwrote the first; A4 :1438 says a reading is APPENDED, and now it is.
+//
+// TWO WRITERS AND NO MORE (plan :161-:162), each an arm of the row's `by`: `describe_document`,
+// a paid call on the researcher's word (step 30, `by = RESEARCHER`, attributed), and the
+// RECEIPT'S ONE READ of a sealed document, the only moment its plaintext exists (step 32,
+// `by = RECEIPT`, attributed to nobody). The CHECK `DocumentOpinion_by_writer` holds the pair.
+// Both write through the ONE function below, so neither can record a reading that is not
 // labelled.
 //
-// THE LABEL IS NOT OPTIONAL AND IS NOT A UI CONCERN. COMPLIANCE.md rule 3 requires
-// every AI-generated section to carry its label, and a reading stored without its
-// model and prompt version is a reading no surface can label later — the fact is
-// gone by then. So the schema of the stored value REQUIRES both, and a reading that
-// arrives without them is REFUSED here rather than written and apologised for.
+// THE LABEL IS NOT OPTIONAL AND IS NOT A UI CONCERN. COMPLIANCE.md rule 3 requires every
+// AI-generated section to carry its label, and a reading stored without its model and prompt
+// version is a reading no surface can label later — the fact is gone by then. So the stored
+// value's schema REQUIRES both, and a reading that arrives without them is REFUSED here rather
+// than written and apologised for.
 // ---------------------------------------------------------------------------
 
 /**
- * A model's reading of a document, as it is stored.
- *
- * ZOD BECAUSE IT IS A MODEL'S OUTPUT, which the house validates at its boundary
- * without exception. The fields beyond the label are the ones §3 :294-:295 names —
- * a transcription, a summary, a date, the actors, a category — and each is optional
- * because a model that could not read one must be able to say so rather than invent
- * it; what is NOT optional is who produced the reading.
+ * The BODY of a model's reading — the fields §3 :294-:295 names: a transcription, a
+ * description, a summary, a date, the actors, a category. ZOD because it is a model's output,
+ * validated at its boundary without exception. Each field is optional because a model that
+ * could not read one must be able to say so rather than invent it.
  */
-export const documentOpinion = z.object({
-  model: z.string().min(1),
-  promptVersion: z.string().min(1),
+export const documentReadingBody = z.object({
   transcription: z.string().optional(),
   description: z.string().optional(),
   summary: z.string().optional(),
@@ -175,28 +176,46 @@ export const documentOpinion = z.object({
   categories: z.array(z.string()).optional(),
 });
 
+export type DocumentReadingBody = z.infer<typeof documentReadingBody>;
+
+/** A model's reading as it is stored: WHO produced it — never optional — and what it read. */
+export const documentOpinion = z.object({
+  model: z.string().min(1),
+  promptVersion: z.string().min(1),
+  body: documentReadingBody,
+});
+
 export type DocumentOpinion = z.infer<typeof documentOpinion>;
 
+/** Who spent the reading — the row's `by` and the CHECK's two arms (A2 :1303 as ruled). */
+export type OpinionSpender = { by: 'RESEARCHER'; researcherId: string } | { by: 'RECEIPT' };
+
 /**
- * Append a model's reading to a version — the OPINION register's one write path.
+ * APPEND a model's reading to a version — the OPINION register's one write path.
  *
- * IT REPLACES THE VERSION'S OPINION AND MOVES NO HASH. `contentVersionHash` is over
- * the COMPUTED text alone (A1 :1242): an opinion is provenance beside the version,
- * "never in the hash, never pinned, never a citation" (§3 :295-:296), so a reading
- * recorded after a citation was pinned cannot move what the citation names.
+ * IT CREATES A ROW AND MOVES NO HASH. `contentVersionHash` is over the COMPUTED text alone
+ * (A1 :1242): an opinion is provenance beside the version, "never in the hash, never pinned,
+ * never a citation" (§3 :295-:296), so a reading recorded after a citation was pinned cannot
+ * move what the citation names — and a second reading sits beside the first, never over it.
  *
- * REFUSES AN UNLABELLED READING, by parsing it. A model's words with no model
- * against them are words the platform cannot label, and rule 3 makes labelling a
- * requirement of showing them at all.
+ * REFUSES AN UNLABELLED READING, by parsing it. A model's words with no model against them are
+ * words the platform cannot label, and rule 3 makes labelling a requirement of showing them.
  */
 export async function recordOpinion(
   tx: Prisma.TransactionClient,
   versionId: string,
+  spender: OpinionSpender,
   opinion: DocumentOpinion,
-): Promise<DocumentContentVersion> {
+): Promise<DocumentOpinionRow> {
   const labelled = documentOpinion.parse(opinion);
-  return tx.documentContentVersion.update({
-    where: { id: versionId },
-    data: { opinion: labelled },
+  return tx.documentOpinion.create({
+    data: {
+      versionId,
+      by: spender.by,
+      researcherId: spender.by === 'RESEARCHER' ? spender.researcherId : null,
+      model: labelled.model,
+      promptVersion: labelled.promptVersion,
+      body: labelled.body,
+    },
   });
 }

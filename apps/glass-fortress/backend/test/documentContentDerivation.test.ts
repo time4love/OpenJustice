@@ -38,7 +38,7 @@ jest.mock('../src/lib/prisma', () => ({
   },
 }));
 
-import type { Document, DocumentContentVersion, Prisma, Shed } from '@prisma/client';
+import type { Document, DocumentContentVersion, DocumentOpinion, Prisma, Shed } from '@prisma/client';
 import { contentVersionHashOf } from '../src/lib/documentIdentity';
 import { CURRENT_EXTRACTOR } from '../src/lib/documentExtractor';
 import { prisma } from '../src/lib/prisma';
@@ -85,6 +85,8 @@ const mocked = prisma as unknown as {
 
 interface Store {
   rows: DocumentContentVersion[];
+  /** The OPINION register's rows — a table of its own since step 30 (A2 :1302 as ruled 2026-09-23). */
+  opinions: DocumentOpinion[];
   creates: number;
   tx: Prisma.TransactionClient;
 }
@@ -92,6 +94,7 @@ interface Store {
 function store(initial: readonly DocumentContentVersion[] = []): Store {
   const state: Store = {
     rows: [...initial],
+    opinions: [],
     creates: 0,
     tx: undefined as unknown as Prisma.TransactionClient,
   };
@@ -109,7 +112,7 @@ function store(initial: readonly DocumentContentVersion[] = []): Store {
           ) ?? null,
         );
       },
-      create: ({ data }: { data: Omit<DocumentContentVersion, 'id' | 'derivedAt' | 'opinion'> }): Promise<DocumentContentVersion> => {
+      create: ({ data }: { data: Omit<DocumentContentVersion, 'id' | 'derivedAt'> }): Promise<DocumentContentVersion> => {
         const duplicate = state.rows.some(
           (row) => row.commitment === data.commitment && row.contentVersionHash === data.contentVersionHash,
         );
@@ -120,7 +123,6 @@ function store(initial: readonly DocumentContentVersion[] = []): Store {
           ...data,
           id: `version-${String(state.rows.length + 1)}`,
           derivedAt: new Date(0),
-          opinion: null,
         };
         state.rows.push(row);
         state.creates += 1;
@@ -135,6 +137,15 @@ function store(initial: readonly DocumentContentVersion[] = []): Store {
         const updated = { ...row, ...data };
         state.rows = state.rows.map((candidate) => (candidate.id === where.id ? updated : candidate));
         return Promise.resolve(updated);
+      },
+    },
+    // APPEND-ONLY: the double models `create` and nothing else, so a writer that UPDATED an
+    // opinion — the column's old shape — would fail here rather than pass.
+    documentOpinion: {
+      create: ({ data }: { data: Omit<DocumentOpinion, 'id' | 'createdAt'> }): Promise<DocumentOpinion> => {
+        const row: DocumentOpinion = { ...data, id: `opinion-${String(state.opinions.length + 1)}`, createdAt: new Date(0) } as DocumentOpinion;
+        state.opinions.push(row);
+        return Promise.resolve(row);
       },
     },
   } as unknown as Prisma.TransactionClient;
@@ -175,7 +186,6 @@ function versionRow(overrides: Partial<DocumentContentVersion> = {}): DocumentCo
     readFailed: false,
     derivedAt: new Date(0),
     derivedFrom: 'AT_RECEIPT',
-    opinion: null,
     ...overrides,
   };
 }
@@ -377,40 +387,63 @@ describe('recordContentVersion — a re-derivation with identical text is NOT a 
 });
 
 describe('the OPINION register REFUSES an unlabelled reading — COMPLIANCE.md rule 3', () => {
+  // THE SUBJECT MOVED, THE ASSERTIONS DID NOT: since step 30 a reading is a `DocumentOpinion`
+  // ROW, appended (A2 :1302 as ruled 2026-09-23), where it was an update of one column. Each
+  // case below holds what it held before — the label refused, the floor that writes — over the
+  // table, plus the one property the column could not have: a SECOND reading beside the first.
+  const RESEARCHER = { by: 'RESEARCHER', researcherId: 'res_1' } as const;
+
   it('REFUSES a reading carrying no model and no promptVersion', async () => {
     const state = store([versionRow({ id: 'version-1' })]);
-    const unlabelled = { summary: 'a ministry circular about reporting' } as never;
+    const unlabelled = { body: { summary: 'a ministry circular about reporting' } } as never;
 
-    await expect(recordOpinion(state.tx, 'version-1', unlabelled)).rejects.toThrow();
-    expect(state.rows.at(0)?.opinion).toBeNull();
+    await expect(recordOpinion(state.tx, 'version-1', RESEARCHER, unlabelled)).rejects.toThrow();
+    expect(state.opinions).toEqual([]);
   });
 
   it('REFUSES one whose model is an EMPTY STRING — a label that labels nothing', async () => {
     const state = store([versionRow({ id: 'version-1' })]);
-    const blank = { model: '', promptVersion: 'v1', summary: 'a circular' } as const;
+    const blank = { model: '', promptVersion: 'v1', body: { summary: 'a circular' } };
 
-    await expect(recordOpinion(state.tx, 'version-1', blank)).rejects.toThrow();
-    expect(state.rows.at(0)?.opinion).toBeNull();
+    await expect(recordOpinion(state.tx, 'version-1', RESEARCHER, blank)).rejects.toThrow();
+    expect(state.opinions).toEqual([]);
   });
 
   it('WRITES a labelled one — the floor, so the refusals above are not a writer that refuses everything', async () => {
     const state = store([versionRow({ id: 'version-1' })]);
 
-    const row = await recordOpinion(state.tx, 'version-1', {
+    const row = await recordOpinion(state.tx, 'version-1', RESEARCHER, {
       model: 'claude-opus-5',
       promptVersion: 'document-describe-v1',
-      summary: 'a ministry circular about the reporting channel',
+      body: { summary: 'a ministry circular about the reporting channel' },
     });
 
-    expect(row.opinion).toEqual({
+    expect(row).toMatchObject({
+      versionId: 'version-1',
+      by: 'RESEARCHER',
+      researcherId: 'res_1',
       model: 'claude-opus-5',
       promptVersion: 'document-describe-v1',
-      summary: 'a ministry circular about the reporting channel',
+      body: { summary: 'a ministry circular about the reporting channel' },
     });
     // The hash does not move: an opinion is provenance BESIDE the version, never in it
     // (§3 :295-:296), so a reading recorded after a citation was pinned cannot move
     // what that citation names.
-    expect(row.contentVersionHash).toBe(state.rows.at(0)?.contentVersionHash);
+    expect(state.rows.at(0)?.contentVersionHash).toBe(versionRow().contentVersionHash);
+  });
+
+  it('a SECOND reading is APPENDED beside the first, never over it — A4 :1438\'s "appended" (A2 :1302 as ruled)', async () => {
+    const state = store([versionRow({ id: 'version-1' })]);
+    await recordOpinion(state.tx, 'version-1', RESEARCHER, { model: 'm', promptVersion: 'v1', body: { summary: 'first' } });
+    await recordOpinion(state.tx, 'version-1', { by: 'RESEARCHER', researcherId: 'res_2' }, { model: 'm', promptVersion: 'v1', body: { summary: 'second' } });
+    expect(state.opinions.map((o) => (o.body as { summary: string }).summary)).toEqual(['first', 'second']);
+  });
+
+  it('the RECEIPT arm is attributed to NOBODY — A2 :1303 as ruled, the CHECK\'s other arm', async () => {
+    const state = store([versionRow({ id: 'version-1' })]);
+    const row = await recordOpinion(state.tx, 'version-1', { by: 'RECEIPT' }, { model: 'm', promptVersion: 'v1', body: {} });
+    expect(row.by).toBe('RECEIPT');
+    expect(row.researcherId).toBeNull();
   });
 });
 

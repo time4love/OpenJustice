@@ -1,5 +1,5 @@
 import { built } from './built';
-import type { DocumentContentVersionRow, DocumentRow, ShedRow } from './contract';
+import type { DocumentContentVersionRow, DocumentOpinionRow, DocumentRow, ShedRow } from './contract';
 import { held, shedRow, version } from './fixtures';
 
 // ---------------------------------------------------------------------------
@@ -58,15 +58,21 @@ describe('§8 :911-:918 — what SHED REMOVES against what it KEEPS', () => {
     // proves nothing was deleted is step 35's (plan §4 :413); what this case fixes is
     // WHICH columns are nulled, so a later implementation cannot null fewer.
     const after: DocumentRow = held({ bytes: null });
-    const hollow: DocumentContentVersionRow = version({ text: null, opinion: null });
+    const hollow: DocumentContentVersionRow = version({ text: null });
+    // The opinion is a ROW of its own since step 30 (A2 :1302 as ruled 2026-09-23), and SHED
+    // nulls its BODY and removes no row (A2 :1305 as conformed).
+    const reading: DocumentOpinionRow = {
+      id: 'dop_1', versionId: hollow.id, by: 'RESEARCHER', researcherId: 'res_1',
+      model: 'a model', promptVersion: 'v1', body: null, createdAt: new Date(0),
+    };
     expect(after.bytes).toBeNull();
     expect(hollow.text).toBeNull();
-    expect(hollow.opinion).toBeNull();
+    expect(reading.body).toBeNull();
   });
 
   it('KEEPS: docId, commitment, every version’s HASH and provenance — the record of what was here', () => {
     const after = held({ bytes: null });
-    const hollow = version({ text: null, opinion: null });
+    const hollow = version({ text: null });
     expect(after.docId).toMatch(/^0x[0-9a-f]{64}$/);
     expect(after.commitment).toMatch(/^0x[0-9a-f]{64}$/);
     expect(hollow.contentVersionHash).toMatch(/^0x[0-9a-f]{64}$/);

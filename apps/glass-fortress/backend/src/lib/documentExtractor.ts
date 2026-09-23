@@ -365,8 +365,8 @@ const SPREADSHEET_TYPES = new Set([
   CSV_TYPE,
 ]);
 
-/** The declared type, stripped of its parameters and lowercased — one spelling of it. */
-function normaliseType(mimeType: string): string {
+/** The declared type, stripped of its parameters and lowercased — ONE spelling of it, which `lib/acceptedDocumentTypes` imports. */
+export function normaliseType(mimeType: string): string {
   return mimeType.split(';').at(0)?.trim().toLowerCase() ?? '';
 }
 

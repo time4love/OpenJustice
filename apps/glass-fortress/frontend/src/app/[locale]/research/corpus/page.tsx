@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
+import { DOCUMENTS_LENS } from '@/components/corpus/CorpusContextLine';
 import { ResearchCorpus } from '@/components/research/ResearchCorpus';
+import { ResearchDocuments } from '@/components/research/ResearchDocuments';
 
 // ---------------------------------------------------------------------------
 // `/research/corpus` — THE GATED CHRONOLOGY. docs/gf-ui-flows.md §27 :863–:876, §24 :656–:657, §28; A1 :1133;
@@ -42,7 +44,9 @@ export default async function ResearchCorpusPage({ params, searchParams }: PageP
   return (
     <main className="page-column reading flex flex-col gap-3 py-4">
       <h1 className="text-lg text-ink">{t('open')}</h1>
-      <ResearchCorpus query={query} />
+      {/* THE DOCUMENTS LENS (§24 :719) is its own read, not a filter of the stream — so it is a branch here, before
+          the corpus's reads are made, and `?lens=documents` never reaches the stream's parameter reader. */}
+      {query[DOCUMENTS_LENS.key] === DOCUMENTS_LENS.value ? <ResearchDocuments /> : <ResearchCorpus query={query} />}
     </main>
   );
 }

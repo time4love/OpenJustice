@@ -58,6 +58,7 @@ model Researcher {
   arrivalDecisions  ArrivalDecision[]
   documentOpenings  DocumentOpeningDecision[]
   sheds             Shed[]
+  documentOpinions  DocumentOpinion[]
 }
 
 // ---------------------------------------------------------------------------
@@ -2317,13 +2318,48 @@ model DocumentContentVersion {
   readFailed         Boolean             @default(false)
   derivedAt          DateTime            @default(now())
   derivedFrom        DocumentDerivedFrom
-  /// THE OPINION REGISTER — a model's reading: a transcription, a description, a summary,
-  /// a date, actors, categories, with model and prompt version. LABELLED, never pinned,
-  /// never cited, NEVER PUBLISHED (§7 :829-:837). NULLED by SHED.
-  opinion            Json?
+  /// THE OPINION REGISTER is its own table since document step 30 — `DocumentOpinion`
+  /// below, one APPEND-ONLY row per paid reading (A2 :1302 as ruled 2026-09-23).
+  opinions           DocumentOpinion[]
 
   @@unique([commitment, contentVersionHash])
   @@index([commitment, derivedAt])
+}
+
+/// THE OPINION REGISTER — A2 :1302-:1303, RULED 2026-09-23: ONE ROW PER PAID READING of a
+/// version, APPEND-ONLY — a model's reading (a transcription, a description, a summary, a
+/// date, actors, categories), LABELLED with its model and prompt version, never pinned,
+/// never cited, NEVER PUBLISHED (§7 :829-:837). It replaced a single `opinion` column, under
+/// which a second paid reading OVERWROTE the first, so A4 :1438's "appended" is now true.
+///
+/// IT MODELS BOTH WRITERS THE PLAN NAMES (:160-:162), as `Arrival` models its two doors:
+/// `describe_document` on a researcher's word (step 30) and the receipt's one read of a
+/// sealed document on a stranger's act (step 32). CHECK `DocumentOpinion_by_writer` (the
+/// migration; Prisma cannot express it): `researcherId` REQUIRED iff `by = RESEARCHER`,
+/// NULL iff `by = RECEIPT`.
+///
+/// SHED NULLS `body` AND REMOVES NO ROW (A2 :1305 as conformed); nothing deletes a row.
+model DocumentOpinion {
+  id            String                 @id @default(cuid())
+  versionId     String
+  version       DocumentContentVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  by            OpinionWriter
+  researcherId  String?
+  researcher    Researcher?            @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  model         String
+  promptVersion String
+  body          Json?
+  createdAt     DateTime               @default(now())
+
+  @@index([versionId])
+}
+
+/// Who spent the reading — A2 :1303 as ruled 2026-09-23.
+enum OpinionWriter {
+  /// `describe_document`, a paid call on the researcher's word (step 30).
+  RESEARCHER
+  /// The receipt's one read of a sealed document, on a stranger's act (step 32).
+  RECEIPT
 }
 
 /// §7 :791-:797, A2 :1307-:1311 — append-only. The one judgement the platform cannot make
