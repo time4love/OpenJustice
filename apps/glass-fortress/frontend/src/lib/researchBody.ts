@@ -6,6 +6,8 @@ import type {
   CaptureRow,
   Cause,
   CitedOn,
+  DocumentRow,
+  DocumentsList,
   ContentUnit,
   ContentVersion,
   DebateRead,
@@ -45,7 +47,7 @@ import type {
   VersionView,
   Voice,
 } from '@/types/research';
-import { ASSESSOR_VERDICTS, FLAG_REASONS, GAP_DECISIONS, GATES, NOT_EVALUABLE_REASONS, OUTCOMES, THREAD_STEPS, TURN_KINDS } from '@/types/research';
+import { ASSESSOR_VERDICTS, CUSTODIES, FLAG_REASONS, GAP_DECISIONS, GATES, NOT_EVALUABLE_REASONS, OPENINGS, OUTCOMES, THREAD_STEPS, TURN_KINDS } from '@/types/research';
 // ONE CITATION PARSER FOR BOTH DOORS (A4 :1476's one citation shape) — called, never re-spelled.
 import { citation } from '@/lib/thesisBody';
 
@@ -1012,4 +1014,46 @@ export function parseRuleHistory(value: unknown): RuleHistory {
     },
     matches: list(body.matches, 'rule history.matches').map((one, index) => ruleMatch(one, `rule history.matches[${String(index)}]`)),
   };
+}
+
+/**
+ * `list_documents` — document flows A4 :1434, the envelope AS RULED 2026-09-23. Every field the line names is read and
+ * NONE is defaulted: `by` is `{ handle, mine }` or null (a public-door arrival, step 32), `anchored` a boolean,
+ * `derivedFrom` a commitment with its title or null — a drifted field fails here by name, never as a blank row.
+ */
+export function parseDocuments(value: unknown): DocumentsList {
+  const body = object(value, 'documents');
+  const documents = list(body.documents, 'documents.documents').map((one, index): DocumentRow => {
+    const at = `documents.documents[${String(index)}]`;
+    const row = object(one, at);
+    const assertions = object(row.assertions, `${at}.assertions`);
+    const derived = present(assertions.derivedFrom, `${at}.assertions.derivedFrom`);
+    const derivedRow = derived === null ? null : object(derived, `${at}.assertions.derivedFrom`);
+    const by = present(row.by, `${at}.by`);
+    return {
+      commitment: text(row.commitment, `${at}.commitment`),
+      title: maybeText(row.title, `${at}.title`),
+      custody: oneOf(row.custody, CUSTODIES, `${at}.custody`),
+      mimeType: text(row.mimeType, `${at}.mimeType`),
+      byteLength: count(row.byteLength, `${at}.byteLength`),
+      receivedAt: instant(row.receivedAt, `${at}.receivedAt`),
+      assertions: {
+        assertedUrl: maybeText(assertions.assertedUrl, `${at}.assertions.assertedUrl`),
+        assertedAt: maybeText(assertions.assertedAt, `${at}.assertions.assertedAt`),
+        derivedFrom:
+          derivedRow === null
+            ? null
+            : { commitment: text(derivedRow.commitment, `${at}.assertions.derivedFrom.commitment`), title: maybeText(derivedRow.title, `${at}.assertions.derivedFrom.title`) },
+      },
+      current: maybeText(row.current, `${at}.current`),
+      anchored: flag(row.anchored, `${at}.anchored`),
+      citedBy: list(row.citedBy, `${at}.citedBy`).map((cited, n) => {
+        const entry = object(cited, `${at}.citedBy[${String(n)}]`);
+        return { thesisId: text(entry.thesisId, `${at}.citedBy[${String(n)}].thesisId`), published: flag(entry.published, `${at}.citedBy[${String(n)}].published`) };
+      }),
+      opening: present(row.opening, `${at}.opening`) === null ? null : oneOf(row.opening, OPENINGS, `${at}.opening`),
+      by: by === null ? null : researcher(object(by, `${at}.by`), `${at}.by`),
+    };
+  });
+  return { documents, uploadUrl: text(body.uploadUrl, 'documents.uploadUrl') };
 }

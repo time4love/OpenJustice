@@ -1999,7 +1999,8 @@
     "lenses": "Views",
     "lens": {
       "pages": "Pages",
-      "cited": "Cited records"
+      "cited": "Cited records",
+      "documents": "Documents"
     },
     "claims": {
       "entry": "This page's claims",
@@ -2263,6 +2264,57 @@
     "verdict": {
       "SUPPORTS": "the assessor agreed",
       "DISPUTES": "the assessor objected"
+    },
+    "documents": {
+      "heading": {
+        "mine": "My documents",
+        "all": "Everyone's documents"
+      },
+      "custody": {
+        "HELD": "Held"
+      },
+      "anchored": "Verified against the anchor",
+      "owed": "Awaiting anchoring",
+      "cited": "Cited in a thesis",
+      "notReachable": "Another document? Ask in the conversation for the upload link — the door is not in the navigation.",
+      "empty": "No documents yet."
+    }
+  },
+  "upload": {
+    "title": "Upload a document",
+    "sentence": "The file goes from your browser to the store, under a name computed from it here. It becomes a document only when the command below is sent in the conversation.",
+    "labels": {
+      "title": "Document title",
+      "derivedFrom": "Derived from",
+      "page": "Page",
+      "date": "Date"
+    },
+    "drop": "Drag and drop a file here, or click to choose",
+    "strip": "One file · PDF · XLSX · CSV · image · audio · video · up to 50 MB",
+    "status": {
+      "hashing": "Computing the file's name…",
+      "uploading": "Uploading…",
+      "uploaded": "Uploaded · waiting for the command"
+    },
+    "commandLabel": "The command for the conversation",
+    "copy": "Copy for the conversation",
+    "closing": "Once the command runs, the document appears among your documents and can be cited in a version.",
+    "malformed": "This link is malformed: “{key}” appears in it more than once, or in the wrong form. Return to the conversation for a new link.",
+    "noTitle": "This link carries no document title. Return to the conversation, agree the title, and get a new link.",
+    "refused": {
+      "BUCKET_ABSENT": "The store does not exist in this environment yet, and nothing was uploaded.",
+      "TOO_LARGE": "The file is larger than 50 MB and was not uploaded.",
+      "UNSUPPORTED_TYPE": "This type of file is not accepted, and nothing was uploaded.",
+      "INVALID_BODY": "The browser gave no file type or size, and nothing was uploaded."
+    },
+    "failed": "The upload failed, and no command was made. Try again.",
+    "family": {
+      "PDF": "PDF",
+      "XLSX": "XLSX",
+      "CSV": "CSV",
+      "IMAGE": "image",
+      "AUDIO": "audio",
+      "VIDEO": "video"
     }
   }
 }

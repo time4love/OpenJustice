@@ -73,6 +73,18 @@ const CHECKS: Record<string, CheckSpec> = {
     model: 'DebateSession',
     arms: [`num_nonnulls("recordSnapshotId", "recordDiffId", "recordCommitment") = 1`],
   },
+  /**
+   * A2 :1303, RULED 2026-09-23 (the researcher) — STEP 30. The OPINION register models BOTH
+   * writers the plan names, as `Arrival` models its two doors: `researcherId` REQUIRED iff
+   * `by = RESEARCHER`, NULL iff `by = RECEIPT`.
+   */
+  DocumentOpinion_by_writer: {
+    model: 'DocumentOpinion',
+    arms: [
+      `("by" = 'RESEARCHER' AND "researcherId" IS NOT NULL)`,
+      `("by" = 'RECEIPT' AND "researcherId" IS NULL)`,
+    ],
+  },
 };
 
 type CheckName = keyof typeof CHECKS;
@@ -114,7 +126,8 @@ describe('the map is COMPLETE against step 28\'s migration — a constraint in t
     // exception is what keeps "every name in the map is one it adds" exact in both
     // directions rather than approximately true.
     const heldByThesisGuards = ['ThesisMention_fields_by_kind'];
-    expect([...added].sort()).toEqual([...Object.keys(CHECKS), ...heldByThesisGuards].sort());
+    const addedAtStep30 = ['DocumentOpinion_by_writer'];
+    expect([...added].sort()).toEqual([...Object.keys(CHECKS).filter((n) => !addedAtStep30.includes(n)), ...heldByThesisGuards].sort());
   });
 
   it('DETECTS a constraint the migration adds and the map omits', () => {
@@ -124,6 +137,25 @@ describe('the map is COMPLETE against step 28\'s migration — a constraint in t
     const added = [...planted.matchAll(/ADD CONSTRAINT "(\w+)" CHECK/g)].map((m) => m[1]);
     expect(added).toContain('Document_unmapped');
     expect(Object.keys(CHECKS)).not.toContain('Document_unmapped');
+  });
+});
+
+describe('the map is COMPLETE against step 30\'s opinion migration too — A2 :1303 as ruled', () => {
+  const STEP_30 = '20260923190000_document_step_30_document_opinion';
+
+  it('the one CHECK it adds is in the map, and it adds no other', () => {
+    const migration = HISTORY.find(({ name }) => name === STEP_30);
+    if (migration === undefined) throw new Error(`${STEP_30} is not in the history — the guard has no subject`);
+    const added = [...migration.sql.matchAll(/ADD CONSTRAINT "(\w+)" CHECK/g)].map((m) => m[1]);
+    // THE FLOOR: exactly one, so a file read as empty cannot pass.
+    expect(added).toEqual(['DocumentOpinion_by_writer']);
+    expect(Object.keys(CHECKS)).toContain('DocumentOpinion_by_writer');
+  });
+
+  it('it carries no BEGIN and no COMMIT — the file IS one transaction', () => {
+    const migration = HISTORY.find(({ name }) => name === STEP_30);
+    if (migration === undefined) throw new Error(`${STEP_30} is not in the history`);
+    expect(/^\s*(BEGIN|COMMIT)\b/im.test(migration.sql)).toBe(false);
   });
 });
 

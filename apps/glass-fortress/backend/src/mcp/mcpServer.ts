@@ -64,6 +64,17 @@ import { checkPublicationReadinessSchema, checkPublicationReadinessHandler } fro
 import { listThesisReviewsSchema, listThesisReviewsHandler } from './tools/listThesisReviews';
 import { publishThesisSchema, publishThesisHandler } from './tools/publishThesis';
 import { unpublishThesisSchema, unpublishThesisHandler } from './tools/unpublishThesis';
+import {
+  addDocumentHandler,
+  addDocumentSchema,
+  describeDocumentHandler,
+  describeDocumentSchema,
+  listDocumentsHandler,
+  listDocumentsSchema,
+  readDocumentHandler,
+  readDocumentImage,
+  readDocumentSchema,
+} from './tools/documentTools';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -1206,6 +1217,85 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: stampEnvironment(await unpublishThesisHandler(input)) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // THE RESEARCHER'S DOOR — document step 30, docs/gf-document-flows.md §9 :998–:1017 and A4
+  // :1404–:1441. The bytes arrive through the UPLOAD DIALOG into the private bucket; `add_document`
+  // NAMES the object and is the one attributed act. The two reads carry the dialog's link; the
+  // describer is the one paid call. Every description below was shown to the researcher before it
+  // landed (R76 Q-G).
+  // -------------------------------------------------------------------------
+
+  server.registerTool(
+    'add_document',
+    {
+      description:
+        'ADD A DOCUMENT THE RESEARCHER UPLOADED — the one act of the document door. Free; writes the document and ' +
+        'this arrival, attributed. The file is NEVER passed here: the researcher uploads it in the upload dialog ' +
+        '(its link comes from list_documents or read_document: SET title= to the approved title and, when the ' +
+        'researcher states the day the page showed the file, SET at= to it, YYYY-MM-DD — each replacing any value the ' +
+        'link carries), and the dialog prints ' +
+        'this command — docId, mimeType and the facts. Paste it exactly. The same file twice is ONE document with two ' +
+        'arrivals (existed: true), and the first arrival\'s title and facts stand: differing ones come back as ' +
+        'IGNORED. The commitment is OWED to the chain (anchored: false) until the standing pass pays it. Refuses ' +
+        'NO_RESEARCHER, NO_BYTES, NO_TITLE, UNSUPPORTED_TYPE, TOO_LARGE, NOT_SURVEYED, NOT_A_DOCUMENT and NAME_MISMATCH.',
+      inputSchema: addDocumentSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await addDocumentHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'read_document',
+    {
+      description:
+        'READ ONE DOCUMENT YOU HOLD — its computed text, every version, the labelled readings, the facts asserted, ' +
+        'and uploadUrl: the dialog\'s link with this document as derived-from. Free; writes nothing. The file itself ' +
+        'never rides as text: an image of up to 5 MB comes as an image; a scanned PDF, a larger image and any other ' +
+        'file with no text come as bytesUrl, a short-lived download link. Refuses NO_RESEARCHER and NOT_A_DOCUMENT.',
+      inputSchema: readDocumentSchema,
+    },
+    async (input) => {
+      const answer = { type: 'text' as const, text: stampEnvironment(await readDocumentHandler(input)) };
+      const image = await readDocumentImage(answer.text);
+      return { content: image === null ? [answer] : [answer, { type: 'image' as const, data: image.data, mimeType: image.mimeType }] };
+    },
+  );
+
+  server.registerTool(
+    'list_documents',
+    {
+      description:
+        'LIST THE DOCUMENTS — yours by default, every researcher\'s with scope all; or only those asserting one ' +
+        'surveyed page (url). Each with its title, type, custody, anchored or owed, and who first brought it. Carries ' +
+        'uploadUrl, the upload dialog\'s link (the page prefilled when url is given): SET title= to the approved ' +
+        'title and, when the researcher states the day the page showed the file, SET at= to it, YYYY-MM-DD — each ' +
+        'replacing any value the link carries — then hand it to the researcher. Free; writes nothing. Refuses ' +
+        'NO_RESEARCHER and NOT_SURVEYED.',
+      inputSchema: listDocumentsSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await listDocumentsHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'describe_document',
+    {
+      description:
+        'HAVE A MODEL READ ONE DOCUMENT — PAID, one model call, only on the researcher\'s word. The reading is stored ' +
+        'as a LABELLED OPINION beside the current version — never a citation, never published, never proof — and a ' +
+        'second reading is added beside the first. An image or a PDF is read as its file, a spreadsheet through its ' +
+        'computed text. Refuses NO_RESEARCHER, NOT_A_DOCUMENT, NOT_HELD, AWAITING_DERIVATION, UNSUPPORTED_TYPE ' +
+        '(audio, video, or a spreadsheet with no text — the reason given) and TOO_LARGE (an image or a PDF over the ' +
+        'model\'s 50 MB — its computed text, if any, is still in read_document); a refusal spends nothing.',
+      inputSchema: describeDocumentSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await describeDocumentHandler(input)) }],
     }),
   );
 

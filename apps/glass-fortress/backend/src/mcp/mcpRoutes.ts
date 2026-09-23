@@ -221,6 +221,15 @@ export const WRITE_TOOLS = new Set([
   // working state a public read never reveals. It refuses without a researcher, since REVIEWS(caller) has no subject
   // otherwise. The standing precedent is `list_evidence_reviews`.
   'list_thesis_reviews',
+  // THE RESEARCHER'S DOOR — document step 30, docs/gf-document-flows.md A4 :1404–:1441. `add_document` WRITES a
+  // Document and an Arrival, attributed; `describe_document` WRITES an opinion row and SPENDS one model call;
+  // `read_document` and `list_documents` write nothing and call no model, and A4 :1424 and :1432 call both GATED —
+  // a researcher's documents, unopened, are working state a public read never reveals (the reads' precedent,
+  // interaction A5 :1071–:1072).
+  'add_document',
+  'read_document',
+  'list_documents',
+  'describe_document',
 ]);
 
 // ---------------------------------------------------------------------------

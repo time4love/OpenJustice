@@ -27,13 +27,22 @@ import type { CorpusScope } from '@/types/corpus';
 // dropped, and that is how §24's region 5 shows "the filters … for removal".
 // ---------------------------------------------------------------------------
 
-/** The lenses a reader is offered: PAGES is `/corpus` bare, CITED is the one filter that is a lens (§25). */
+/**
+ * The lenses a reader is offered: PAGES is `/corpus` bare, CITED is the one filter that is a lens (§25), and
+ * DOCUMENTS — RULED 2026-09-22 at board י3 (§24 :719) — is the THIRD, at the GATED door only: `list_documents` is a
+ * researcher's read, so the public `/corpus` keeps PAGES · CITED. It is not a filter of the stream; it is its own read,
+ * reached at `?lens=documents` and drawn by `ResearchDocuments`.
+ */
 const LENSES = [
-  { id: 'pages', filters: {} as CorpusFilters },
-  { id: 'cited', filters: { cited: true } as CorpusFilters },
+  { id: 'pages', filters: {} as CorpusFilters, gatedOnly: false },
+  { id: 'cited', filters: { cited: true } as CorpusFilters, gatedOnly: false },
+  { id: 'documents', filters: {} as CorpusFilters, gatedOnly: true },
 ] as const;
 
 type LensId = (typeof LENSES)[number]['id'];
+
+/** THE ONE SPELLING of the documents lens's address — its query parameter and its value. */
+export const DOCUMENTS_LENS = { key: 'lens', value: 'documents' } as const;
 
 /**
  * WHICH VIEW THIS LINE IS SERVING — `/corpus`'s stream, or `/corpus/claims`.
@@ -47,7 +56,7 @@ type LensId = (typeof LENSES)[number]['id'];
  * IT IS A PARAMETER RATHER THAN A SECOND COMPONENT because §25 :788 says "the same context line": one count,
  * one chip row, one set of rules about what a chip's href is. Two components would be two spellings of that.
  */
-export type ContextView = 'stream' | 'claims';
+export type ContextView = 'stream' | 'claims' | 'documents';
 
 /**
  * A chip's destination, and the ONE place the two views' spellings meet.
@@ -61,6 +70,7 @@ export type ContextView = 'stream' | 'claims';
  * chip's exit uses.
  */
 function href(filters: CorpusFilters, view: ContextView, scope: CorpusScope): string {
+  if (view === 'documents') return `${corpusPath(scope)}?${DOCUMENTS_LENS.key}=${DOCUMENTS_LENS.value}`;
   if (view === 'claims' && filters.page !== undefined) {
     const { page, since, until } = filters;
     return `${claimsPath(scope)}?${writeClaimsQuery({ page, ...(since === undefined ? {} : { since }), ...(until === undefined ? {} : { until }) }).toString()}`;
@@ -103,7 +113,7 @@ const DATE_FILTERS = ['since', 'until'] as const;
 
 export function CorpusContextLine({ filters, count, scope, view = 'stream' }: { filters: CorpusFilters; count: number; scope: CorpusScope; view?: ContextView }) {
   const t = useTranslations('corpus');
-  const active: LensId = filters.cited === true ? 'cited' : 'pages';
+  const active: LensId = view === 'documents' ? 'documents' : filters.cited === true ? 'cited' : 'pages';
   // A SINGLE-PAGE VIEW IS A DIFFERENT VIEW, and the whole of board ט·ב is this one predicate: when a page is
   // in force the PAGE is the SUBJECT — named by the card above this row — so the row holds ROW FILTERS only,
   // and the lens control, which names `/corpus`'s two doorways, would mark one of them current on a view that
@@ -169,15 +179,15 @@ export function CorpusContextLine({ filters, count, scope, view = 'stream' }: { 
           claims view. Drawing the control on either would mark PAGES or CITED as `aria-current` on a page that
           is neither — an answer to "where am I" that is wrong. The way back from one page is the
           `corpus.allPages` link above its card (board ט·ב), never a chip and never a lens. */}
-      {view === 'stream' && !singlePage ? (
+      {(view === 'stream' && !singlePage) || view === 'documents' ? (
       <nav data-corpus-lenses className="flex flex-wrap gap-3 text-sm" aria-label={t('lenses')}>
-        {LENSES.map((lens) =>
+        {LENSES.filter((lens) => !lens.gatedOnly || scope === 'all').map((lens) =>
           lens.id === active ? (
             <span key={lens.id} data-lens={lens.id} aria-current="page" className="text-ink">
               {t(`lens.${lens.id}`)}
             </span>
           ) : (
-            <Link key={lens.id} data-lens={lens.id} href={href(lens.filters, 'stream', scope)} className="text-ink-muted underline">
+            <Link key={lens.id} data-lens={lens.id} href={href(lens.filters, lens.id === 'documents' ? 'documents' : 'stream', scope)} className="text-ink-muted underline">
               {t(`lens.${lens.id}`)}
             </Link>
           ),

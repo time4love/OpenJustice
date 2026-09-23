@@ -153,8 +153,8 @@ export function recomputableEvidence(fileHash: string, document: Document): bool
 /**
  * CURRENT(d) — A3 :1368-:1371, by custody mode.
  *
- *   HELD    the version whose `extractorVersion` is `CURRENT_EXTRACTOR`; none →
- *           AWAITING_DERIVATION, and the platform owes it.
+ *   HELD    the version whose `derivedUnder` CONTAINS `CURRENT_EXTRACTOR` (below, and A3
+ *           :1368 as ruled 2026-09-23); none → AWAITING_DERIVATION, and the platform owes it.
  *   SEALED  the version derived AT_RECEIPT, FOREVER. A sealed document's plaintext
  *           existed once (§2), so nothing can derive another and a HELD_BYTES row
  *           against one is ignored rather than preferred. It never reads AWAITING:
@@ -213,4 +213,32 @@ export function currentVersion(
  */
 export function verdict(phrase: string, current: DocumentContentVersion | null): Verdict {
   return verdictOverText(phrase, current?.text ?? null);
+}
+
+/**
+ * EQUALS_CAPTURE(d) — A3 :1383-:1384: "∃ UrlSnapshot with documentHash = d.docId — read on
+ * demand; the read names the page and capture." The ONE witness the platform did not create
+ * (§2 :236-:242): where a held document's bytes are a page's bytes as served, the walk's anchor
+ * attests them too.
+ *
+ * IT COMPARES DIGESTS, NOT SPELLINGS. `UrlSnapshot.documentHash` is stored as BARE hex
+ * (`lib/evidenceIdentity.ts` :46, `sha256Bytes`) and a DOC_ID is displayed `0x`-prefixed
+ * (A1 :1244), so a string comparison would never fire on real rows. Both sides are reduced to
+ * the 64 lowercase hex digits of the digest before they are compared.
+ *
+ * IT COMPARES THE DOC_ID AND NEVER THE COMMITMENT — the salt makes a commitment incomparable to
+ * any hash of bytes by construction (§4 :440-:442). PURE: the caller reads the snapshots.
+ */
+export function equalsCapture(
+  document: Document,
+  snapshots: readonly { documentHash: string; url: string; capture: string }[],
+): { url: string; capture: string } | null {
+  const digest = digestOf(document.docId);
+  const match = snapshots.find((snapshot) => digestOf(snapshot.documentHash) === digest);
+  return match === undefined ? null : { url: match.url, capture: match.capture };
+}
+
+/** A SHA-256 digest's 64 lowercase hex digits, whichever display it arrived in. */
+export function digestOf(hash: string): string {
+  return (hash.startsWith('0x') || hash.startsWith('0X') ? hash.slice(2) : hash).toLowerCase();
 }

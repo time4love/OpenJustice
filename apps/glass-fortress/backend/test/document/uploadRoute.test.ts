@@ -58,7 +58,7 @@ describe('ui :1129 — the router’s shape, and where the gate sits', () => {
 });
 
 describe('ui :1129 — where it is NOT, each of which a scan would correctly redden', () => {
-  it('NOT under /api/research — whose fourteen routes are each a tool’s answer', async () => {
+  it('NOT under /api/research — whose fifteen routes are each a tool’s answer', async () => {
     const source = await routerSource();
     expect(source).not.toContain('/api/research');
   });

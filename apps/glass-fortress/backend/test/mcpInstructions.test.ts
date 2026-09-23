@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { IMAGE_BLOCK_BYTES } from '../src/lib/acceptedDocumentTypes';
 import { MCP_INSTRUCTIONS } from '../src/mcp/instructions';
 import { PROVISIONS } from '../src/lib/provisions';
 import { registeredToolNamesIn } from './mcpToolClassification.test';
@@ -128,5 +129,41 @@ describe('the instructions reach the server, and from one pure module', () => {
     // The paragraph that names tools with no path today is edited when that
     // path lands; the step number is how the editor finds it.
     expect(instructionsSource).toMatch(/Edit this paragraph at step 32/);
+  });
+});
+
+describe('the DOCUMENTS paragraph says what read_document and the dialog’s link actually do (R78 round 2)', () => {
+  const paragraph = MCP_INSTRUCTIONS.split('\n\n').find((block) => block.startsWith('DOCUMENTS —'));
+  const descriptionOf = (tool: string): string => {
+    const registration = serverSource.match(new RegExp(`registerTool\\(\\s*'${tool}'[\\s\\S]*?inputSchema`));
+    if (registration === null) throw new Error(`no registration of ${tool} in mcpServer.ts`);
+    return registration[0];
+  };
+
+  it('reads the paragraph at all', () => {
+    expect(paragraph).toBeDefined();
+  });
+
+  it('a scanned PDF comes as a download link; only an IMAGE within the cap comes as an image (A4 :1425 as ruled)', () => {
+    // `readDocument.ts`' `ridesAsImage`: the IMAGE family, byteLength ≤ IMAGE_BLOCK_BYTES. A scan saved
+    // as a PDF is the PDF family and rides as `bytesUrl` — the round-1 text said it came as an image.
+    expect(paragraph).toMatch(/scanned PDF[^.;]*download link/);
+    expect(paragraph).toContain(`${String(IMAGE_BLOCK_BYTES / (1024 * 1024))} MB`);
+    expect(paragraph).not.toMatch(/a scan or a photograph[^.;]*as an image/);
+  });
+
+  it('it tells Claude to SET title= and at= — never add: the link’s facts are DEFAULTS (A4 :1428, §9 :998)', () => {
+    // A second `at` APPENDED to a link that already carries one is IGNORED by URLSearchParams.get,
+    // which returns the first — the researcher's date would be dropped in silence.
+    expect(paragraph).toMatch(/SET title=/);
+    expect(paragraph).toMatch(/SET at=/);
+    expect(paragraph).not.toMatch(/Add title=/);
+  });
+
+  it('add_document’s and list_documents’ descriptions carry the same SET clause as the paragraph', () => {
+    for (const tool of ['add_document', 'list_documents']) {
+      expect(descriptionOf(tool)).toMatch(/SET title=/);
+      expect(descriptionOf(tool)).toMatch(/SET at=/);
+    }
   });
 });

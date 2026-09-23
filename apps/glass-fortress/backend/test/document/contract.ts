@@ -46,6 +46,7 @@ export type {
   ArrivalDocument as ArrivalDocumentRow,
   Document as DocumentRow,
   DocumentContentVersion as DocumentContentVersionRow,
+  DocumentOpinion as DocumentOpinionRow,
   DocumentOpeningDecision as DocumentOpeningDecisionRow,
   PassageVerdict as PassageVerdictRow,
   Shed as ShedRow,
@@ -159,7 +160,8 @@ export const MODULES = {
   'services/describeDocument': { step: 30, exports: { describeDocument: fn(30) } },
   // ui :1129 — the dialog's OWN router, behind requireResearcher INSIDE it, mounted beside
   // /api/article-rules. One POST minting a signed upload URL; the dialog's CACHE act.
-  'routes/documentUploadRoutes': { step: 30, exports: { documentUploadRouter: value(30) } },
+  // A Router IS a function (express's `Router()`), so `value` named a world no router can be; `fn`, as thesis :139.
+  'routes/documentUploadRoutes': { step: 30, exports: { documentUploadRouter: fn(30) } },
   // §9 :998 — an object no row names is swept after a lifetime; an operational parameter.
   'services/sweepUnclaimedObjects': { step: 30, exports: { sweepUnclaimedObjects: fn(30) } },
   // §4 :444-:450 — the standing pass that pays what receipt owed. Step 31's.
@@ -185,8 +187,8 @@ export type ModulePath = keyof typeof MODULES;
 // ---------------------------------------------------------------------------
 
 /**
- * A4 :1410-:1411 plus the two 2026-09-22 rulings: the argument is `docId` OR `text`,
- * exactly one (:1404), and `title` is REQUIRED with `NO_TITLE` refused (:1404, A2 :1271).
+ * A4 :1410-:1411 plus the rulings at :1404: the argument is `docId`, REQUIRED — the `text`
+ * arm RETIRED 2026-09-23 — and `title` is REQUIRED with `NO_TITLE` refused (A2 :1271).
  *
  * `NO_BYTES` covers a `docId` naming no object, and `NAME_MISMATCH` fires when the
  * object's bytes do not hash to it — so neither is about a `bytes` argument, which the
@@ -210,12 +212,20 @@ export const READ_DOCUMENT_REFUSALS = ['NO_RESEARCHER', 'NOT_A_DOCUMENT'] as con
 /** A4 :1435 — refuses NOT_SURVEYED when `url` is given and unknown, and nothing else. */
 export const LIST_DOCUMENTS_REFUSALS = ['NO_RESEARCHER', 'NOT_SURVEYED'] as const;
 
-/** A4 :1440-:1441 — PAID; a sealed document was read once, at receipt. */
+/**
+ * A4 :1440-:1441 — PAID; a sealed document was read once, at receipt. `UNSUPPORTED_TYPE` RULED
+ * 2026-09-23 at :1440-:1441: audio and video, which no model reads, and a spreadsheet with no
+ * computed text — the refusal carrying its version's reason. One spelling with add_document's.
+ * `TOO_LARGE` RULED 2026-09-23 at :1440: above the DESCRIBER's bound — one word with add_document's,
+ * two thresholds.
+ */
 export const DESCRIBE_DOCUMENT_REFUSALS = [
   'NO_RESEARCHER',
   'NOT_A_DOCUMENT',
   'NOT_HELD',
   'AWAITING_DERIVATION',
+  'UNSUPPORTED_TYPE',
+  'TOO_LARGE',
 ] as const;
 
 /** A4 :1416 — a thesisId naming none. */

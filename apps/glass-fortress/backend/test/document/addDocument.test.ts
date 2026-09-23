@@ -1,5 +1,22 @@
+jest.mock('../../src/lib/prisma', () => (require('./world') as typeof import('./world')).prismaDouble);
+jest.mock('../../src/services/documentBucket', () => (require('./world') as typeof import('./world')).bucketDouble);
+jest.mock('../../src/factories/LLMFactory', () => (require('./world') as typeof import('./world')).llmDouble);
+
 import { built } from './built';
 import { ADD_DOCUMENT_REFUSALS } from './contract';
+import {
+  bucketCalls,
+  fixture,
+  modelCalls,
+  nameOf,
+  resetWorld,
+  seedObject,
+  seedResearcher,
+  seedSnapshot,
+  seedTrackedUrl,
+  store,
+  writes,
+} from './world';
 
 // ---------------------------------------------------------------------------
 // A4 :1404-:1411 and §9 :998-:1017 — THE RESEARCHER'S DOOR. This is the round's centre.
@@ -34,7 +51,22 @@ import { ADD_DOCUMENT_REFUSALS } from './contract';
 //
 // THE COMMITMENT IS OWED BY CONSTRUCTION AT THIS STEP (plan :179-:180): step 31 builds
 // what pays it, so every document this step receives is owed and EVERY READ SAYS SO.
+//
+// THE WORLD — GIVEN AT STEP 30 (R76, REVIEW's finding 1). Step 27 wrote these cases with no
+// world at all: nothing in a bucket, no page surveyed, no database. `./world.ts` supplies
+// one, and each case below says which clause makes its world REACHABLE. The two magic keys
+// step 27 used — `'mismatched-object'` and `'oversize-object'` — were not DOC_IDs, and a
+// correct implementation refuses a key that is not a DOC_ID as NO_BYTES before it reads
+// anything, so those cases could not demand what their titles say. They are VALID docIds
+// now, holding the bytes their titles describe.
 // ---------------------------------------------------------------------------
+
+interface Assertions {
+  title: string | null;
+  assertedUrl: string | null;
+  assertedAt: string | null;
+  derivedFrom: { commitment: string; title: string | null } | null;
+}
 
 interface AddDocumentResult {
   commitment: string;
@@ -44,6 +76,10 @@ interface AddDocumentResult {
   anchored: boolean;
   equalsCapture: { url: string; capture: string } | null;
   existed: boolean;
+  /** A4 :1409 as ruled 2026-09-23 — the STORED assertions. */
+  assertions: Assertions;
+  /** A4 :1409 as ruled — every value the call gave that differs, NEVER stored. */
+  ignored: Record<string, string>;
 }
 
 interface Refusal {
@@ -66,17 +102,37 @@ interface Tool {
 
 const tool = () => built<Tool>('services/addDocument');
 
-const isRefusal = (answer: AddDocumentResult | Refusal): answer is Refusal =>
-  typeof (answer as Refusal).code === 'string';
+interface Read {
+  readDocument: (commitment: string, researcherId: string | null) => Promise<{ equalsCapture: { url: string; capture: string } | null } | Refusal>;
+}
 
-const OBJECT_IN_BUCKET = '0x' + 'a1'.repeat(32);
+const read = () => built<Read>('services/readDocument');
+
+/** The writes a call made, the `$transaction` marker aside — each tagged with the client it went through. */
+const rowWrites = () => writes.filter((write) => write.op !== '$transaction');
+
+const isRefusal = <T>(answer: T | Refusal): answer is Refusal => typeof (answer as Refusal).code === 'string';
+
+/** The committed text-layer PDF under its REAL name — the object the dialog wrote (§9 :998). */
+const PDF = fixture('PDF_TEXT_LAYER');
+const OBJECT_IN_BUCKET = PDF.docId;
 const TITLE = 'the supplementary dataset of the cardiac risk-communication paper, 2026';
+
+beforeEach(() => {
+  resetWorld();
+  seedObject(OBJECT_IN_BUCKET, PDF.bytes);
+  seedTrackedUrl('https://surveyed.example/p');
+});
 
 describe('A4 :1404 — the argument is docId, REQUIRED, and never bytes', () => {
   it('a docId names the bucket object the dialog wrote, and the tool READS it', async () => {
     const { addDocument } = await tool();
     const answer = await addDocument({ docId: OBJECT_IN_BUCKET, title: TITLE, mimeType: 'application/pdf' }, 'res_1');
     expect(isRefusal(answer)).toBe(false);
+    // STRENGTHENED: it READ the object under that key. (The PDF's TEXT is not asserted here:
+    // `pdfjs-dist` is ESM-only and no jest project can load it — the process-level test over
+    // `dist/`, `test/documentPdfProcess.test.ts`, is where the reader's output is held.)
+    expect(bucketCalls).toContain(`read ${OBJECT_IN_BUCKET}`);
   });
 
   // TWO CASES WERE DELETED HERE, NOT REWRITTEN — §4 rule 1, in the rule's own words: a test
@@ -125,22 +181,37 @@ describe('A4 :1410-:1411 — the WHOLE refusal set, closed', () => {
   });
 
   it('NO_BYTES covers a docId naming NO OBJECT (A4 :1404) — not a missing argument alone', async () => {
+    // WORLD: a well-formed DOC_ID under which the dialog wrote nothing — the upload never
+    // happened, or the sweep took it (§9 :998).
     const { addDocument } = await tool();
     const answer = await addDocument({ docId: '0x' + 'ff'.repeat(32), title: TITLE, mimeType: 'application/pdf' }, 'res_1');
     expect(isRefusal(answer) && answer.code).toBe('NO_BYTES');
   });
 
   it('NAME_MISMATCH when the object’s bytes do not hash to the docId it was stored under', async () => {
+    // WORLD: a VALID docId whose object holds OTHER bytes. REACHABLE: a signed upload URL
+    // checks no content (ui A1 :1129's route mints a URL, not a checksum), so a wrong client
+    // can put any bytes under any key. `NAME_MISMATCH` is the check that catches it (§9 :998).
     const { addDocument } = await tool();
-    const answer = await addDocument({ docId: 'mismatched-object', title: TITLE, mimeType: 'application/pdf' }, 'res_1');
+    const key = nameOf(new TextEncoder().encode('the bytes the browser hashed'));
+    seedObject(key, PDF.bytes);
+    const answer = await addDocument({ docId: key, title: TITLE, mimeType: 'application/pdf' }, 'res_1');
     expect(isRefusal(answer) && answer.code).toBe('NAME_MISMATCH');
+    // STRENGTHENED: a refusal writes nothing.
+    expect(writes).toEqual([]);
   });
 
   it('UNSUPPORTED_TYPE and TOO_LARGE — TOO_LARGE read from the OBJECT’S size, never a JSON limit', async () => {
     const { addDocument } = await tool();
     const bad = await addDocument({ docId: OBJECT_IN_BUCKET, title: TITLE, mimeType: 'application/x-msdownload' }, 'res_1');
     expect(isRefusal(bad) && bad.code).toBe('UNSUPPORTED_TYPE');
-    const big = await addDocument({ docId: 'oversize-object', title: TITLE, mimeType: 'application/pdf' }, 'res_1');
+    // WORLD: a valid docId whose OBJECT is one byte over the cap. REACHABLE: the storage limit
+    // lands with the bucket's migration (chunk 3), and until then — and on any bucket whose
+    // limit is wrong — only the object's own size tells (A4 :1404, "read from the object's size").
+    const oversize = new Uint8Array(52_428_801);
+    const key = nameOf(oversize);
+    seedObject(key, oversize);
+    const big = await addDocument({ docId: key, title: TITLE, mimeType: 'application/pdf' }, 'res_1');
     expect(isRefusal(big) && big.code).toBe('TOO_LARGE');
   });
 
@@ -196,6 +267,28 @@ describe('A4 :1407-:1409 — what the tool RETURNS, and what it says about the d
     expect(!isRefusal(first) && first.existed).toBe(false);
     expect(!isRefusal(second) && second.existed).toBe(true);
     expect(!isRefusal(first) && !isRefusal(second) && first.commitment === second.commitment).toBe(true);
+    // STRENGTHENED: the counts the title names — ONE Document, TWO Arrivals.
+    expect(store.documents).toHaveLength(1);
+    expect(store.arrivals).toHaveLength(2);
+  });
+
+  it('a later arrival’s DIFFERING assertions are answered IGNORED and never stored (A4 :1409, A2 :1271 as ruled)', async () => {
+    // WORLD: a second researcher uploads the same bytes under another title and page — reachable
+    // because the name is the bytes' hash, so the same file IS the same document (§2 :211).
+    const { addDocument } = await tool();
+    seedTrackedUrl('https://other.example/q');
+    await addDocument({ docId: OBJECT_IN_BUCKET, title: TITLE, mimeType: 'application/pdf' }, 'res_1');
+    const second = await addDocument(
+      { docId: OBJECT_IN_BUCKET, title: 'another name', mimeType: 'application/pdf', assertedUrl: 'https://other.example/q' },
+      'res_2',
+    );
+    if (isRefusal(second)) throw new Error(`expected a document, got ${second.code}`);
+    expect(second.existed).toBe(true);
+    expect(second.assertions.title).toBe(TITLE);
+    expect(second.assertions.assertedUrl).toBeNull();
+    expect(second.ignored).toEqual({ title: 'another name', assertedUrl: 'https://other.example/q' });
+    // NEVER STORED: the row still carries the first arrival's.
+    expect(store.documents.at(0)?.['title']).toBe(TITLE);
   });
 
   it('the content is the derived version, or NULL while it is owed (A4 :1407-:1408)', async () => {
@@ -223,5 +316,62 @@ describe('A4 :1407-:1409 — what the tool RETURNS, and what it says about the d
     );
     // The platform adds exactly one thing it can: the §2 equality, read on demand.
     expect(!isRefusal(answer) && 'equalsCapture' in answer).toBe(true);
+    // STRENGTHENED: recorded as given, attributed through the arrival, and no model read them.
+    expect(!isRefusal(answer) && answer.assertions.assertedUrl).toBe('https://surveyed.example/p');
+    expect(store.arrivals.at(0)?.['researcherId']).toBe('res_1');
+    expect(modelCalls).toEqual([]);
+  });
+});
+
+describe('interaction A7 :1273 — "every write tool is one transaction", composed by document flows :1223', () => {
+  // THE DOUBLE HANDS EACH `$transaction` CALLBACK A DISTINCT CLIENT TAGGED `transaction`, so a
+  // write made through the global `prisma` while the transaction is open is logged as the write
+  // OUTSIDE it that it is (`world.ts`; R76 and R77 REVIEW moved each write out and 0 cases reddened).
+
+  it('the FIRST arrival writes the Document, the Arrival and the version ALL through the transaction’s client', async () => {
+    const { addDocument } = await tool();
+    await addDocument({ docId: OBJECT_IN_BUCKET, title: TITLE, mimeType: 'application/pdf' }, 'res_1');
+    // THE FLOOR: the four writes the first arrival makes — zero would pass the next line vacuously.
+    expect(rowWrites().map((write) => write.op)).toEqual([
+      'document.create',
+      'arrival.create',
+      'arrivalDocument.create',
+      'documentContentVersion.create',
+    ]);
+    expect(rowWrites().filter((write) => write.via !== 'transaction')).toEqual([]);
+  });
+
+  it('a SECOND arrival writes its Arrival through the transaction’s client too (§2 :211)', async () => {
+    const { addDocument } = await tool();
+    await addDocument({ docId: OBJECT_IN_BUCKET, title: TITLE, mimeType: 'application/pdf' }, 'res_1');
+    writes.length = 0;
+    await addDocument({ docId: OBJECT_IN_BUCKET, title: TITLE, mimeType: 'application/pdf' }, 'res_2');
+    // THE FLOOR: the second arrival's two writes (its version is already CURRENT, so none is derived).
+    expect(rowWrites().map((write) => write.op)).toEqual(['arrival.create', 'arrivalDocument.create']);
+    expect(rowWrites().filter((write) => write.via !== 'transaction')).toEqual([]);
+  });
+});
+
+describe('A3 :1383-:1384 — EQUALS_CAPTURE over a snapshot as its WRITER stores it', () => {
+  it('a snapshot whose documentHash is the file’s digest in BARE hex is answered by add_document AND read_document', async () => {
+    // WORLD: the walk stored a capture whose bytes ARE this PDF — `documentHash` bare hex, as
+    // `lib/evidenceIdentity.ts` :46-:47 stores it — and a researcher uploads the same file. The
+    // DOC_ID is `0x`-prefixed (A1 :1244): only a comparison of DIGESTS, in the predicate AND in
+    // the query that feeds it, can see the two are one.
+    const page = store.trackedUrls.at(0);
+    if (page === undefined) throw new Error('the world seeds a surveyed page');
+    seedSnapshot(page, PDF.docId.slice(2), '20220805053301');
+    // The researcher the arrival names — `Arrival.researcherId` is a foreign key, so an arrival by a
+    // researcher with no row is a world no writer creates (read_document resolves each arrival's handle).
+    seedResearcher('res_1', 'researcher-one');
+    const { addDocument } = await tool();
+    const added = await addDocument({ docId: OBJECT_IN_BUCKET, title: TITLE, mimeType: 'application/pdf' }, 'res_1');
+    if (isRefusal(added)) throw new Error(`expected a document, got ${added.code}`);
+    const witness = { url: 'https://surveyed.example/p', capture: '20220805053301' };
+    expect(added.equalsCapture).toEqual(witness);
+    const { readDocument } = await read();
+    const held = await readDocument(added.commitment, 'res_1');
+    if (isRefusal(held)) throw new Error(`expected a document, got ${held.code}`);
+    expect(held.equalsCapture).toEqual(witness);
   });
 });

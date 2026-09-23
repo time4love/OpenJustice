@@ -86,7 +86,7 @@ describe('A3 :1371 — CURRENT(d), NONE: undefined, and the failure names SHED a
 
   it('SHED wins over a version row that still exists — its text was nulled, the row was kept (A2 :1305)', async () => {
     const { currentVersion } = await content();
-    const hollow = version({ text: null, opinion: null });
+    const hollow = version({ text: null });
     expect(currentVersion(held({ bytes: null }), [hollow], 'v1', shedRow())).toEqual(SHED);
   });
 });

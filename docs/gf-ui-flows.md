@@ -108,7 +108,7 @@ investigation (architecture §9.5 :382–:384).
 |---|---|---|
 | `/article-rules/[trackedUrlId]/[capture]` | interaction A6's five, `requireResearcher` | MARKING :517–:624; A6 |
 
-No second dialog exists in any design. A future one is added by the design that needs it, under this rule, and nowhere else.
+No second dialog exists in any design. — **CONFORMED 2026-09-23 to A1 :1129 (RULED 2026-09-22): the UPLOAD DIALOG is the second of the class (document flows §9 :998), its own router beside `/api/article-rules`; this sentence predates it.** A future one is added by the design that needs it, under this rule, and nowhere else.
 
 ### 2.3 READ VIEW — gated, researchers only
 

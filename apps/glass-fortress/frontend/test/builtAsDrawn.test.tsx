@@ -75,6 +75,29 @@ async function thesis(locale: Locale, withPane = false): Promise<HTMLElement> {
 
 
 describe('built-as-drawn', () => {
+  it('THE DIALOG FRAME is the `.shell` contract and its body the `.shell-centre` one, BY VALUE — a dialog taller than the window scrolls (R78 chunk-3 r3)', () => {
+    // `html, body` are `overflow: hidden; height: 100%` (globals.css, R59 · F4), so a frame must hold its own
+    // scrollport. `DialogFrame` was `flex min-h-screen flex-col` with a content box of `flex-1` and no overflow:
+    // measured by REVIEW on the marking page, the frame was 1570px inside an 891px document that could not
+    // scroll, and 679px were unreachable by any means — the defect `.shell-centre`'s comment already records.
+    // A SOURCE SCAN, as F1 is: jsdom loads no stylesheet; the scroll itself is the browser's reading.
+    const frame = declarationsOf('.dialog-frame');
+    const body = declarationsOf('.dialog-body');
+    requireSubjects('declarations of .dialog-frame', [...frame.keys()]);
+    requireSubjects('declarations of .dialog-body', [...body.keys()]);
+    expect({
+      display: frame.get('display'),
+      flexDirection: frame.get('flex-direction'),
+      height: frame.get('height'),
+      overflow: frame.get('overflow'),
+    }).toEqual({ display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' });
+    expect({ flex: body.get('flex'), minHeight: body.get('min-height'), overflowY: body.get('overflow-y') }).toEqual({
+      flex: '1',
+      minHeight: '0',
+      overflowY: 'auto',
+    });
+  });
+
   it('F1 · `.record-captured` is the board`s nine properties BY VALUE — clamped at 420px and SCROLLING inside it', () => {
     // A SOURCE SCAN AND NOT A COMPUTED STYLE, deliberately (see the docblock): jsdom loads no stylesheet, so
     // the only honest thing a case here can hold is what the rule DECLARES. That it clips and that a reader
