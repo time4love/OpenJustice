@@ -1,0 +1,50 @@
+-- ---------------------------------------------------------------------------
+-- DOCUMENT REFACTOR STEP 29b — `derivedUnder` AND `readFailed`, THE RULINGS OF 2026-09-23.
+--
+-- TWO COLUMNS ON ONE TABLE, FROM ONE AMENDMENT. Both are `docs/gf-document-flows.md`
+-- A2 :1300 as the researcher amended it on 2026-09-23, in place and at zero line delta,
+-- and both are carried by `DocumentContentVersion`. They are one folder because they are
+-- one change to one row; nothing else is touched.
+--
+-- `derivedUnder` — THE RE-DERIVATION TRAP. §3 :317 rules that a re-derivation yielding
+-- identical text is NOT a new row, and A3 :1368 read CURRENT(d) as the version whose
+-- `extractorVersion` EQUALS `CURRENT_EXTRACTOR`. Together they trapped a held document
+-- whose text a new extractor REPRODUCES: no row could carry the new version, so CURRENT(d)
+-- read AWAITING_DERIVATION forever while the derivation pass reported UNCHANGED — and
+-- `EVIDENCE_DERIVED` (A6 :1531) is a HARD check, so that document became permanently
+-- uncitable. The column is the APPEND-ONLY LIST of every extractor version that reproduced
+-- this exact text, and A3 :1368 now reads MEMBERSHIP of it.
+--
+-- `extractorVersion` IS NOT TOUCHED AND IS NEVER OVERWRITTEN. It records which extractor
+-- FIRST produced the text. Overwriting it would have been the cheaper repair and would have
+-- lost that fact: the row keeps its identity AND its provenance, and the LIST is the pointer.
+--
+-- `readFailed` — A READER THAT WAS SELECTED AND THREW, as against one that found no text
+-- and against a type no reader is selected for. A corrupt file of an ACCEPTED type is
+-- accepted as BYTES-ONLY like any other bytes no reader can read (§3 :284) and is NEVER
+-- refused. A5 :1493's `UNREADABLE` is a key that does not open a ciphertext — a different
+-- fact, which must not share one spelling. `extractor-coverage` counts a broken PDF apart
+-- from a photograph by this column (A7 :1591): the same count, not the same fact.
+--
+-- NOTHING IS REMOVED AND NO ROW IS REWRITTEN. Both columns are additive, so every existing
+-- row is valid the moment they exist. Staging and production hold ZERO
+-- `DocumentContentVersion` rows today — the researcher's door is step 30 and no document
+-- has been received — so nothing is back-filled in practice.
+--
+-- `derivedUnder` CARRIES NO SQL DEFAULT, AND THAT IS PRISMA'S SHAPE RATHER THAN AN OMISSION.
+-- A Prisma scalar list is an empty list to the client when the column holds none, and the
+-- generator emits `TEXT[]` with no `DEFAULT`. This file was written by hand and then CHECKED
+-- against `prisma migrate diff --from-schema-datamodel <committed> --to-schema-datamodel
+-- <this> --script`, run OFFLINE against no database: a `DEFAULT ARRAY[]::TEXT[]` the
+-- datamodel does not declare is drift the next `db:check-drift` would report, and the first
+-- draft of this file had exactly that.
+--
+-- ONE TRANSACTION, AND NO `BEGIN`/`COMMIT`. Prisma 5.22.0 — the backend's pinned copy, what
+-- the pre-deploy step resolves — sends a migration file as ONE `simple_query`, and Postgres
+-- runs a multi-statement simple query as one implicit transaction. An explicit COMMIT here
+-- would end that transaction midway, which `test/migrationsOneTransaction.test.ts` holds.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE "DocumentContentVersion" ADD COLUMN "derivedUnder" TEXT[];
+
+ALTER TABLE "DocumentContentVersion" ADD COLUMN "readFailed" BOOLEAN NOT NULL DEFAULT false;

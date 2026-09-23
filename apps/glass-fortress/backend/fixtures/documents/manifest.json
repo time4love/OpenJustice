@@ -1,0 +1,41 @@
+{
+  "kinds": 4,
+  "fixtures": [
+    {
+      "kind": "PDF_TEXT_LAYER",
+      "file": "pdf-text-layer.pdf",
+      "mimeType": "application/pdf",
+      "byteLength": 780,
+      "docId": "0x335d61365c68bfffc28818616391d52d6d9e8d3594501331a8f97fb158ed7237",
+      "groundTruth": "Ministry of Health - circular 4/2026\nThe reporting channel for adverse events remained open\nthroughout the period 3 September 2026 to 30 September 2026.",
+      "proves": "the ordinary path: a reader returns the text layer, so a quoted span is PRESENT or ABSENT"
+    },
+    {
+      "kind": "SCAN",
+      "file": "scan-hebrew.png",
+      "mimeType": "image/png",
+      "byteLength": 672,
+      "docId": "0xda57176f7a82c672eb963afd616c1bd89d0b4370275c42e48ded5f2f13b8f427",
+      "groundTruth": "משרד הבריאות 2022",
+      "proves": "whether an OCR engine reads Hebrew at all — a LOWER BOUND on synthetic glyphs, never the judgement plan :154-:155 asks for, which needs a real scan"
+    },
+    {
+      "kind": "SPREADSHEET",
+      "file": "spreadsheet.xlsx",
+      "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "byteLength": 2842,
+      "docId": "0xc78108ef460c4bf4667daf4028d78b7e648cf96bc6bf1f13e1e31c55d43f6b50",
+      "groundTruth": "# reports\nmonth\treports\tserious\n2022-01\t418\t37\n2022-02\t365\t29\n2022-03\t502\t44",
+      "proves": "the 2026-09-22 amendment (flows §3 :284): cells serialised deterministically sheet by sheet are COMPUTED, so a quoted NUMBER is checkable rather than UNCHECKED"
+    },
+    {
+      "kind": "UNREADABLE",
+      "file": "no-reader.wav",
+      "mimeType": "audio/wav",
+      "byteLength": 444,
+      "docId": "0x1982a788e562789c95cbda5d56ad359f2ed28e38fd66fb524c85253cfb970971",
+      "groundTruth": "",
+      "proves": "§3 :284's fourth row, and the ONLY fixture that reaches NO_READER_FOR_TYPE: a type outside the reader table, text null, contentVersionHash EQUALS docId, every assertion UNCHECKED — counted as bytes-only, NEVER as a failure"
+    }
+  ]
+}

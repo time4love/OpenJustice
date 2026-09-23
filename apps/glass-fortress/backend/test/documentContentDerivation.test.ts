@@ -1,0 +1,524 @@
+// ---------------------------------------------------------------------------
+// DOCUMENT STEP 29 (b) — THE THREE SERVICES, UNDER TEST. Plan :170-:171, A2
+// :1296-:1305, §3 :316-:317, §3 :346-:348, COMPLIANCE.md rule 3.
+//
+// WHY THIS FILE IS IN THE UNIT PROJECT AND NOT IN `test/document/`. The `document`
+// project is the step-27 acceptance suite and is INFORMATIONAL IN CI UNTIL STEP 36
+// (plan :121); `package.json` :17 does not select it for `npm test`. A case living
+// there holds nothing a merge must pass, so the three services this step wrote —
+// `documentContentVersions.ts`, `rederiveDocuments.ts` and the predicates they lean
+// on — are asserted HERE, where a merge runs them.
+//
+// WHAT ROUND 1 LEFT UNHELD, said plainly: 471 lines of new `src/` code were named by
+// no test in any project, and `readObject` — the injection point the record called
+// "the outage arm, proven by injection" — appeared in none. Plan step 29's fifth
+// *Verified by* item, "the derivation pass observed to write a second version for one
+// HELD fixture under a moved CURRENT_EXTRACTOR and none for a SEALED one", had no
+// test at all. Each of those is a case below.
+//
+// THE DERIVATION RUNS THE REAL EXTRACTOR OVER A REAL COMMITTED FIXTURE. Nothing here
+// stubs `extract`: the pass is handed the actual bytes of `spreadsheet.xlsx` through the
+// injected reader, and what is asserted is the text `exceljs` and this repository's own
+// cell serialisation really returned. Only the DATABASE is a double, because the pass's
+// subject is WHICH ROWS IT WRITES.
+//
+// THE SPREADSHEET AND NOT THE PDF, AND THE REASON IS THE HARNESS. `pdfjs-dist` 6.3.289
+// is ESM-only and NO mechanism loads it inside jest — three were measured failing, and
+// `src/lib/documentExtractor.ts`'s header records each with its error, including Node's
+// own `createRequire`, which does not escape jest's process-wide `Module._load` hook. It
+// loads correctly under plain Node, so the PDF arm is measured by `extractor-coverage`
+// and NO TEST ANYWHERE ASSERTS IT. Said here rather than implied: a file that looks like
+// coverage and is not is worse than a gap that is named.
+// ---------------------------------------------------------------------------
+
+jest.mock('../src/lib/prisma', () => ({
+  prisma: {
+    document: { findMany: jest.fn() },
+    $transaction: jest.fn(),
+  },
+}));
+
+import type { Document, DocumentContentVersion, Prisma, Shed } from '@prisma/client';
+import { contentVersionHashOf } from '../src/lib/documentIdentity';
+import { CURRENT_EXTRACTOR } from '../src/lib/documentExtractor';
+import { prisma } from '../src/lib/prisma';
+import {
+  deriveContent,
+  recordContentVersion,
+  recordOpinion,
+  type DerivedContent,
+} from '../src/services/documentContentVersions';
+import { currentVersion } from '../src/services/documentPredicates';
+import { rederiveDocuments } from '../src/services/rederiveDocuments';
+import { FIXTURES, type Fixture, type FixtureKind } from './documentFixtureBytes';
+
+/** The extractor string a document was derived under BEFORE today's — "moved". */
+const OLD_EXTRACTOR = 'v0-pdfjs6.2.0-streamorder-ocr-none-nfc';
+
+/**
+ * A fixture BY KIND, or a loud throw — never a silent skip.
+ *
+ * A subject quietly dropped from a pass is a subject reported as nothing to check,
+ * which is the vacuity this house has paid for; `requireSnapshotIdentity`'s pattern.
+ */
+function fixture(kind: FixtureKind): Fixture {
+  const found = FIXTURES.find((candidate) => candidate.kind === kind);
+  if (found === undefined) throw new Error(`the ${kind} fixture is gone — these cases have no subject`);
+  return found;
+}
+
+const SHEET = fixture('SPREADSHEET');
+
+const mocked = prisma as unknown as {
+  document: { findMany: jest.Mock };
+  $transaction: jest.Mock;
+};
+
+// ---------------------------------------------------------------------------
+// THE DATABASE DOUBLE — a store that enforces the ONE constraint under test.
+//
+// `@@unique([commitment, contentVersionHash])` is what makes "a re-derivation with
+// identical text is not a new row" a property of the SCHEMA rather than of a writer
+// remembering (§3 :316-:317). A double that let two identical rows in would let a
+// broken writer pass, so this one refuses exactly as the column does.
+// ---------------------------------------------------------------------------
+
+interface Store {
+  rows: DocumentContentVersion[];
+  creates: number;
+  tx: Prisma.TransactionClient;
+}
+
+function store(initial: readonly DocumentContentVersion[] = []): Store {
+  const state: Store = {
+    rows: [...initial],
+    creates: 0,
+    tx: undefined as unknown as Prisma.TransactionClient,
+  };
+  state.tx = {
+    documentContentVersion: {
+      findUnique: ({
+        where,
+      }: {
+        where: { commitment_contentVersionHash: { commitment: string; contentVersionHash: string } };
+      }): Promise<DocumentContentVersion | null> => {
+        const key = where.commitment_contentVersionHash;
+        return Promise.resolve(
+          state.rows.find(
+            (row) => row.commitment === key.commitment && row.contentVersionHash === key.contentVersionHash,
+          ) ?? null,
+        );
+      },
+      create: ({ data }: { data: Omit<DocumentContentVersion, 'id' | 'derivedAt' | 'opinion'> }): Promise<DocumentContentVersion> => {
+        const duplicate = state.rows.some(
+          (row) => row.commitment === data.commitment && row.contentVersionHash === data.contentVersionHash,
+        );
+        if (duplicate) {
+          throw new Error('the double refuses what @@unique([commitment, contentVersionHash]) refuses');
+        }
+        const row: DocumentContentVersion = {
+          ...data,
+          id: `version-${String(state.rows.length + 1)}`,
+          derivedAt: new Date(0),
+          opinion: null,
+        };
+        state.rows.push(row);
+        state.creates += 1;
+        return Promise.resolve(row);
+      },
+      update: ({ where, data }: { where: { id: string }; data: Partial<DocumentContentVersion> }): Promise<DocumentContentVersion> => {
+        const row = state.rows.find((candidate) => candidate.id === where.id);
+        if (row === undefined) throw new Error(`no version ${where.id}`);
+        // MERGES whatever it is handed rather than one named field: the row gains an
+        // OPINION by one writer and an appended `derivedUnder` by another, and a double
+        // that only understood the first would make the second's case vacuous.
+        const updated = { ...row, ...data };
+        state.rows = state.rows.map((candidate) => (candidate.id === where.id ? updated : candidate));
+        return Promise.resolve(updated);
+      },
+    },
+  } as unknown as Prisma.TransactionClient;
+  return state;
+}
+
+function heldDocument(overrides: Partial<Document> = {}): Document {
+  return {
+    docId: '0x' + 'a'.repeat(64),
+    commitment: '0x' + 'b'.repeat(64),
+    salt: Buffer.alloc(32),
+    cid: null,
+    bytes: 'bucket/object-key',
+    mimeType: SHEET.mimeType,
+    byteLength: SHEET.bytes().length,
+    receivedAt: new Date(0),
+    verifiedAtReceipt: null,
+    assertedUrl: null,
+    assertedAt: null,
+    derivedFromCommitment: null,
+    title: 'the circular',
+    createdAt: new Date(0),
+    ...overrides,
+  };
+}
+
+function versionRow(overrides: Partial<DocumentContentVersion> = {}): DocumentContentVersion {
+  return {
+    id: 'version-0',
+    commitment: '0x' + 'b'.repeat(64),
+    text: 'whatever the old extractor returned',
+    contentVersionHash: '0x' + 'c'.repeat(64),
+    extractor: 'pdfjs',
+    extractorVersion: OLD_EXTRACTOR,
+    // A row's list carries the extractor that produced it, by construction — the case
+    // that matters overrides it to state what a RE-derivation added.
+    derivedUnder: [OLD_EXTRACTOR],
+    readFailed: false,
+    derivedAt: new Date(0),
+    derivedFrom: 'AT_RECEIPT',
+    opinion: null,
+    ...overrides,
+  };
+}
+
+function shedRow(): Shed {
+  return { commitment: '0x' + 'b'.repeat(64), cause: 'SENDER', researcherId: null, reason: null, at: new Date(0) };
+}
+
+/** Feed the pass a corpus; `$transaction` runs its callback against one store. */
+function corpus(documents: readonly unknown[], state: Store): void {
+  mocked.document.findMany.mockResolvedValue(documents);
+  mocked.$transaction.mockImplementation((run: (tx: Prisma.TransactionClient) => Promise<unknown>) => run(state.tx));
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+});
+
+describe('the derivation pass over HELD bytes — plan :170-:171, §3 :346-:348', () => {
+  it('writes a SECOND version for a HELD document whose CURRENT predates the extractor, and KEEPS the old', async () => {
+    const state = store([versionRow()]);
+    const document = heldDocument();
+    corpus([{ ...document, versions: state.rows, shed: null }], state);
+
+    const report = await rederiveDocuments(() => Promise.resolve(SHEET.bytes()));
+
+    expect(report.extractor).toBe(CURRENT_EXTRACTOR);
+    expect(report.outcomes).toEqual([
+      expect.objectContaining({ commitment: document.commitment, outcome: 'SUPERSEDED' }),
+    ]);
+    // TWO rows, and the old one is untouched: content moves only by a NEW version that
+    // keeps the old (§3 :271-:275).
+    expect(state.rows).toHaveLength(2);
+    expect(state.rows.at(0)?.extractorVersion).toBe(OLD_EXTRACTOR);
+    const written = state.rows.at(1);
+    expect(written?.extractorVersion).toBe(CURRENT_EXTRACTOR);
+    expect(written?.derivedFrom).toBe('HELD_BYTES');
+    // The REAL reader ran over the REAL fixture: this is the serialisation's own output,
+    // sheet header and all, and it equals the committed ground truth exactly.
+    expect(written?.text).toBe(SHEET.groundTruth);
+    expect(written?.extractor).toBe(CURRENT_EXTRACTOR);
+  }, 30000);
+
+  it('writes NOTHING for a SEALED document — its plaintext existed once, at receipt', async () => {
+    const state = store([versionRow()]);
+    const sealed = heldDocument({ bytes: null, cid: 'bafy-sealed', verifiedAtReceipt: new Date(0), title: null });
+    corpus([{ ...sealed, versions: state.rows, shed: null }], state);
+
+    const report = await rederiveDocuments(() => {
+      throw new Error('the pass must not read a sealed document’s bytes — there are none');
+    });
+
+    expect(report.outcomes).toEqual([
+      expect.objectContaining({ commitment: sealed.commitment, outcome: 'SKIPPED' }),
+    ]);
+    expect(report.outcomes.at(0)?.detail).toContain('SEALED');
+    expect(state.creates).toBe(0);
+    expect(mocked.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('a bucket object that cannot be read is listed SKIPPED and never repaired — the injected reader returns null', async () => {
+    const state = store([versionRow()]);
+    const document = heldDocument();
+    corpus([{ ...document, versions: state.rows, shed: null }], state);
+
+    const report = await rederiveDocuments(() => Promise.resolve(null));
+
+    expect(report.outcomes).toEqual([
+      expect.objectContaining({ commitment: document.commitment, outcome: 'SKIPPED' }),
+    ]);
+    expect(report.outcomes.at(0)?.detail).toContain('could not be read');
+    expect(state.creates).toBe(0);
+    expect(mocked.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('a SHED document is SKIPPED — nothing is derived from content that was taken back', async () => {
+    const state = store([versionRow()]);
+    const document = heldDocument({ bytes: null });
+    corpus([{ ...document, versions: state.rows, shed: shedRow() }], state);
+
+    const report = await rederiveDocuments(() => {
+      throw new Error('the pass must not read a shed document’s bytes');
+    });
+
+    expect(report.outcomes.at(0)?.outcome).toBe('SKIPPED');
+    expect(report.outcomes.at(0)?.detail).toContain('SHED');
+    expect(state.creates).toBe(0);
+  });
+});
+
+describe('recordContentVersion — a re-derivation with identical text is NOT a new row (§3 :316-:317)', () => {
+  it('returns the EXISTING row on an identical content hash, and creates nothing', async () => {
+    const existing = versionRow({ id: 'version-existing', contentVersionHash: '0x' + 'd'.repeat(64) });
+    const state = store([existing]);
+    const derived: DerivedContent = {
+      text: existing.text,
+      contentVersionHash: existing.contentVersionHash,
+      extractor: 'pdfjs',
+      extractorVersion: CURRENT_EXTRACTOR,
+      readFailed: false,
+      derivedFrom: 'HELD_BYTES',
+    };
+
+    const row = await recordContentVersion(state.tx, existing.commitment, derived);
+
+    // NO NEW ROW — the same row, by id, and nothing created. What DID change is the
+    // ruling of 2026-09-23: the row records that today's extractor REPRODUCED its text,
+    // which is what makes CURRENT(d) resolve to it instead of reading AWAITING for ever.
+    expect(row.id).toBe(existing.id);
+    expect(row.derivedUnder).toEqual([OLD_EXTRACTOR, CURRENT_EXTRACTOR]);
+    expect(row.extractorVersion).toBe(OLD_EXTRACTOR);
+    expect(state.creates).toBe(0);
+    expect(state.rows).toHaveLength(1);
+    // AND THE FLOOR, so the case is not satisfied by a writer that creates nothing at
+    // all: a DIFFERENT hash on the same document does create a row.
+    const moved = await recordContentVersion(state.tx, existing.commitment, {
+      ...derived,
+      contentVersionHash: '0x' + 'e'.repeat(64),
+    });
+    expect(moved.id).not.toBe(existing.id);
+    expect(state.creates).toBe(1);
+    expect(state.rows).toHaveLength(2);
+    // A row created today carries today's extractor as the first that reproduced it.
+    expect(moved.derivedUnder).toEqual([CURRENT_EXTRACTOR]);
+  });
+
+  it('returns the row UNTOUCHED when this extractor is already in its list — append-only is not append-again', async () => {
+    const existing = versionRow({
+      id: 'version-existing',
+      contentVersionHash: '0x' + 'd'.repeat(64),
+      derivedUnder: [OLD_EXTRACTOR, CURRENT_EXTRACTOR],
+    });
+    const state = store([existing]);
+
+    const row = await recordContentVersion(state.tx, existing.commitment, {
+      text: existing.text,
+      contentVersionHash: existing.contentVersionHash,
+      extractor: 'pdfjs',
+      extractorVersion: CURRENT_EXTRACTOR,
+      readFailed: false,
+      derivedFrom: 'HELD_BYTES',
+    });
+
+    expect(row).toBe(existing);
+    expect(row.derivedUnder).toEqual([OLD_EXTRACTOR, CURRENT_EXTRACTOR]);
+    expect(state.creates).toBe(0);
+  });
+
+  it('a READ THAT FAILED reaches the ROW \u2014 deriveContent carries it and the writer stores it (A2 :1300)', async () => {
+    // THE SEAM, and nothing asserted it until a decoy blinded it and reddened NOTHING.
+    // `extract` distinguishing READ_FAILED is worth nothing if the fact stops at the
+    // service boundary: `extractor-coverage` counts a broken PDF apart from a photograph
+    // by the COLUMN (A7 :1591), so the column is what has to carry it.
+    const corrupt = Buffer.from('this is not a workbook at all', 'utf8');
+    const name = '0x' + '7'.repeat(64);
+
+    const derived = await deriveContent(
+      corrupt,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      name,
+      'HELD_BYTES',
+    );
+
+    expect(derived.readFailed).toBe(true);
+    expect(derived.text).toBeNull();
+    // Bytes-only, so the hash IS the document's own name \u2014 a failed read is still bytes
+    // the platform holds, never a document it turned away.
+    expect(derived.contentVersionHash).toBe(name);
+
+    const state = store();
+    const row = await recordContentVersion(state.tx, '0x' + 'b'.repeat(64), derived);
+    expect(row.readFailed).toBe(true);
+    expect(state.creates).toBe(1);
+  });
+
+  it('a read that SUCCEEDED stores readFailed false \u2014 the floor, so the case above is not a constant', async () => {
+    const name = '0x' + '8'.repeat(64);
+
+    const derived = await deriveContent(SHEET.bytes(), SHEET.mimeType, name, 'HELD_BYTES');
+
+    expect(derived.readFailed).toBe(false);
+    expect(derived.text).toBe(SHEET.groundTruth);
+
+    const state = store();
+    const row = await recordContentVersion(state.tx, '0x' + 'b'.repeat(64), derived);
+    expect(row.readFailed).toBe(false);
+  }, 30000);
+
+  it('the bytes-only arm derives a version whose hash IS the document’s own name (A1 :1242-:1243)', async () => {
+    const audio = fixture('UNREADABLE');
+    const name = '0x' + 'f'.repeat(64);
+
+    const derived = await deriveContent(audio.bytes(), audio.mimeType, name, 'HELD_BYTES');
+
+    expect(derived.text).toBeNull();
+    expect(derived.contentVersionHash).toBe(name);
+    expect(derived.extractorVersion).toBe(CURRENT_EXTRACTOR);
+  });
+});
+
+describe('the OPINION register REFUSES an unlabelled reading — COMPLIANCE.md rule 3', () => {
+  it('REFUSES a reading carrying no model and no promptVersion', async () => {
+    const state = store([versionRow({ id: 'version-1' })]);
+    const unlabelled = { summary: 'a ministry circular about reporting' } as never;
+
+    await expect(recordOpinion(state.tx, 'version-1', unlabelled)).rejects.toThrow();
+    expect(state.rows.at(0)?.opinion).toBeNull();
+  });
+
+  it('REFUSES one whose model is an EMPTY STRING — a label that labels nothing', async () => {
+    const state = store([versionRow({ id: 'version-1' })]);
+    const blank = { model: '', promptVersion: 'v1', summary: 'a circular' } as const;
+
+    await expect(recordOpinion(state.tx, 'version-1', blank)).rejects.toThrow();
+    expect(state.rows.at(0)?.opinion).toBeNull();
+  });
+
+  it('WRITES a labelled one — the floor, so the refusals above are not a writer that refuses everything', async () => {
+    const state = store([versionRow({ id: 'version-1' })]);
+
+    const row = await recordOpinion(state.tx, 'version-1', {
+      model: 'claude-opus-5',
+      promptVersion: 'document-describe-v1',
+      summary: 'a ministry circular about the reporting channel',
+    });
+
+    expect(row.opinion).toEqual({
+      model: 'claude-opus-5',
+      promptVersion: 'document-describe-v1',
+      summary: 'a ministry circular about the reporting channel',
+    });
+    // The hash does not move: an opinion is provenance BESIDE the version, never in it
+    // (§3 :295-:296), so a reading recorded after a citation was pinned cannot move
+    // what that citation names.
+    expect(row.contentVersionHash).toBe(state.rows.at(0)?.contentVersionHash);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// `derivedUnder` — THE RE-DERIVATION TRAP, RULED BY THE RESEARCHER 2026-09-23.
+//
+// §3 :317 (*a re-derivation yielding identical text is not a new row*) and A3 :1368
+// (*the version with extractorVersion = CURRENT_EXTRACTOR*) together TRAPPED a held
+// document whose text a new extractor REPRODUCES: no row carried the new version, so
+// CURRENT(d) read AWAITING_DERIVATION forever while the pass reported UNCHANGED — and
+// `EVIDENCE_DERIVED` (A6 :1531) is HARD, so the document became permanently uncitable.
+//
+// THE RULING: A2 :1300 gives the row `derivedUnder String[]`, APPEND-ONLY — every
+// extractor version that reproduced this exact text — and A3 :1368 makes CURRENT(d)
+// read MEMBERSHIP of that list, never equality on `extractorVersion`. The row keeps
+// its identity AND its provenance: `extractorVersion` still records which extractor
+// FIRST produced the text and is never overwritten.
+// ---------------------------------------------------------------------------
+
+describe('CURRENT(d) reads MEMBERSHIP of derivedUnder — A3 :1368, A2 :1300', () => {
+  it('a version a NEW extractor reproduced is CURRENT, not AWAITING_DERIVATION', () => {
+    // The trapped document, exactly: derived once under the OLD extractor, and the
+    // pass has since re-derived the same text under today's. One row, two versions in
+    // its list, and `extractorVersion` still names the first.
+    const reproduced = {
+      ...versionRow({ extractorVersion: OLD_EXTRACTOR }),
+      derivedUnder: [OLD_EXTRACTOR, CURRENT_EXTRACTOR],
+    } as DocumentContentVersion;
+
+    const current = currentVersion(heldDocument(), [reproduced], CURRENT_EXTRACTOR, null);
+
+    expect(current).toBe(reproduced);
+    expect('awaiting' in current).toBe(false);
+  });
+
+  it('a version NO extractor reproduced under today’s is AWAITING_DERIVATION — the floor', () => {
+    // Without this the case above is satisfied by a predicate that answers the first
+    // row it is handed, which is the defect one step the other way.
+    const stale = {
+      ...versionRow({ extractorVersion: OLD_EXTRACTOR }),
+      derivedUnder: [OLD_EXTRACTOR],
+    } as DocumentContentVersion;
+
+    const current = currentVersion(heldDocument(), [stale], CURRENT_EXTRACTOR, null);
+
+    expect(current).toEqual({ awaiting: true });
+  });
+
+  it('MEMBERSHIP and not equality — a row whose extractorVersion IS today’s but whose list is not still answers', () => {
+    // `extractorVersion` is provenance and never the pointer. A row written by today's
+    // extractor carries today's version in BOTH fields, so this states the direction
+    // that decays: the list is what is read.
+    const first = {
+      ...versionRow({ extractorVersion: CURRENT_EXTRACTOR }),
+      derivedUnder: [CURRENT_EXTRACTOR],
+    } as DocumentContentVersion;
+
+    expect(currentVersion(heldDocument(), [first], CURRENT_EXTRACTOR, null)).toBe(first);
+  });
+});
+
+describe('the pass APPENDS to derivedUnder when it re-derives to content the row already holds', () => {
+  it('appends today\u2019s extractor, moves NO row, and never overwrites extractorVersion', async () => {
+    // The row already carries EXACTLY the text today's reader returns, derived under an
+    // older extractor. Under the ruling the pass must record that today's extractor
+    // REPRODUCED it — otherwise this document is the trapped one, awaiting forever.
+    const document = heldDocument();
+    const reproduced = versionRow({
+      id: 'version-1',
+      text: SHEET.groundTruth,
+      contentVersionHash: contentVersionHashOf(SHEET.groundTruth, document.docId),
+      extractorVersion: OLD_EXTRACTOR,
+    });
+    const state = store([reproduced]);
+    corpus([{ ...document, versions: state.rows, shed: null }], state);
+
+    const report = await rederiveDocuments(() => Promise.resolve(SHEET.bytes()));
+
+    expect(report.outcomes).toEqual([
+      expect.objectContaining({ commitment: document.commitment, outcome: 'UNCHANGED' }),
+    ]);
+    // NO ROW MOVED: one version before, one after, and nothing created.
+    expect(state.rows).toHaveLength(1);
+    expect(state.creates).toBe(0);
+    const after = state.rows.at(0);
+    // THE PROVENANCE IS UNTOUCHED — `extractorVersion` still names the extractor that
+    // FIRST produced this text, which is the whole reason the list exists beside it.
+    expect(after?.extractorVersion).toBe(OLD_EXTRACTOR);
+    expect(after?.derivedUnder).toContain(CURRENT_EXTRACTOR);
+    expect(after?.derivedUnder).toContain(OLD_EXTRACTOR);
+  }, 30000);
+
+  it('appends ONCE \u2014 a second pass over the same document adds no duplicate', async () => {
+    // Append-only is not append-again: the list is the SET of versions that reproduced
+    // the text, and a pass run twice must not grow it.
+    const document = heldDocument();
+    const reproduced = versionRow({
+      id: 'version-1',
+      text: SHEET.groundTruth,
+      contentVersionHash: contentVersionHashOf(SHEET.groundTruth, document.docId),
+      extractorVersion: OLD_EXTRACTOR,
+      derivedUnder: [OLD_EXTRACTOR, CURRENT_EXTRACTOR],
+    });
+    const state = store([reproduced]);
+    corpus([{ ...document, versions: state.rows, shed: null }], state);
+
+    await rederiveDocuments(() => Promise.resolve(SHEET.bytes()));
+
+    expect(state.rows.at(0)?.derivedUnder).toEqual([OLD_EXTRACTOR, CURRENT_EXTRACTOR]);
+  }, 30000);
+});

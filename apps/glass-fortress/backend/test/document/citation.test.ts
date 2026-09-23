@@ -34,10 +34,20 @@ async function predicateSource(): Promise<string> {
   return readFileSync(join(SRC, 'services/documentPredicates.ts'), 'utf8');
 }
 
+// CORRECTED, R74 chunk 3b. The phrase asserted PRESENT was `the channel stay open`,
+// and the fixture's text (`fixtures.ts` :151) is "the ministry instructed, on
+// 3.9.2026, that the reporting channel be kept open." — of which it is NOT a
+// substring. The ONE verdict rule is `normaliseClaim(text).includes(normaliseClaim(
+// phrase))` (`src/lib/verdict.ts` :38-:41), which collapses whitespace and nothing
+// else, so a CORRECT implementation returned ABSENT and only a rule that matched
+// loose words could have returned PRESENT — the case demanded the defect
+// `verdict-rule-one-spelling` exists to forbid. The phrase is now a genuine
+// substring of the fixture; the assertion is unchanged and is now satisfiable.
+// The fifth case of this family found in this suite (REVIEW's Entries 7 and 10).
 describe('A3 :1385-:1386 — VERDICT(phrase, d), the ONE verdict rule over CURRENT(d).text', () => {
   it('PRESENT when the phrase is in the computed text', async () => {
     const { verdict } = await citation();
-    expect(verdict('the channel stay open', version())).toBe('PRESENT');
+    expect(verdict('the reporting channel be kept open', version())).toBe('PRESENT');
   });
 
   it('ABSENT when it is not', async () => {
@@ -58,7 +68,7 @@ describe('A3 :1385-:1386 — VERDICT(phrase, d), the ONE verdict rule over CURRE
   it('the three values are the WHOLE range — a fourth would be a verdict no clause defines', async () => {
     const { verdict } = await citation();
     const seen = new Set<Verdict>([
-      verdict('the channel stay open', version()),
+      verdict('the reporting channel be kept open', version()),
       verdict('never carried', version()),
       verdict('x', version({ text: null })),
     ]);

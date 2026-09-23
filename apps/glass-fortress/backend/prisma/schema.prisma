@@ -2295,8 +2295,26 @@ model DocumentContentVersion {
   contentVersionHash String
   /// PROVENANCE: what read the bytes. The COMPUTED register is reproducible from the
   /// bytes by a named extractor at a pinned version; that is the whole line (§3 :299-:305).
+  /// `extractorVersion` names the extractor that FIRST produced this text and is NEVER
+  /// overwritten — it is provenance, not a pointer.
   extractor          String
   extractorVersion   String
+  /// APPEND-ONLY: every extractor version that REPRODUCED this exact text (A2 :1300,
+  /// §3 :324, RULED 2026-09-23). CURRENT(d) reads MEMBERSHIP of this list and never
+  /// equality on `extractorVersion` (A3 :1368). Without it, a held document whose text a
+  /// new extractor reproduces is trapped: §3 :317 forbids a second row, so no row would
+  /// carry the new version and CURRENT(d) would read AWAITING_DERIVATION forever while
+  /// the pass reported UNCHANGED — and `EVIDENCE_DERIVED` (A6 :1531) is HARD, so the
+  /// document would be permanently uncitable.
+  derivedUnder       String[]
+  /// The reader was SELECTED and THREW, as against having found no text (A2 :1300, RULED
+  /// 2026-09-23). A corrupt file of an ACCEPTED type is accepted as BYTES-ONLY like any
+  /// other bytes no reader can read (§3 :284) and is NEVER refused — a refusal would turn
+  /// the platform's own reader failing into a reason to hold nothing, and A5 :1493's
+  /// `UNREADABLE` is a key that does not open a ciphertext, a different fact that must not
+  /// share one spelling. `extractor-coverage` counts a broken PDF apart from a photograph
+  /// by this field (A7 :1591).
+  readFailed         Boolean             @default(false)
   derivedAt          DateTime            @default(now())
   derivedFrom        DocumentDerivedFrom
   /// THE OPINION REGISTER — a model's reading: a transcription, a description, a summary,
