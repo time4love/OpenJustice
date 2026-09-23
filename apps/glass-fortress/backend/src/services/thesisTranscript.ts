@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import type { MentionType, Prisma } from '@prisma/client';
 import { handleOf } from './publishedThesis';
 
 // ---------------------------------------------------------------------------
@@ -299,7 +299,13 @@ export interface RoundRow {
 }
 
 export interface MentionRow {
-  kind: 'EVIDENCE' | 'TRAJECTORY';
+  /**
+   * `MentionType`, widened at document refactor step 28 with the enum. This reader is
+   * KIND-AGNOSTIC — `kind` is only ever half a map key here (:565-:566, "<kind>:<name>"),
+   * so a third kind changes nothing it does and the widening is behaviour-neutral. Said
+   * rather than left to be re-derived by whoever reads this next.
+   */
+  kind: MentionType;
   name: string;
   contentVersionHash: string | null;
   debateSessionId: string | null;

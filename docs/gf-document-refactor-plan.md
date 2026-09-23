@@ -106,7 +106,7 @@ after step 11 is a defect in step 11.
 | — | `document-recomputable`, `commitments-owed`, `no-plaintext-at-rest`, `no-sender-identity`, `one-hash-two-implementations`, `verdict-rule-one-spelling`; `anchors-explainable`, `opinions-not-facts`, `retired-names` extended; the four `forensics:*` measurements | A7, §12 |
 | `/safety`: the CID anchored on Base, structured metadata for the research team, no identity stored | rewritten to what §2, §4, §5 and §8 build — the frontend's, at the step §3 names | §12 |
 
-## 3. THE STEPS — EACH BUILDS ON CLEAN GROUND; THE THIRTY-SIXTH REMOVES WHAT IS LEFT
+## 3. THE STEPS — EACH BUILDS ON CLEAN GROUND; THE THIRTY-SIXTH REMOVES WHAT IS LEFT — **RULED 2026-09-22 (the researcher; `docs/gf-document-design-session-2026-09-22.md` §6): the RESEARCHER'S DOOR ROUND is 27 · 28 · 29 · 30 with the upload dialog as its page · 33 with the `#doc_` chip · 31 on staging with the production pass HELD · 34. The PUBLIC DOOR — 32 · 35 with the intake and withdrawal dialogs — is its own later round, commissioned by a published call on production. The run follows the door.**
 
 ### 27 · The acceptance suite, failing — and the rotation read from the chain
 
@@ -141,7 +141,7 @@ and `termsHash` iff INTAKE, `researcherId` iff RESEARCHER, `reason` and `researc
 is removed here. Step 11 already removed `sourceUrl`, `evidenceType` and `EvidenceCapture` with
 the rest of evidence A2's list; what stays until step 36 is exactly `fileUrl`,
 `additionalScreenshotUrls`, `ipfsCid`, `intakeVersion`, `Whistleblower`, and `CaptureProvenance`'s
-`DIRECT` and `ASSERTED`.
+`DIRECT` and `ASSERTED`. — **CORRECTED 2026-09-22 (a CONFORMING amendment; the end state is ruled at flows A2 :1349–:1350): FOUR of those six went EARLY. `fileUrl`, `additionalScreenshotUrls`, `ipfsCid` and `intakeVersion` were removed at step 11b (`prisma/migrations/20260908205356_evidence_step_11b/migration.sql` :168–:171), so what stays until step 36 is exactly `Whistleblower` and `CaptureProvenance`'s `DIRECT` and `ASSERTED` — two of six. Evidence A2's own REMOVED clause :941–:944 does NOT name those four, so it is “with the rest of evidence A2's list” that does not hold: the removal was wider than that list. The target is identical either way.**
 
 *Verified by:* `db:check-drift` clean before writing; the migration read; deploys itself; the schema
 half of `no-sender-identity` green with its decoy — a fixture schema carrying a contact column is
@@ -154,7 +154,7 @@ The identity module: `DOC_ID` and `COMMITMENT` as one importable symbol each ove
 SHA-256, the shared test vector beside them for the browser's half. The extractor: `CURRENT_EXTRACTOR`
 is a dependency choice — a PDF text library, an OCR engine that reads Hebrew — and this step makes
 it, judged by `extractor-coverage` over a fixture set that holds one of each of §3's four kinds (a
-PDF with a text layer, a scan, a paste, a photograph no engine reads) and by nothing this plan
+PDF with a text layer, a scan, a paste, a photograph no engine reads) — **RULED 2026-09-23 (the researcher): THERE IS NO PASTE. the paste is RETIRED, so the fixture set is FOUR kinds: a PDF with a text layer, a scan, a SPREADSHEET, and a file no engine reads. The step's dated doc carries FOUR counts.** — and by nothing this plan — **RULED 2026-09-22: FIVE kinds; the fifth is a SPREADSHEET (the real XLSX), COMPUTED by deterministic cell serialisation per sheet (flows §3 :284)** —
 says; the plan picks nothing. `DocumentContentVersion`'s one writer, `derivedFrom` AT_RECEIPT or
 HELD_BYTES, a re-derivation with identical text not a new row; the derivation pass over HELD bytes
 for when `CURRENT_EXTRACTOR` moves, in the deployment, writing versions and never a decision; the
@@ -166,7 +166,7 @@ text, and the call is made here, through `CURRENT(d)`, with the thesis suite gre
 *Verified by:* the A1 contract green; `one-hash-two-implementations`' server half against the
 vector, and `NAME_MISMATCH` observed to fire when one byte of the vector is altered;
 `verdict-rule-one-spelling` with its decoy, a second spelling planted and caught; `extractor-coverage`
-run over the fixture set with the four counts in the step's dated doc — the photograph counted as
+run over the fixture set with the FOUR counts in the step's dated doc (:157) — the photograph counted as
 bytes-only, never as a failure; the derivation pass observed to write a second version for one
 HELD fixture under a moved `CURRENT_EXTRACTOR` and none for a SEALED one.
 
@@ -179,7 +179,7 @@ recorded as the caller's and verified by nothing; `existed` on a known DOC_ID, o
 further Arrival. The commitment is OWED: step 31 builds what pays it, so every document this step
 receives is owed by construction and every read says so. `read_document`'s HELD shape;
 `list_documents`, GATED; `describe_document`, paid, on the researcher's word, appending an OPINION
-to CURRENT(d); EQUALS_CAPTURE read on demand.
+to CURRENT(d); EQUALS_CAPTURE read on demand. **RULED 2026-09-22 (the researcher; flows §9 :998, A4 :1404, §12 :1185): this step ALSO builds the UPLOAD DIALOG — the gated page that hashes in the browser, takes a signed upload URL from a gated route, uploads to the bucket by DOC_ID, and hands back the command — with the bucket, the signed-URL route, the sweep of unclaimed objects, and `add_document`'s `docId` argument (the `text` arm RETIRED 2026-09-23; A4 :1404); the dialog's link rides `list_documents`' envelope, so no tool is added. The step ENDS AT A PAGE: the real XLSX and the paper uploaded from a browser against staging and read back through the connector. RULED 2026-09-22 (board י3): the DOCUMENTS lens on `/research/corpus` over `list_documents` (ui §24 :719) is this step's too, and the page shows both uploads on it; `Document.title` is the fourth assertion (flows A2 :1271), required, `NO_TITLE` refused.**
 
 *Verified by:* the §9 and A4 contract green; on staging, the four fixture kinds of step 29 sent
 through `add_document`, each answering `anchored: false` and the photograph `text: null`;
@@ -188,7 +188,7 @@ with zero captures; the second send of one file answering `existed: true` with o
 and two Arrivals; `document-recomputable` exit 0 over them; `commitments-owed` exit 2 listing
 exactly them — the debt step 31 pays.
 
-### 31 · Standing — the anchoring module's second caller, and the pass that pays what is owed
+### 31 · Standing — the anchoring module's second caller, and the pass that pays what is owed — **RULED 2026-09-22: IN the researcher's door round, exercised on STAGING (Sepolia); the PRODUCTION pass is held until the researcher's word (`docs/gf-document-design-session-2026-09-22.md` §5)**
 
 By addition on the walk's anchoring module: a caller taking `(commitment, DOCUMENT_COMMITMENT)`;
 `submit` keeps one caller and `WRITES_ALLOWED` is evaluated in the module, unchanged; the `walk`
@@ -409,8 +409,8 @@ scan that matches nothing is the vacuity this repository has paid for.
 | `no-plaintext-at-rest` — a source scan, no write path under `src/` stores the decrypted bytes of an INTAKE arrival; and a test, the plaintext buffer is zeroed on every exit path of the receipt, refusals included | step 32; the withdrawal handler from step 35 | a handler that keeps a reference past a refusal; a write of plaintext to storage or to a row; the decoy is a planted handler that returns before zeroing |
 | `no-sender-identity` — a schema scan, `Arrival` and `Document` have no column for an address, an account, a name or a contact; and a handler scan, the intake and withdrawal handlers read no request address into any write | the schema half from step 28, `Whistleblower`'s absence added at step 36; the handler half from step 32 | a planted column in a fixture schema; a planted read of the request's address in a handler |
 | `verdict-rule-one-spelling` — a source scan: one importable symbol computes PRESENT · ABSENT · UNCHECKED, and `PassageVerdict`, the framing assessor's audit and the critic's audit call it | step 29 — the first caller with null text; the symbol is thesis step 19's | a second spelling anywhere under `src/`; the decoy is a planted local function returning the three values |
-| the browser/server hash vector — a test in both suites: the browser's WebCrypto SHA-256 over the stripped bytes and the server's over the decrypted bytes agree on one vector, and `NAME_MISMATCH` fires when one byte is altered | the server half from step 29; the browser half from step 32, in the frontend suite | either implementation drifting — a normalisation, a prefix, a different encoding of the stripped bytes |
-| SHED removes content and no row — a source scan from step 28, no `delete` on `Document`, `Arrival`, `ArrivalDocument`, `ArrivalDecision`, `DocumentContentVersion`, `DocumentOpeningDecision`, `PassageVerdict` or `Shed` outside the rebuild's cleanup; and a test from step 35, the row count of each of those tables and of `ThesisMention` and `Evidence` equal before and after SHED, bytes, text and opinion null, the pin released exactly once | the scan from step 28; the test from step 35 | a delete on any of those tables; a SHED that leaves text or an opinion; a re-derivation after SHED; a second release of the pin |
+| the browser/server hash vector — a test in both suites: the browser's WebCrypto SHA-256 over the stripped bytes and the server's over the decrypted bytes agree on one vector, and `NAME_MISMATCH` fires when one byte is altered | the server half from step 29; the browser half from step 30 — the UPLOAD DIALOG hashes in the browser, RULED 2026-09-22 at plan :182, so it no longer waits for step 32 — in the frontend suite | either implementation drifting — a normalisation, a prefix, a different encoding of the stripped bytes |
+| SHED removes content and no row — a source scan from step 28, no `delete` on `Document`, `Arrival`, `ArrivalDocument`, `ArrivalDecision`, `DocumentContentVersion`, `DocumentOpeningDecision`, `PassageVerdict` or `Shed` — **and `DocumentOpinion`, CONFORMED 2026-09-23 to flows A2 :1302 (append-only, as ruled) and :1305 (SHED removes no row)** — outside the rebuild's cleanup; and a test from step 35, the row count of each of those tables and of `ThesisMention` and `Evidence` equal before and after SHED, bytes, text and opinion null, the pin released exactly once | the scan from step 28; the test from step 35 | a delete on any of those tables; a SHED that leaves text or an opinion; a re-derivation after SHED; a second release of the pin |
 
 Assertions that survive a retired file move as assertions about the new contract and are tagged
 in §5, not here.

@@ -36,7 +36,7 @@ document adds no write to the browser and no research act to any route (prosecut
 ```
 DIALOG        opened by a LINK the chat hands over, when a judgement needs more than text — the marking page
               today (interaction MARKING :517, A6 :1227). Not in any navigation; unreachable by browsing; a
-              deterministic URL composed by the backend (A6 :1265–:1267). Identity: a researcher's (A6 :1229).
+              deterministic URL composed by the backend (A6 :1265–:1267). Identity: a researcher's (A6 :1229). **RULED 2026-09-22 (the researcher, at board י2 of `docs/boards/gf-ui-boards-2026-09-22.html`): a DIALOG renders WITHOUT THE SHELL — no sidebar, no right pane, the site's name as one line and the dialog alone — because its user arrived by a link and is not expected to navigate. This binds BOTH dialogs of the class: the marking page, whose chrome §12 :1075 had carried over unruled and which the shell wraps today (`Shell.tsx` has no dialog case), and the upload dialog (document flows §9 :998). One branch in the shell keyed on the dialog routes.**
 READ VIEW     the researcher's work, read-only, GATED to researchers: every act on a thesis and every recorded
               opinion, the corpus as a whole, what is owed. Thesis §9 :1003–:1005 — "any researcher READS any
               thesis's working state ... gated from the public, not from colleagues". THE MAIN FOCUS.
@@ -108,7 +108,7 @@ investigation (architecture §9.5 :382–:384).
 |---|---|---|
 | `/article-rules/[trackedUrlId]/[capture]` | interaction A6's five, `requireResearcher` | MARKING :517–:624; A6 |
 
-No second dialog exists in any design. A future one is added by the design that needs it, under this rule, and nowhere else.
+No second dialog exists in any design. — **CONFORMED 2026-09-23 to A1 :1129 (RULED 2026-09-22): the UPLOAD DIALOG is the second of the class (document flows §9 :998), its own router beside `/api/article-rules`; this sentence predates it.** A future one is added by the design that needs it, under this rule, and nowhere else.
 
 ### 2.3 READ VIEW — gated, researchers only
 
@@ -537,7 +537,7 @@ registers apply with the middle one removed; the same components, one fewer. **A
                        a CHIP inline where the token stands: for #ev_ the record's page (its domain and title)
                        and its date or interval; for #tr_ the claim's first words and "removed <date>, never
                        restored" or the trajectory's own state; for #doc_ (reserved, document §7) the
-                       commitment's short form. A chip carries its marks: VERIFIED · FLAGGED · argued.
+                       commitment's short form. A chip carries its marks: VERIFIED · FLAGGED · argued. **RULED 2026-09-22 (the researcher, at board י4 of `docs/boards/gf-ui-boards-2026-09-22.html`): NOT the commitment's short form — §4 :167 forbids an id as text — but the document glyph and the first words of its TITLE (document A2, the researcher's fourth assertion), the `#tr_` precedent, with the one tone dot §18 gives every tick.**
                        Tap → THE CITATION SHEET (§18). **AMENDED 2026-09-18 (the researcher): the text renders EVERY Markdown capability the researcher's drafting produces — emphasis, strikethrough, lists, quotes and TABLES — because the text is written with a model in claude.ai and a capability silently dropped is a sentence the researcher wrote and no reader sees. "One column" governs the READING MEASURE, not the block types: a table keeps the measure by scrolling inside its own box, never by widening the page (§6 :963's `scrollWidth <= 375` stands). `html: false` STAYS — raw HTML in the researcher's text renders as the text it is, and "every capability" never means markup — and `linkify` stays off, so a bare URL remains isolated text rather than a link nobody chose. Task lists (`- [ ]`) and footnotes (`[^1]`) are NOT part of a thesis (the researcher, 2026-09-18) and stay unrendered: both need a plugin, and a thesis is an argument, not a working document.**
 4  THE APPEALS         one section, two kinds, each an item card (T5 :819–:821; T4):   — REMOVED 2026-09-16 (R56 ruling; docs/gf-ui-design-session-2026-09-16.md §3): one card leads to the call page
      REQUESTED gap     the request READY TO SEND: text · the authority · legal basis · addresses · the records
@@ -716,7 +716,7 @@ and `no-model-prose-public` (§9) is written to allow exactly this field and not
                       neither is a value the page cannot parse.
 1  THE CONTEXT LINE   sticky: the scope (opened pages · every page) · the active filters as chips · the count
                       the read returned so far · the LENS control: PAGES · CITED RECORDS („עמודים · רשומות מצוטטות” — the
-                      qualifier is required: „מצוטטות” alone is an adjective with no noun and does not say cited WHAT)
+                      qualifier is required: „מצוטטות” alone is an adjective with no noun and does not say cited WHAT) **— RULED 2026-09-22 (the researcher, board י3): a THIRD lens, DOCUMENTS („מסמכים”), GATED, over `list_documents` (document A4 :1432): one row per document of the caller's scope — its TITLE, the page it asserts, the date, custody, anchored or owed, cited-by — oldest first; a derived document names what it derives from with a document tick; the dialog is NOT reachable from here (ui §1 :36–:39), and the row says so in one line**
 
                       **THE STREAM IS NOT A LENS, amended 2026-09-18 (the researcher).** It was one, and the
                       lens contradicted the rule four lines above it in this same block: the stream is WHAT A
@@ -1069,7 +1069,7 @@ researcher pastes into the chat, where the act is made and attributed.
 
 Each is named so that it is not read as a gap. None is decided here; each says whose it is.
 
-- **The public's doors** — the intake dialog, the withdrawal dialog, the `#doc_` sheet, the documents register,
+- **The public's doors** — the intake dialog, the withdrawal dialog, the `#doc_` sheet, the documents register (**the PUBLIC one, `list_findings`' third register, step 34 — RULED 2026-09-22 (the researcher, at board י3 of `docs/boards/gf-ui-boards-2026-09-22.html`): the GATED register — a DOCUMENTS lens on `/research/corpus` over `list_documents`, the researcher's documents by title, page, date, custody and anchored-or-owed — is IN document step 30's round, because it is the one place a researcher SEES an upload before a citation exists; §24 :719**),
   `/safety`'s final copy: the document plan's steps 32–35, against document §5, §7, §8, §9; this design reserves
   their places (§2.5, §18, §35) and builds none.
 - **The marking page's shape and its phone form** — interaction MARKING and A6, unchanged; §4 names the limit.
@@ -1126,7 +1126,7 @@ PUBLIC (no identity; PUBLIC_PAGE where a page is involved)
   /about · /safety · /researchers          —                      none
   /reports/new · /reports/patterns         the reports plan's     /api/reports/*
 DIALOG (a researcher; reached by link only)
-  /article-rules/[trackedUrlId]/[capture]  page + timestamp       /api/article-rules/… (interaction A6)
+  /article-rules/[trackedUrlId]/[capture]  page + timestamp       /api/article-rules/… (interaction A6) — **RULED 2026-09-22 (the researcher): THE UPLOAD DIALOG IS THE SECOND DIALOG OF THIS CLASS, and the dialog class is why it is not a fifteenth gated route. Its own router behind `requireResearcher`, mounted BESIDE `/api/article-rules` as `server.ts` :180 mounts that one — never under `/api/research`, whose fourteen routes are each a tool's answer (§7; `routeIsTool` scans three modules and the marking router is not among them, because a dialog's route was never a tool's answer). ONE POST taking `{ docId, mimeType, byteLength }` and answering the SIGNED UPLOAD URL with its expiry; minting it is the dialog's CACHE act (thesis §2 :126–:132, as the marking dialog's `PUT …/draft` is, interaction :548), while `add_document` stays the ONE ATTRIBUTED ACT and reads the object by `docId`. NOT `/api/documents/…` — document A5 :1504–:1511 reserves that prefix for step 34's two PUBLIC serves — and not `/intake`, `/submit`, `/withdraw` or `/safety`, each of which `no-door-before-it-exists` would correctly redden. The dialog's LINK rides `list_documents`' envelope, so A4 gains no tool (document flows §9 :998, plan :182). The browser path and the API prefix are the step's to choose within those bounds.**
 READ VIEW (a researcher; /api/research/…)
   /research                                the caller (mine|all)  reviews · evidence-reviews · theses · framings · pages
   /research/theses/[thesisId]              the thesis             theses/:id · framings/:id · debates/:sessionId

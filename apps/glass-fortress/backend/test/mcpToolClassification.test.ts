@@ -252,6 +252,11 @@ const DESIGNED_SURFACE: Readonly<Record<string, string>> = {
   list_thesis_reviews: 'thesis A4 :1523',
   audit_thesis_claims: 'thesis A4 :1529 (unchanged)',
   get_thesis_trajectory_citations: 'thesis A4 :1529 (unchanged)',
+  // document flows A4 — the researcher's door, document step 30. The surface moves 46 -> 50, declared (R76).
+  add_document: 'document A4 :1404',
+  read_document: 'document A4 :1424',
+  list_documents: 'document A4 :1432',
+  describe_document: 'document A4 :1437',
   // No tool contract: the environment's identity, which every write is checked against before it is made — CLAUDE.md
   // ("Identify the environment"), named as the acceptance read by evidence flows :670 and :739.
   get_environment: 'CLAUDE.md; evidence flows :670, :739',

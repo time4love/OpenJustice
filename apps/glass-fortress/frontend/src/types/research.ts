@@ -770,3 +770,46 @@ export interface RuleHistory {
   };
   matches: RuleMatch[];
 }
+
+// ---------------------------------------------------------------------------
+// `list_documents` — docs/gf-document-flows.md A4 :1434, the SHAPE RULED 2026-09-23 (batch item 15). Written to the
+// line, never to the backend's types: the page derives nothing (ui §8), and a field the line does not name is not read.
+// ---------------------------------------------------------------------------
+
+export const CUSTODIES = ['HELD', 'SEALED', 'NONE'] as const;
+export type Custody = (typeof CUSTODIES)[number];
+
+export const OPENINGS = ['PASSAGE', 'CONTENT', 'BYTES'] as const;
+export type Opening = (typeof OPENINGS)[number];
+
+/** ONE shape with `read_document`'s assertions, the title aside (A4 :1434). */
+export interface DocumentAssertions {
+  assertedUrl: string | null;
+  /** `YYYY-MM-DD`. */
+  assertedAt: string | null;
+  derivedFrom: { commitment: string; title: string | null } | null;
+}
+
+export interface DocumentRow {
+  commitment: string;
+  title: string | null;
+  custody: Custody;
+  mimeType: string;
+  byteLength: number;
+  receivedAt: string;
+  assertions: DocumentAssertions;
+  /** CURRENT(d)'s contentVersionHash, or null while the derivation is owed. */
+  current: string | null;
+  /** ANCHORED(d), A3 :1366 — false by construction until step 31. */
+  anchored: boolean;
+  citedBy: { thesisId: string; published: boolean }[];
+  opening: Opening | null;
+  /** The FIRST arrival whose `by` is not null; null for a document only the public door delivered (step 32). */
+  by: Researcher | null;
+}
+
+export interface DocumentsList {
+  /** Oldest first by receivedAt, then commitment. */
+  documents: DocumentRow[];
+  uploadUrl: string;
+}

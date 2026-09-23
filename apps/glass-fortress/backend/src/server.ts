@@ -17,6 +17,7 @@ process.on('uncaughtException', (err) => {
   console.error('[process] Uncaught exception (process kept alive):', err);
 });
 import { walkArticleRulesRouter } from './walk/routes';
+import { documentUploadRouter } from './routes/documentUploadRoutes';
 import { mcpRouter } from './mcp/mcpRoutes';
 import { authRouter } from './routes/authRoutes';
 import { publicThesisRouter } from './routes/publicThesisRoutes';
@@ -178,6 +179,9 @@ app.use('/api', generalLimiter);
 // The marking page's surface, page-scoped (docs/gf-interaction-flows.md A6),
 // behind requireResearcher inside the router.
 app.use('/api/article-rules', walkArticleRulesRouter);
+// The upload dialog's surface — the SECOND dialog of the class, mounted BESIDE the marking router with its
+// gate inside the router, never under /api/research (docs/gf-ui-flows.md A1 :1129).
+app.use('/api/document-upload', documentUploadRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/reports', reportRouter);
 // The published theses — PUBLIC, identity-free (thesis A5 :1559–:1570).

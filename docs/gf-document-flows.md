@@ -160,7 +160,7 @@ SEALED   INTAKE, always. The browser strips the file's metadata, computes DOC_ID
          MEMORY, recomputes DOC_ID and refuses on mismatch, derives what §3 lets it derive, zeroes
          the plaintext, discards the key, and pins the CIPHERTEXT to IPFS. What the platform
          holds at rest: the name, the CID of the sealed copy, and the content (§3). Never the file
-HELD     RESEARCHER, always. The file arrives in plaintext through MCP, attributed; the server
+HELD     RESEARCHER, always. The file arrives in plaintext through MCP, attributed; the server — **RULED 2026-09-22 (the researcher; `docs/gf-document-design-session-2026-09-22.md` §1–§2): the BYTES arrive through the researcher's UPLOAD DIALOG into the platform's private bucket, keyed by DOC_ID, because claude.ai cannot pass a file to an MCP tool; the TOOL CALL names the object and is the attributed act (§9 :998). A paste alone arrives as text in the call** — **RULED 2026-09-23 (the researcher): THERE IS NO PASTE. NOTHING ENTERS THE CORPUS DIRECTLY FROM THE CLAUDE.AI CHAT. Every document a researcher holds arrives as a FILE through the upload dialog, into the bucket, keyed by DOC_ID. A FOIA answer is received as a document and imported as one; a video's transcript is a PDF. The clause to the left is RETIRED.**
          computes DOC_ID and keeps the bytes. What it holds at rest: the name, the bytes, and the
          content
 ```
@@ -279,9 +279,9 @@ extractor can read the bytes, the bytes themselves.**
 
 ```
 PDF with a text layer   the extractor reads it                       deterministic
-image, scan, photo      an OCR ENGINE reads it                       deterministic at a version
-paste                   the bytes ARE the text — decoded as UTF-8; one version, by construction
-none of the above       no COMPUTED text exists; the content version IS the bytes, and its hash
+image, scan, photo      an OCR ENGINE reads it                       deterministic at a version   ← **RULED 2026-09-23 (the researcher): `ocr-none` SHIPS IN v1 — no OCR engine is chosen, so a scan and a photograph alike derive NO computed text: the content version IS the bytes and its hash is the name, and a quoted span from one is UNCHECKED with the reason (A3 :1386). The reason is not quality but the GATE: a weak engine turns a true quote with one misread letter into a blocking ABSENT under DOCUMENT_QUOTES_PRESENT (A6 :1536), while `ocr-none` leaves an honest, non-blocking UNCHECKED. The record, the two gates any future engine must pass, and the full analysis: `docs/gf-extractor-ruling-2026-09-23.md`.**
+paste                   the bytes ARE the text — decoded as UTF-8; one version, by construction   ← **RULED 2026-09-23 (the researcher): THERE IS NO PASTE. THIS ROW IS RETIRED: the kinds are FOUR — a PDF with a text layer, a scan, a SPREADSHEET (:284), and a file no engine reads.**
+none of the above       no COMPUTED text exists; the content version IS the bytes, and its hash — **RULED 2026-09-22 (the researcher): a SPREADSHEET (XLSX, CSV) is NOT this row — its cells serialised deterministically, sheet by sheet, at a pinned version are COMPUTED text (`docs/gf-document-design-session-2026-09-22.md` §3)**
                         is the name — the researcher reads the image, and so does the assessor
 ```
 
@@ -321,9 +321,9 @@ DocumentContentVersion                                                      ⚠�
   name                    DOC_ID — the document
   text                    String | null — null when the content is the bytes
   contentVersionHash      sha256(utf8(text)) · or = name when text is null
-  extractor · extractorVersion                    provenance: what read the bytes
+  extractor · extractorVersion                    provenance: what read the bytes — **RULED 2026-09-23 (the researcher): and `derivedUnder`, an APPEND-ONLY LIST of every extractor version that REPRODUCED this text. :316–:317 (*a re-derivation yielding identical text is not a new row*) and A3 :1368 (*the version with extractorVersion = CURRENT_EXTRACTOR*) together TRAPPED a held document whose text a new extractor reproduces: no row carried the new version, so CURRENT(d) read AWAITING_DERIVATION forever while the pass reported UNCHANGED, and the document became uncitable under A6 :1531's hard check. Overwriting `extractorVersion` would lose which extractor FIRST produced the text, so the row keeps its identity AND its provenance and the LIST is what CURRENT(d) reads. `readFailed` rides beside it (A2 :1300).**
   derivedAt · derivedFrom  AT_RECEIPT | HELD_BYTES   provenance: whether the bytes were at rest
-  opinion                 Json | null — transcription, summary, date, actors, categories, with
+  opinion                 Json | null — transcription, summary, date, actors, categories, with — **CONFORMED 2026-09-23 to A2 :1302: one `DocumentOpinion` row per reading, append-only, not a column —**
                           model and promptVersion; the OPINION register
   @@unique([name, contentVersionHash])
 ```
@@ -348,7 +348,7 @@ cost stated, not hidden: a better OCR engine improves every HELD scan and no sea
 | `CURRENT_EXTRACTOR` moves | the derivation pass, over HELD bytes | a new version per HELD document whose text changed; the old kept | CURRENT moves → NEEDS_REVIEW → evidence Flow E3, unchanged |
 | the same, for a SEALED document | — | nothing; there are no bytes to read | nothing |
 | plaintext of a SEALED document arrives again, HELD (§2) | the receipt | derived under the current extractor; the AT_RECEIPT version is kept | if the hash differs, NEEDS_REVIEW; the researcher sees the receipt text beside the held text |
-| a paste | — | nothing, ever | nothing |
+| a paste | — | nothing, ever | nothing — **RULED 2026-09-23 (the researcher): THERE IS NO PASTE. the row is RETIRED with the kind; a text-layer PDF re-derives like any other file.** |
 | a model re-reads a document | a paid call, on a researcher's word | a new OPINION beside the version; the hash is untouched | nothing — an opinion moves no citation |
 
 **The citation pins `(name, contentVersionHash)` on the mention**, beside its argument, exactly
@@ -512,7 +512,7 @@ browser      the intake dialog, addressed to the thesis and, from an appeal, its
                          authorised for this investigation — accepted before anything else is
                          possible; the text shown is hashed and the hash travels with the arrival
              THE FILES   each one a document (§2). A written account, if the sender gives one,
-                         is a document too — a paste, sealed like the rest
+                         is a document too — a paste, sealed like the rest — **RULED 2026-09-23 (the researcher): THERE IS NO PASTE. THE WHISTLEBLOWER DOOR TAKES ONLY DOCUMENTS TOO, never pasted text: a written account is given as a FILE and sealed like the rest. A5 :1488's body already takes `files:` alone and needs no change.**
              SEALED      per file: strip metadata · DOC_ID over the plaintext · encrypt · show the
                          sender the name and the key, and after the receipt the salt and the CID
                          — ONCE, theirs to keep · send ciphertext, key and name
@@ -684,7 +684,7 @@ Claude       → get_arrivals(thesisId)                                        G
              ← each document: name · custody · content — the text, or the bytes if HELD and no
                text derives — · the OPINION, labelled · anchored or owed
              → read_document(commitment)                                     GATED read · ⚠️
-             ← HELD: the bytes, the current content version, the opinions
+             ← HELD: the bytes, the current content version, the opinions — **CONFORMED 2026-09-23 to A4 :1425 as ruled that day: the bytes reach the model as an image block (an image) or a signed download link (every other kind), never inline.**
                SEALED: the receipt content version and its opinion; NO bytes exist to return
 researcher   reads — with Claude, who reads the bytes or the text in the chat; a description
              Claude gives in the conversation is the conversation's, and is recorded as an
@@ -839,13 +839,13 @@ whether that is enough is counsel's question, pointed at from here.
 **A FOIA answer and a submission differ here only in what a researcher usually decides.** A
 held FOIA answer is a public record lawfully obtained and will usually be opened in full; a
 sealed submission usually will not be; the platform encodes neither "usually", allows the same
-three openings to both, and records which was chosen and by whom.
+three openings to both, and records which was chosen and by whom. — **RULED 2026-09-23 (the researcher): A SCANNED DOCUMENT IS OPENED TO BYTES. It is the researcher's STANDING DECISION and not a platform rule — this clause's point stands, and nothing is encoded. It exists because under `ocr-none` a scan's quoted span is UNCHECKED, so a reader can neither be shown a machine-checked quote nor open the file unless the opening is BYTES (A5 :1511 refuses `/bytes` below it). Opening to BYTES serves the file with `{ docId, salt }` beside it (A5 :1509–:1510), so a stranger reproduces the commitment and reads the quote with their own eyes. `docs/gf-extractor-ruling-2026-09-23.md`.**
 
 **What the public read resolves a `#doc_` citation to** — the frontend's to render, this
 document's to specify, in the shape of thesis T5's page:
 
 ```
-#doc_   kind DOCUMENT · custody HELD | SEALED · the commitment, its registry index and block
+#doc_   kind DOCUMENT · **the TITLE (A2, RULED 2026-09-22) — the researcher's name for it, the chip's face on the public page, checked by the gate like the version's text (A6)** · custody HELD | SEALED · the commitment, its registry index and block
         time · how the identity was last verified and when (§4's table, verbatim by mode) ·
         the second witness: NONE — stated, never implied by a shared word with captures ·
         the pinned content version's hash · the opening, and what it serves ·
@@ -995,10 +995,10 @@ at one weight would tell a reader the opposite of what it means — the rebuild 
 against `DIRECT` as a peer of `WAYBACK`. What a researcher holds of such a page is bytes with two
 assertions, and that is a document.
 
-**The researcher's door, one tool for every document a researcher holds:**
+**The researcher's door, one tool for every document a researcher holds:** **RULED 2026-09-22 (the researcher; `docs/gf-document-design-session-2026-09-22.md` §2): the door has TWO HALVES and ONE ACT. The UPLOAD DIALOG — a DIALOG under ui §1 :36–:38, opened by a link the chat hands over, gated, in no navigation — computes DOC_ID in the browser over the file as given (A1), obtains a SIGNED UPLOAD URL from a gated route for that key, uploads the file straight into the platform's private bucket (§12 :1185), and hands back the `add_document` command to paste; under thesis §2 :126–:132 the object is CACHE until the tool runs. The tool reads the object by `docId`, recomputes DOC_ID and refuses `NAME_MISMATCH`, and writes the Document and the Arrival — the one attributed act. An object no row names is swept after a lifetime, an operational parameter of flows A8's kind. **RULED 2026-09-23 (the researcher): THERE IS NO PASTE — every document arrives through this dialog, so no arm skips it (A4 :1404).** The dialog's link rides `list_documents`' envelope; A4 gains no tool. **THE LINK CARRIES THE CONTEXT (the researcher, 2026-09-22, at board י1): the backend composes the dialog's URL on the read the conversation came from — `list_documents({ url })` hands a link that prefills the page, `read_document(commitment)` hands a link that prefills derived-from and that document's assertions — and the dialog draws what the link brought AS LABELS, never as fields — the title Claude proposed and the researcher approved in the chat among them — and takes one thing, the file; to change a fact the researcher returns to the conversation for a new link. No picker, the marking page's pattern. ONE document per dialog.**
 
 ```
-Claude       → add_document({ bytes, mimeType, assertedUrl?, assertedAt?, derivedFrom? })
+Claude       → add_document({ bytes, mimeType, assertedUrl?, assertedAt?, derivedFrom? }) — **CORRECTED 2026-09-22 (a CONFORMING amendment to the block below; ruled at §9 :998 and A4 :1404): the argument is `docId` — the bucket object the upload dialog wrote — REQUIRED, never `bytes` — **RULED 2026-09-23 (the researcher): THERE IS NO PASTE; the `text` arm is RETIRED and there is no second arm (A4 :1404).** `NO_BYTES` covers a `docId` naming no object; `NAME_MISMATCH` fires when the object's bytes do not hash to it. `DOC_ID := sha256(bytes)` at :1007 is UNCHANGED and still exactly true — the server hashes the object's bytes, whatever carried them.**
                                                                           WRITE · ⚠️ to build
 backend      REFUSES NO_RESEARCHER · NO_BYTES · UNSUPPORTED_TYPE · TOO_LARGE (flows A8) ·
                      NOT_SURVEYED (assertedUrl names a page with no TrackedUrl — survey it first;
@@ -1006,14 +1006,14 @@ backend      REFUSES NO_RESEARCHER · NO_BYTES · UNSUPPORTED_TYPE · TOO_LARGE 
                      NOT_A_DOCUMENT (derivedFrom names no document)
              DOC_ID := sha256(bytes) · HELD · content derived (§3), or owed · a fresh salt ·
              committed through the anchoring module (§4), or owed
-             a DOC_ID already known → the same document, a further arrival; a sealed one is
+             a DOC_ID already known → the same document, a further arrival; a sealed one is — **CONFORMED 2026-09-23 to A2 :1271 and A4 :1409: its assertions stay the first arrival's, and a later call's differing ones are answered as IGNORED —**
              HELD from now (§2)
              records the ASSERTIONS as the researcher's, attributed: assertedUrl — the page these
              bytes are said to show · assertedAt — when it is said to have shown them ·
-             derivedFrom — the document this one is said to be a redaction or a transcription of
+             derivedFrom — the document this one is said to be a redaction or a transcription of — **RULED 2026-09-22 (the researcher): a MEDIA file (audio, video) is a HELD document whose content is its bytes; its TRANSCRIPT is a second document, a paste, derivedFrom it — **RULED 2026-09-23 (the researcher): THERE IS NO PASTE. the transcript is a second document **as a PDF**, `derivedFrom` the media, not a paste; the two-document shape and what a thesis cites are unchanged —, and is what a thesis cites; speech-to-text is an OPINION on the media's version, never an extractor, until a two-draw agreement measurement says otherwise (`docs/gf-document-design-session-2026-09-22.md` §4)**
              (§7). None is verified; each is shown as whose it is
              ← { commitment, docId, custody: HELD, content: { contentVersionHash, text | null },
-                 anchored: bool, equalsCapture: { url, capture } | null }
+                 anchored: bool, equalsCapture: { url, capture } | null, existed: bool } — **`existed` CONFORMED 2026-09-22 to A4 :1409**
 ```
 
 **What a researcher asserts, and what the platform can add to it.** The URL and the date are the
@@ -1182,7 +1182,7 @@ Each is named so that it is not read as a gap. None is decided here; each says w
 - **Save Page Now** — the factual layer's, if it is ever built; §9 says what would and would not
   change here.
 - **The pinning service and the storage** — infrastructure. The design requires content addressing
-  of the sealed copy and that the platform can release its own pin, and names no provider.
+  of the sealed copy and that the platform can release its own pin, and names no provider. **RULED 2026-09-22 (the researcher; `docs/gf-document-design-session-2026-09-22.md` §2): the STORAGE for HELD bytes is one PRIVATE BUCKET per environment, in the same Supabase project as that environment's database, so it sits on the `DATABASE_URL` axis `assertOperationalContext` already checks; objects keyed by DOC_ID; held or cache by whether a Document row exists — derived, never a column; no public read. The sealed copy's pin is unchanged and lives nowhere in it.** — **RULED 2026-09-23 (the researcher): the bucket COMES TO EXIST BY A MIGRATION — one hand-written insert of `documents` into `storage.buckets`, `public = false`, `file_size_limit` = TOO_LARGE (held equal to the one TypeScript constant by a test), `ON CONFLICT DO NOTHING` — so it deploys itself before the code that needs it, on every environment; `allowed_mime_types` is left unset, the accepted types having one spelling. `db:check-drift` cannot see the storage schema, so `LAND` reads the row from the database with `public = false`. The signed-URL route REFUSES LOUDLY when the bucket is absent and never creates it. No new credential: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` exist and `appEnv.ts` ties them to `DATABASE_URL`'s project.**
 - **Operational parameters** — the size cap, the supported types, the rate limit on the receipt's
   paid read; flows A8's kind, not judgements.
 - **The Prosecutor's reading of documents** — its material gains every document's COMPUTED text
@@ -1264,11 +1264,11 @@ Document                                                                    ⚠�
   commitment               @unique — the public name (A1)
   salt                     Bytes — GATED
   cid                      String? — the sealed copy's content address; set on a sealed arrival
-  bytes                    storage reference | null — set on a held arrival; null after SHED
+  bytes                    storage reference | null — set on a held arrival; null after SHED — **RULED 2026-09-22: the reference is the bucket object keyed by DOC_ID (§12 :1185); the same object was the dialog's CACHE before this row existed (§9 :998)**
   mimeType · byteLength
   receivedAt               the first arrival's moment
   verifiedAtReceipt        DateTime? — the SEALED stamp: DOC_ID recomputed in memory then (§2)
-  assertedUrl · assertedAt · derivedFromCommitment
+  assertedUrl · assertedAt · derivedFromCommitment · **title — RULED 2026-09-22 (the researcher): the FOURTH assertion, one line, REQUIRED at the researcher's door — the name a person recognises the document by (ui §4 :167), proposed by Claude and approved by the researcher in the conversation, carried by the dialog's link and by the command, never edited in the dialog; a sealed document has none at receipt (step 32's question)** — **RULED 2026-09-23 (the researcher): the four assertions are written ONCE, by the FIRST researcher arrival; a later arrival of the same bytes is recorded and attributed and changes none of them (A4 :1409).**
                            String? each — the researcher's door only; attributed through the
                            arrival's researcherId; derivedFromCommitment must name a Document
   custody                  DERIVED, never a column: HELD iff bytes present · SEALED iff cid
@@ -1297,12 +1297,12 @@ DocumentContentVersion   append-only, §3's row
   id · commitment
   text                     String | null — null when the content is the bytes
   contentVersionHash       A1
-  extractor · extractorVersion · derivedAt
+  extractor · extractorVersion · derivedAt — **RULED 2026-09-23 (the researcher): plus `derivedUnder String[]`, APPEND-ONLY — every extractor version that reproduced this exact text, appended by the derivation pass when it re-derives to content the row already holds; CURRENT(d) reads MEMBERSHIP of this list and never equality on `extractorVersion` (A3 :1368, §3 :324). And `readFailed Boolean` — the reader was SELECTED and THREW, as against having found no text. A corrupt file of an accepted type is ACCEPTED AS BYTES-ONLY like any other bytes no reader can read (§3 :284) and is NEVER refused: a refusal would turn the platform's own reader failing into a reason to hold nothing, and A5 :1493's `UNREADABLE` is a key that does not open a ciphertext — a different fact that must not share one spelling. `extractor-coverage` counts a broken PDF apart from a photograph by this field (A7 :1591).**
   derivedFrom              AT_RECEIPT | HELD_BYTES
-  opinion                  Json | null — the OPINION register: transcription, description,
-                           summary, date, actors, categories, model, promptVersion
+  opinion                  Json | null — the OPINION register: transcription, description, — **RULED 2026-09-23 (the researcher): REPLACED by a `DocumentOpinion` table, APPEND-ONLY — one row per paid reading of a version: model · promptVersion · the researcher who spent it · when · the body — so A4 :1438's "appended" is true; this column leaves with step 30's migration.**
+                           summary, date, actors, categories, model, promptVersion — **RULED 2026-09-23 (the researcher): `DocumentOpinion` models BOTH writers the plan names (:160–:162), as `Arrival` models its two doors (:1279, :1283): `by RESEARCHER | RECEIPT`, and a CHECK — `researcherId` REQUIRED iff `RESEARCHER`, NULL iff `RECEIPT`. Step 30 writes the first arm; step 32 writes the second into a schema that already admits it — never a later migration loosening a constraint for a case known now.**
   @@unique([commitment, contentVersionHash])
-  text and opinion are NULLED by SHED; the row, its hash and its provenance stay
+  text and opinion are NULLED by SHED; the row, its hash and its provenance stay — **CONFORMED 2026-09-23 to A2 :1302: SHED nulls the body of every `DocumentOpinion` row of the document and removes no row**
 
 DocumentOpeningDecision  append-only
   id · thesisId · commitment · sequence  @@unique([thesisId, commitment, sequence])
@@ -1365,8 +1365,8 @@ RECOMPUTABLE(e)           kind DOCUMENT: e.fileHash = sha256(bytes32(d.docId) �
                           Document keyed by e.documentCommitment — evidence A3's predicate, third arm
 ANCHORED(d)               ATTRIBUTED(d.commitment)                             evidence A3
 VERIFIED(d)               RECOMPUTABLE(d) AND ANCHORED(d)
-CURRENT(d)                HELD:   the DocumentContentVersion with extractorVersion =
-                                  CURRENT_EXTRACTOR; none → AWAITING_DERIVATION (evidence A3's name)
+CURRENT(d)                HELD:   the DocumentContentVersion whose `derivedUnder` CONTAINS
+                                  CURRENT_EXTRACTOR; none → AWAITING_DERIVATION (evidence A3's name) — **RULED 2026-09-23 (the researcher): MEMBERSHIP, never equality on `extractorVersion` (A2 :1300, §3 :324) — a re-derivation that reproduces the text APPENDS to the list and moves no row, so the identical-text case is current rather than permanently awaiting.**
                           SEALED: the version with derivedFrom = AT_RECEIPT, forever
                           NONE:   undefined — EVIDENCE_DERIVED fails naming SHED, never AWAITING
 CITATION_CURRENT(m) · ARGUED(m) · NEEDS_REVIEW(e)       evidence A3, unchanged, over CURRENT(d)
@@ -1401,12 +1401,12 @@ undefined the tool refuses `AWAITING_DERIVATION` (HELD, no version under the cur
 or `SHED` (naming cause and date), never a guess. Every paid call is named as one.
 
 ```
-add_document({ bytes, mimeType, assertedUrl?, assertedAt?, derivedFrom? })   WRITE · ⚠️ to build
+add_document({ bytes, mimeType, assertedUrl?, assertedAt?, derivedFrom? })   WRITE · ⚠️ to build — **RULED 2026-09-22: the argument is `docId` (the bucket object the upload dialog wrote) OR `text` (a paste), exactly one; **RULED 2026-09-23 (the researcher): THERE IS NO PASTE. THE `text` ARM IS RETIRED: the argument is `docId`, REQUIRED — the bucket object the upload dialog wrote — and there is no second arm, so `TOO_LARGE` is read from the object's size in every case and every HELD document has a bucket key.** `NO_BYTES` covers a `docId` naming no object; `NAME_MISMATCH` when the object's bytes do not hash to it (§9 :998); `title` REQUIRED (A2), `NO_TITLE` refused**
   does      §9: DOC_ID · HELD · content derived or owed · salt · commitment written or owed ·
             an Arrival(door = RESEARCHER) · the assertions recorded as the caller's
   returns   { commitment, docId, custody: 'HELD', content: { contentVersionHash, text | null } |
               null (awaiting), anchored, equalsCapture: { url, capture } | null,
-              existed: bool (the same bytes were already a document) }
+              existed: bool (the same bytes were already a document) } — **RULED 2026-09-23 (the researcher): with `existed: true` the answer carries the STORED assertions and returns every value the call gave that differs as IGNORED — never stored, never silently dropped; a differing account belongs in that researcher's citation argument (§1). No migration.**
   refuses   NO_BYTES · UNSUPPORTED_TYPE · TOO_LARGE · NOT_SURVEYED (assertedUrl has no
             TrackedUrl) · NOT_A_DOCUMENT (derivedFrom)
 
@@ -1422,23 +1422,23 @@ dismiss_arrival({ arrivalId, reason, expectedSequence })                    WRIT
             dismiss) · REASON_REQUIRED · STALE_SEQUENCE
 
 read_document({ commitment })                                                GATED · ⚠️ to build
-  returns   HELD:   { custody, docId, bytes, versions: [{ contentVersionHash, text, provenance,
-                      opinion LABELLED }], current, anchored, equalsCapture, assertions }
+  returns   HELD:   { custody, docId, bytes, versions: [{ contentVersionHash, text, provenance, — **RULED 2026-09-23 (the researcher): `read_document` NEVER PUTS BYTES IN THE MODEL'S CONTEXT; `bytes` is not a field of the answer. COMPUTED text rides it; a bytes-only document whose bytes are an IMAGE rides as an MCP image block, because §6 :735–:737 needs the model to see it, under a size cap that is an operational parameter (interaction A8's kind); every other bytes-only kind — PDF, spreadsheet, media — rides as `bytesUrl`, a short-lived signed DOWNLOAD link with its expiry.**
+                      opinion LABELLED }], current, anchored, equalsCapture, assertions } — **SHAPE, RULED 2026-09-23 (the researcher, batch item 15, adopting Fable's two corrections with `by | null`; written by the crossed seat from the step-30 interface and a real body):** `{ custody: 'HELD', commitment, docId, mimeType, byteLength, receivedAt: ISO, assertions: { title, assertedUrl, assertedAt: YYYY-MM-DD | null, derivedFrom: { commitment, title } | null }, arrivals: [{ by: { handle, mine } | null, at: ISO }] oldest first — null for a public-door arrival (step 32), versions: [{ contentVersionHash, text | null, provenance: { extractor, extractorVersion, derivedUnder: string[], readFailed, derivedFrom: 'AT_RECEIPT' | 'HELD_BYTES', derivedAt: ISO }, opinions: [{ model, promptVersion, by: { handle, mine } | null, at: ISO, body | null }] oldest first }], current: { contentVersionHash } | { awaiting: 'AWAITING_DERIVATION' }, bytesUrl: { url, expiresAt: ISO } | null, anchored: boolean — ANCHORED(d) (A3 :1366), false by construction until step 31 and never a literal, equalsCapture: { url, capture } | null, uploadUrl }` — an image with no computed text, within the image cap, rides BESIDE this JSON as an MCP image block, never inside it
             SEALED: { custody, verifiedAtReceipt, cid, version: the AT_RECEIPT one with its
-                      opinion LABELLED, anchored } — no bytes exist to return
+                      opinion LABELLED, anchored } — no bytes exist to return — **RULED 2026-09-22: the HELD shape also carries `uploadUrl`, the dialog's link with this document as derived-from and its assertions as defaults (§9 :998)**
             NONE:   { custody: 'NONE', shed: { cause, at }, hashes only }
   refuses   NOT_A_DOCUMENT
 
-list_documents({ url? })                                                     GATED · ⚠️ to build
-  returns   every document, or every document asserting url, with custody, assertions,
-            current hash, anchored, citedBy, opening; oldest first
+list_documents({ url? })                                                     GATED · ⚠️ to build — **RULED 2026-09-23 (the researcher): ui §7.1's shape as-is (ui :323–:328) — `scope: 'mine' | 'all'`, default `mine`; the gated route passes `all`; each row carries `by: { handle, mine }`, never an id**
+  returns   every document, or every document asserting url, with custody, assertions, **— RULED 2026-09-23 (the researcher): and `mimeType` and `byteLength` (A2 :1268) —**
+            current hash, anchored, citedBy, opening; oldest first — **RULED 2026-09-22: and `uploadUrl`, the dialog's link, carrying `url` as the page to prefill when given (§9 :998)** — **SHAPE, RULED 2026-09-23 (the researcher, batch item 15; the crossed seat):** `{ documents: [{ commitment, title | null, custody: 'HELD' | 'SEALED' | 'NONE', mimeType, byteLength, receivedAt: ISO, assertions: { assertedUrl, assertedAt, derivedFrom: { commitment, title } | null } — ONE shape with read_document's, current: contentVersionHash | null, anchored: boolean, citedBy: [{ thesisId, published }], opening: 'PASSAGE' | 'CONTENT' | 'BYTES' | null, by: { handle, mine } | null — the FIRST arrival whose by is not null, read_document's arrivals being the one spelling of both }] oldest first by receivedAt, then commitment; uploadUrl }`
   refuses   NOT_SURVEYED (url given and unknown)
 
 describe_document({ commitment })                                     WRITE · paid · ⚠️ to build
   does      a model reads a HELD document's bytes on the researcher's word and its reading is
             appended as the OPINION of CURRENT(d) — §3's last row; never a citation
-  refuses   NOT_A_DOCUMENT · NOT_HELD (a sealed document was read once, at receipt) ·
-            AWAITING_DERIVATION (an opinion attaches to a version)
+  refuses   NOT_A_DOCUMENT · NOT_HELD (a sealed document was read once, at receipt) · **UNSUPPORTED_TYPE — RULED 2026-09-23 (the researcher): on audio or video, which no model reads; one spelling with `add_document`'s** · **TOO_LARGE — RULED 2026-09-23 (the researcher, adopting Fable's advice with the bound amended to 50 MB): above the DESCRIBER's bound, an operational parameter of interaction A8's kind taken from the provider's documented inline-input limit and recorded with that reason — 50 MB, the default provider's figure for a PDF; one word with `add_document`'s, two thresholds; refused BEFORE any paid call; the refusal says the bound and, where the document has computed text, that `read_document` still serves it; NEVER a silent fall-back to the computed text, whose reading the opinion row would misattribute to the file** ·
+            AWAITING_DERIVATION (an opinion attaches to a version) · **UNSUPPORTED_TYPE also — RULED 2026-09-23 (the researcher): on a document no model reads — a spreadsheet with no computed text — and the refusal CARRIES THE REASON from its version's provenance (A2 :1300): the reader FAILED (`readFailed`), or it found nothing. Same spelling. A model reads an image or a PDF as its file and a spreadsheet through its computed text.**
 
 decide_opening({ thesisId, commitment, opening, expectedSequence })          WRITE · ⚠️ to build
   does      appends DocumentOpeningDecision; in force from the next publish_thesis
@@ -1534,7 +1534,7 @@ here; two checks are added; one is amended.
 | `CITES_EVIDENCE` | **amended**: satisfied by an EVIDENCE or a DOCUMENT mention — a document is a corpus record, and a thesis resting on documents alone argues from what the corpus holds, with each citation's custody and absent second witness in view |
 | new `DOCUMENT_OPENING_DECIDED` | every `#doc_` mention of the head has a DocumentOpeningDecision, and none is BYTES on a sealed document; hard |
 | new `DOCUMENT_QUOTES_PRESENT` | every quoted span of every paragraph carrying a `#doc_` token is PRESENT or UNCHECKED by VERDICT; an ABSENT span names itself — the researcher quoted a document a phrase it does not contain; hard |
-| `NAMES_NO_PERSON` · the rest | unchanged; a document's content may name persons, the version may not |
+| `NAMES_NO_PERSON` · the rest | unchanged; a document's content may name persons, the version may not — **RULED 2026-09-22: and neither may a cited document's TITLE (A2), which the public block carries (§7 :848); the check examines every `#doc_` mention's title and names the one it examined** |
 
 **The verdict rule's third value is this document's amendment to thesis T1**: UNCHECKED, with its
 reason, wherever the content is bytes, for the assessors' and the critic's assertions and for the
@@ -1588,7 +1588,7 @@ retired-names                the factual layer's step-0 scan, extended by A4 and
 ```
 forensics:count-documents -- --env <env>        per thesis, per gap, per door; dismissed share
 forensics:arrivals-age -- --env <env>            ARRIVED entries and their age
-forensics:extractor-coverage -- --env <env>      COMPUTED text against bytes-only, by type and door
+forensics:extractor-coverage -- --env <env>      COMPUTED text against bytes-only, by type and door — **RULED 2026-09-23 (the researcher): a READ THAT FAILED counted APART from bytes no reader was selected for (A2 :1300's `readFailed`) — a broken PDF and a photograph are the same count and not the same fact.**
 forensics:document-openings -- --env <env>       openings by custody; SHED by cause; the §2 equality
 ```
 

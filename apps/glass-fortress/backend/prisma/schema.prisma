@@ -52,6 +52,13 @@ model Researcher {
   rules              Rule[]
   pageDecisions      PageDecision[]
   evidenceDecisions EvidenceDecision[]
+  /// The document layer, step 28. `arrivals` is the RESEARCHER door's only —
+  /// an INTAKE arrival has no researcher, and the door cannot say who (§5 :532).
+  arrivals          Arrival[]
+  arrivalDecisions  ArrivalDecision[]
+  documentOpenings  DocumentOpeningDecision[]
+  sheds             Shed[]
+  documentOpinions  DocumentOpinion[]
 }
 
 // ---------------------------------------------------------------------------
@@ -479,10 +486,13 @@ model Evidence {
   /// Set iff kind = DIFF.
   urlVersionDiffId           String?            @unique
   urlVersionDiff             UrlVersionDiff?    @relation(fields: [urlVersionDiffId], references: [id])
-  /// Set iff kind = DOCUMENT; `fileHash` = the commitment. NO foreign key: the
-  /// `Document` table is document refactor step 28's, and a key to a table that
-  /// does not exist cannot be declared. The CHECK still holds the arm.
+  /// Set iff kind = DOCUMENT; `fileHash` = the commitment. THE FOREIGN KEY LANDED AT
+  /// DOCUMENT STEP 28, which created the table this comment was waiting for: the note
+  /// here read "NO foreign key: the `Document` table is document refactor step 28's,
+  /// and a key to a table that does not exist cannot be declared", and that reason
+  /// expired the moment the table existed. RESTRICT, like every other key.
   documentCommitment         String?            @unique
+  document                   Document?          @relation(fields: [documentCommitment], references: [commitment], onDelete: Restrict)
   /// NO DEFAULT, deliberately. The old column defaulted to PENDING_REVIEW and the
   /// comment said why — "fails closed, not open: a create() that forgets to set
   /// this becomes PENDING_REVIEW, never a silent false claim". The target has no
@@ -575,6 +585,12 @@ enum MentionType {
   EVIDENCE // #ev_ — an Evidence.fileHash, ID(record)
   // #tr_ — a ClaimTrajectory.id, NOT a claimHash: the id pins the detection pass.
   TRAJECTORY
+  // #doc_ — a DOCUMENT, by the PUBLIC NAME §4 gives it: the COMMITMENT, never the
+  // DOC_ID, which is never in a citation (document flows §6 :745-:748, A2 :1332-:1336).
+  // Added at document refactor step 28. A reader of the text must be able to see, from
+  // the token alone, that this citation rests on bytes with no archive behind them —
+  // which is why it is a KIND and not a prefix on #ev_ (§6 :750-:755).
+  DOCUMENT
 }
 
 
@@ -601,6 +617,10 @@ model Thesis {
   publicationAttempts     PublicationAttempt[]
   withdrawals             Withdrawal[]
   notes                   Note[]
+  /// The document layer, step 28: arrivals addressed to this thesis (§5 :521-:525)
+  /// and the openings its author decided per cited document (§7 :791-:797).
+  arrivals                Arrival[]
+  documentOpenings        DocumentOpeningDecision[]
 }
 
 
@@ -629,10 +649,19 @@ model ThesisVersion {
   withdrawals         Withdrawal[]
   isHead              Thesis?              @relation("ThesisHead")
   isPublished         Thesis?              @relation("ThesisPublished")
+  /// Document flows A2 :1313-:1317 — the passage verdicts this version was published with.
+  passageVerdicts     PassageVerdict[]
 }
 
 /// A CITATION — thesis A2. One row per (version, kind, name). CHECK `ThesisMention_fields_by_kind`
 /// lives in the migration: an EVIDENCE mention carries its pin (A2 :1284).
+///
+/// WIDENED AT DOCUMENT STEP 28 to a second arm. Document flows A2 :1335 says
+/// `contentVersionHash` is "REQUIRED on DOCUMENT, computed as T2 rules, from
+/// Evidence.affirmed where a row exists else CURRENT(d)" — so a DOCUMENT mention with no
+/// pin is exactly as malformed as an EVIDENCE one, and the one-armed constraint would
+/// have let it through. It REQUIRES and forbids nothing, as step 18 ruled for every arm:
+/// a TRAJECTORY mention's pin is neither required nor refused.
 model ThesisMention {
   id                 String         @id @default(cuid())
   versionId          String
@@ -642,7 +671,10 @@ model ThesisMention {
   name               String
   contentVersionHash String?
   debateSessionId    String?
-  debateSession      DebateSession? @relation(fields: [debateSessionId], references: [id], onDelete: Restrict)
+  debateSession      DebateSession?   @relation(fields: [debateSessionId], references: [id], onDelete: Restrict)
+  /// The verdicts `publish_thesis` recorded for the quoted spans of the paragraph that
+  /// carries this token — document flows A2 :1313-:1317. Kept as observed, even after SHED.
+  passageVerdicts    PassageVerdict[]
 
   @@unique([versionId, kind, name])
 }
@@ -1373,10 +1405,20 @@ enum DebateEventType {
 /// NULLs, so any number of closed sessions coexist for one pair. Ruled
 /// 2026-09-08, option (i). Its one writer is the debate module, held by a scan.
 ///
-/// CHECK `DebateSession_one_record_key` lives in the migration: exactly one
-/// of `recordSnapshotId` and `recordDiffId` is set. The third arm,
-/// `recordCommitment`, is document refactor step 28's and is added by addition
-/// there.
+/// CHECK `DebateSession_one_record_key` lives in the migration: EXACTLY ONE of
+/// `recordSnapshotId`, `recordDiffId` and `recordCommitment` is set — the direct
+/// parallel of `Evidence_one_record_key`, and document flows A2 :1339-:1341.
+///
+/// THE THIRD ARM LANDED AT DOCUMENT STEP 28, and NOT "by addition": a CHECK's
+/// definition cannot be widened in place, so that migration DROPS this constraint
+/// and re-adds it with three arms, in one statement pair, in one file. This comment
+/// said "added by addition there" before that step and was wrong about the
+/// mechanism, never about the end state.
+///
+/// THE KIND IS WHICH KEY IS SET. Unlike `Evidence`, a debate carries no `kind`
+/// column — evidence A2 computes `recordFileHash` at open, before any row exists —
+/// so "matching the record's kind" has nothing on this row to match against, and
+/// "exactly one" is the whole of what the clause can hold here.
 model DebateSession {
   id                    String                      @id @default(cuid())
   /// The thesis this record is argued FOR. Importance is a relation, and the
@@ -1393,6 +1435,13 @@ model DebateSession {
   recordSnapshot        UrlSnapshot?                @relation(fields: [recordSnapshotId], references: [id], onDelete: Restrict)
   recordDiffId          String?
   recordDiff            UrlVersionDiff?             @relation(fields: [recordDiffId], references: [id], onDelete: Restrict)
+  /// Set iff the record is a DOCUMENT — document flows A2 :1339-:1341. `recordFileHash`
+  /// IS this commitment for such a debate: the debate computes the record's name at open,
+  /// before any `Evidence` row exists, and for a document that name is the COMMITMENT and
+  /// never the DOC_ID. Added at document refactor step 28, with the CHECK below widened
+  /// from two arms to three in the same migration.
+  recordCommitment      String?
+  recordDocument        Document?                   @relation(fields: [recordCommitment], references: [commitment], onDelete: Restrict)
   openKey               String?                     @unique
   status                DebateStatus                @default(OPEN)
   verdict               PromotionAssessmentVerdict?
@@ -2020,4 +2069,354 @@ model IntegrityCheck {
   /// The coverage report: how many subjects of this check type stand at each
   /// verdict. Free, and the reason the plan chose a table.
   @@index([checkType, verdict, checkedAt])
+}
+
+// ---------------------------------------------------------------------------
+// THE DOCUMENT LAYER — docs/gf-document-flows.md A2, document refactor step 28.
+//
+// A document is bytes handed to the platform that no archive holds, named by the
+// SHA-256 of those bytes and by nothing else (§2 :115-:121). It is the one class of
+// record with nothing beneath it — no page, no archive timestamp, no second witness —
+// and every predicate over it is DERIVED and never a column (§11 :1143-:1146):
+// custody, RECOMPUTABLE, ANCHORED, VERIFIED, CURRENT, AWAITING_DERIVATION, the §2
+// equality, ANSWERED, ARRIVED, OPENED, SHED and FLAGGED's third arm.
+//
+// FIVE CHECK CONSTRAINTS LIVE IN THE MIGRATION, not here — Prisma cannot express one.
+// They are named in each model's `///` comment below so a reader of the schema alone
+// is not misled into thinking a constraint absent, and `test/documentGuards.test.ts`
+// holds every one of them across the WHOLE ordered migration history, in the UNIT
+// project, because the `document` acceptance project does not gate a merge until
+// step 36 and a case in a job that gates nothing holds nothing.
+//
+// NOTHING IS DELETED — RESTRICT on every key, never CASCADE and never SET NULL, as
+// thesis step 18 ruled for its own tables. SHED nulls `bytes`, every version's `text`
+// and every `opinion`, and removes NO ROW (§8 :907-:918).
+// ---------------------------------------------------------------------------
+
+/// Which door the bytes came through — the one thing about an arrival the platform
+/// can VERIFY (§1 :74-:88). Custody follows it and nothing else: the public's is
+/// SEALED always, the researcher's is HELD always (§2 :154-:165).
+enum ArrivalDoor {
+  /// The public's channel, under the submission terms: anonymous, sealed, addressed
+  /// to a published thesis. The row CANNOT SAY WHO (§5 :532).
+  INTAKE
+  /// A researcher's hand, through MCP, attributed. The bytes reach the platform's
+  /// private bucket through the upload dialog; the tool call names the object (§9 :998).
+  RESEARCHER
+}
+
+/// A2 :1290-:1294 — DISMISSED is the one value. ANSWERED is DERIVED from the
+/// mentions (A3 :1375) and is deliberately not a value here.
+enum ArrivalDecisionValue {
+  DISMISSED
+}
+
+/// A2 :1301 — whether the bytes were AT REST when the version was derived. A SEALED
+/// document's plaintext exists once, at receipt; nothing can derive another (§3 :339-:342).
+enum DocumentDerivedFrom {
+  AT_RECEIPT
+  HELD_BYTES
+}
+
+/// §7 :777-:789 — what publication opens, per document, decided by the researcher who
+/// read it. THE ORDER IS THE WIDENING RULE: PASSAGE < CONTENT < BYTES, and an opening
+/// only widens (§7 :797).
+enum DocumentOpening {
+  /// Nothing of the document is served: the commitment, its registry entry, custody,
+  /// the pinned version's hash, and the platform's attestation per quoted phrase.
+  PASSAGE
+  /// The pinned content version — the text, or the bytes where the content IS the bytes.
+  CONTENT
+  /// The file in full, with DOC_ID and the salt, so a verifier reproduces the
+  /// commitment. HELD only; a sealed document has no bytes anywhere.
+  BYTES
+}
+
+/// A3 :1385-:1386 — the ONE verdict rule's three values. UNCHECKED is this layer's
+/// amendment to thesis T1: against content that is bytes there is no text to search,
+/// and the rule returns neither PRESENT nor ABSENT rather than silently passing.
+enum PassageVerdictValue {
+  PRESENT
+  ABSENT
+  UNCHECKED
+}
+
+/// A2 :1321 — who took the content away. SENDER is the key holder's own act, proved by
+/// the key and attributed to NOBODY; OPERATOR is a researcher's, with a reason.
+enum ShedCause {
+  SENDER
+  OPERATOR
+}
+
+/// THE DOCUMENT — §2, A2 :1262-:1276.
+///
+/// `docId` is the IDENTITY and is GATED: served only with a BYTES opening, where anyone
+/// holding the file could compute it (§7 :765-:770). `commitment` is the PUBLIC NAME —
+/// the citation token, the registry entry, what `Evidence.fileHash` holds for this kind.
+///
+/// CUSTODY IS DERIVED, NEVER A COLUMN (A2 :1274-:1275): HELD iff `bytes` present, SEALED
+/// iff `cid` present and `bytes` absent, NONE iff a `Shed` row exists. A column would be
+/// a second answer to a question the row already answers.
+///
+/// ONE CHECK LIVES IN THE MIGRATION: `Document_title_required_when_held` — `title` is
+/// REQUIRED at the researcher's door (A2 :1271), and the researcher's door is HELD always
+/// (§11.7 :704, §2 :163), so on the row itself that reads: bytes present implies a title.
+/// It REQUIRES and forbids nothing — a sealed document MAY gain a title later, which is
+/// step 32's question, and SHED nulls `bytes` so a shed document keeps the title it had.
+model Document {
+  /// DOC_ID = sha256(bytes), the file exactly as handed over. No normalisation of any
+  /// kind: a paste with a trailing newline is a different document (§2 :185-:186).
+  docId                 String                   @id
+  /// COMMITMENT = sha256(bytes32(docId) ‖ salt) — A1 :1236-:1238.
+  commitment            String                   @unique
+  /// Random at receipt, generated by the PLATFORM and never by the sender. GATED: it is
+  /// what makes the commitment tell an outsider nothing about the bytes (§4 :429-:438).
+  salt                  Bytes
+  /// The sealed copy's content address. Set on a SEALED arrival; the platform can
+  /// release its own pin and holds no key (§5 :556-:562).
+  cid                   String?
+  /// The bucket object, keyed by DOC_ID — one PRIVATE bucket per environment, on the
+  /// `DATABASE_URL` axis `assertOperationalContext` already checks (§12 :1185, A2 :1267).
+  /// The SAME object was the upload dialog's CACHE before this row existed; cache or held
+  /// is derived from whether this row exists, never stored. NULL after SHED.
+  bytes                 String?
+  mimeType              String
+  byteLength            Int
+  /// The FIRST arrival's moment. Later arrivals of the same bytes are further `Arrival`
+  /// rows against this one document (§2 :211).
+  receivedAt            DateTime                 @default(now())
+  /// SEALED only: the moment the server recomputed DOC_ID in memory and it agreed. An
+  /// OBSERVATION with its moment, never refreshed — the platform cannot repeat it and
+  /// says so rather than pretending a standing audit (§2 :219-:221).
+  verifiedAtReceipt     DateTime?
+  /// THE RESEARCHER'S FOUR ASSERTIONS, recorded as theirs and VERIFIED BY NOTHING
+  /// (§9 :1011-:1014). The researcher's door only; attributed through the arrival's
+  /// `researcherId`.
+  assertedUrl           String?
+  assertedAt            DateTime?
+  derivedFromCommitment String?
+  derivedFrom           Document?                @relation("DocumentDerivation", fields: [derivedFromCommitment], references: [commitment], onDelete: Restrict)
+  derivations           Document[]               @relation("DocumentDerivation")
+  /// The FOURTH assertion (A2 :1271, RULED 2026-09-22): the name a person recognises the
+  /// document by, proposed by Claude and approved by the researcher IN THE CONVERSATION,
+  /// carried by the dialog's link and by the command, never edited in the dialog.
+  title                 String?
+  createdAt             DateTime                 @default(now())
+
+  arrivals              ArrivalDocument[]
+  versions              DocumentContentVersion[]
+  openings              DocumentOpeningDecision[]
+  shed                  Shed?
+  evidence              Evidence?
+  debates               DebateSession[]
+}
+
+/// THE ARRIVAL — §5, §9, A2 :1278-:1288. What the platform can verify about bytes: which
+/// door they came through, who was attributed at it, and what they were addressed to.
+///
+/// NO COLUMN FOR A NETWORK ADDRESS, AN ACCOUNT, A NAME OR A CONTACT, ever — the platform
+/// holds nothing a court order could take (§7 :820-:827). `no-sender-identity`'s schema
+/// half holds that, and `test/document/scans.test.ts` scans THIS model and `Document`.
+///
+/// ONE CHECK LIVES IN THE MIGRATION: `Arrival_fields_by_door` — `thesisId` and `termsHash`
+/// REQUIRED iff INTAKE, `researcherId` REQUIRED iff RESEARCHER and NULL iff INTAKE,
+/// `gapId` INTAKE only (A2 :1280-:1284).
+model Arrival {
+  id           String                @id @default(cuid())
+  door         ArrivalDoor
+  /// REQUIRED iff INTAKE: intake exists only on a PUBLISHED thesis (§5 :521-:525). A
+  /// researcher's document is addressed to nothing.
+  thesisId     String?
+  thesis       Thesis?               @relation(fields: [thesisId], references: [id], onDelete: Restrict)
+  /// INTAKE only, and OPTIONAL there: a thesis alone is enough for a document that
+  /// answers no appeal (§1 :78-:83). NO foreign key — a gapId is
+  /// `sha256(NORMALISE(description))` and `ThesisGapDecision.gapId` is append-only per
+  /// sequence, so it is not a key to point at.
+  gapId        String?
+  /// REQUIRED iff RESEARCHER; NULL iff INTAKE — the public door CANNOT SAY WHO (§5 :532).
+  researcherId String?
+  researcher   Researcher?           @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  /// REQUIRED iff INTAKE: the hash of the terms text SHOWN, so what was agreed to is
+  /// known even after the terms change. An arrival without it is malformed (§8 :877-:883).
+  termsHash    String?
+  receivedAt   DateTime              @default(now())
+
+  documents    ArrivalDocument[]
+  decisions    ArrivalDecision[]
+
+  @@index([thesisId, receivedAt])
+}
+
+/// A2 :1286 — THE GROUPING. A submission of several files is several documents in one
+/// arrival; three photographs of a three-page letter are three documents whose submitter
+/// says they are one letter (§2 :188-:194). The platform never composes bytes.
+model ArrivalDocument {
+  arrivalId  String
+  arrival    Arrival  @relation(fields: [arrivalId], references: [id], onDelete: Restrict)
+  commitment String
+  document   Document @relation(fields: [commitment], references: [commitment], onDelete: Restrict)
+
+  @@id([arrivalId, commitment])
+  @@index([commitment])
+}
+
+/// A2 :1290-:1294 — append-only. The author may DISMISS an arrival with a reason; nothing
+/// is deleted, and a dismissed arrival's documents keep their names, versions and
+/// commitments and may be cited later by anyone (§5 :606-:610).
+model ArrivalDecision {
+  id           String               @id @default(cuid())
+  arrivalId    String
+  arrival      Arrival              @relation(fields: [arrivalId], references: [id], onDelete: Restrict)
+  sequence     Int
+  decision     ArrivalDecisionValue
+  /// REQUIRED — a dismissal with no reason is a decision nobody made.
+  reason       String
+  researcherId String
+  researcher   Researcher           @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  createdAt    DateTime             @default(now())
+
+  @@unique([arrivalId, sequence])
+}
+
+/// CONTENT IS A VERSION — §3, A2 :1296-:1305. Everything a document says beyond its name
+/// is derived from its bytes and held as APPEND-ONLY versions; the name never moves, and
+/// content moves only by a new version that keeps the old.
+///
+/// A VERSION IS NAMED BY WHAT IT CONTAINS, not by what produced it, so a re-derivation
+/// yielding identical text is NOT a new row — `@@unique([commitment, contentVersionHash])`
+/// is what makes that true rather than remembered.
+model DocumentContentVersion {
+  id                 String              @id @default(cuid())
+  commitment         String
+  document           Document            @relation(fields: [commitment], references: [commitment], onDelete: Restrict)
+  /// NULL when the content IS the bytes — a photograph no engine reads (§3 :284). Then
+  /// `contentVersionHash` EQUALS the docId (A1 :1242-:1243) and every assertion about the
+  /// document is UNCHECKED. NULLED by SHED; this row, its hash and its provenance stay.
+  text               String?
+  contentVersionHash String
+  /// PROVENANCE: what read the bytes. The COMPUTED register is reproducible from the
+  /// bytes by a named extractor at a pinned version; that is the whole line (§3 :299-:305).
+  /// `extractorVersion` names the extractor that FIRST produced this text and is NEVER
+  /// overwritten — it is provenance, not a pointer.
+  extractor          String
+  extractorVersion   String
+  /// APPEND-ONLY: every extractor version that REPRODUCED this exact text (A2 :1300,
+  /// §3 :324, RULED 2026-09-23). CURRENT(d) reads MEMBERSHIP of this list and never
+  /// equality on `extractorVersion` (A3 :1368). Without it, a held document whose text a
+  /// new extractor reproduces is trapped: §3 :317 forbids a second row, so no row would
+  /// carry the new version and CURRENT(d) would read AWAITING_DERIVATION forever while
+  /// the pass reported UNCHANGED — and `EVIDENCE_DERIVED` (A6 :1531) is HARD, so the
+  /// document would be permanently uncitable.
+  derivedUnder       String[]
+  /// The reader was SELECTED and THREW, as against having found no text (A2 :1300, RULED
+  /// 2026-09-23). A corrupt file of an ACCEPTED type is accepted as BYTES-ONLY like any
+  /// other bytes no reader can read (§3 :284) and is NEVER refused — a refusal would turn
+  /// the platform's own reader failing into a reason to hold nothing, and A5 :1493's
+  /// `UNREADABLE` is a key that does not open a ciphertext, a different fact that must not
+  /// share one spelling. `extractor-coverage` counts a broken PDF apart from a photograph
+  /// by this field (A7 :1591).
+  readFailed         Boolean             @default(false)
+  derivedAt          DateTime            @default(now())
+  derivedFrom        DocumentDerivedFrom
+  /// THE OPINION REGISTER is its own table since document step 30 — `DocumentOpinion`
+  /// below, one APPEND-ONLY row per paid reading (A2 :1302 as ruled 2026-09-23).
+  opinions           DocumentOpinion[]
+
+  @@unique([commitment, contentVersionHash])
+  @@index([commitment, derivedAt])
+}
+
+/// THE OPINION REGISTER — A2 :1302-:1303, RULED 2026-09-23: ONE ROW PER PAID READING of a
+/// version, APPEND-ONLY — a model's reading (a transcription, a description, a summary, a
+/// date, actors, categories), LABELLED with its model and prompt version, never pinned,
+/// never cited, NEVER PUBLISHED (§7 :829-:837). It replaced a single `opinion` column, under
+/// which a second paid reading OVERWROTE the first, so A4 :1438's "appended" is now true.
+///
+/// IT MODELS BOTH WRITERS THE PLAN NAMES (:160-:162), as `Arrival` models its two doors:
+/// `describe_document` on a researcher's word (step 30) and the receipt's one read of a
+/// sealed document on a stranger's act (step 32). CHECK `DocumentOpinion_by_writer` (the
+/// migration; Prisma cannot express it): `researcherId` REQUIRED iff `by = RESEARCHER`,
+/// NULL iff `by = RECEIPT`.
+///
+/// SHED NULLS `body` AND REMOVES NO ROW (A2 :1305 as conformed); nothing deletes a row.
+model DocumentOpinion {
+  id            String                 @id @default(cuid())
+  versionId     String
+  version       DocumentContentVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  by            OpinionWriter
+  researcherId  String?
+  researcher    Researcher?            @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  model         String
+  promptVersion String
+  body          Json?
+  createdAt     DateTime               @default(now())
+
+  @@index([versionId])
+}
+
+/// Who spent the reading — A2 :1303 as ruled 2026-09-23.
+enum OpinionWriter {
+  /// `describe_document`, a paid call on the researcher's word (step 30).
+  RESEARCHER
+  /// The receipt's one read of a sealed document, on a stranger's act (step 32).
+  RECEIPT
+}
+
+/// §7 :791-:797, A2 :1307-:1311 — append-only. The one judgement the platform cannot make
+/// for the researcher: what content to open, given that quoting a memo few people saw can
+/// identify a source through its content alone. What it enforces is that the choice is
+/// MADE, explicitly, per document, before publication, by the person who read it.
+model DocumentOpeningDecision {
+  id           String          @id @default(cuid())
+  thesisId     String
+  thesis       Thesis          @relation(fields: [thesisId], references: [id], onDelete: Restrict)
+  commitment   String
+  document     Document        @relation(fields: [commitment], references: [commitment], onDelete: Restrict)
+  sequence     Int
+  opening      DocumentOpening
+  researcherId String
+  researcher   Researcher      @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  createdAt    DateTime        @default(now())
+
+  @@unique([thesisId, commitment, sequence])
+  @@index([commitment])
+}
+
+/// A2 :1313-:1317 — written by `publish_thesis`, ONCE per published version, against the
+/// content THEN HELD. An OBSERVATION with its moment: KEPT AS OBSERVED even after SHED,
+/// because what the platform attested at publication does not become untrue when the
+/// sender takes the bytes back.
+model PassageVerdict {
+  id        String              @id @default(cuid())
+  versionId String
+  version   ThesisVersion       @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  mentionId String
+  mention   ThesisMention       @relation(fields: [mentionId], references: [id], onDelete: Restrict)
+  /// Each quoted span — text in quotation marks — of the paragraph that carries the token.
+  phrase    String
+  verdict   PassageVerdictValue
+  at        DateTime            @default(now())
+
+  @@index([versionId])
+  @@index([mentionId])
+}
+
+/// SHED — §8 :907-:918, A2 :1319-:1323. THE ONE DESTRUCTION IN THIS DESIGN BEYOND THE
+/// REBUILD'S DROP, defined once. It removes what the platform holds OF the document —
+/// the bytes, its pin, every version's text, every opinion — and KEEPS EVERYTHING ABOUT
+/// IT: the identity, the commitment, every hash and its provenance, the arrival and its
+/// termsHash, every mention, evidence row, debate and decision, the stored passage
+/// verdicts, and this record. NO ROW IS REMOVED.
+///
+/// ONE CHECK LIVES IN THE MIGRATION: `Shed_fields_by_cause` — `researcherId` and `reason`
+/// REQUIRED iff OPERATOR, NULL iff SENDER. A sender's withdrawal is attributed to nobody
+/// and needs no reason: a consent the platform could decline to un-give is not consent.
+model Shed {
+  commitment   String      @id
+  document     Document    @relation(fields: [commitment], references: [commitment], onDelete: Restrict)
+  cause        ShedCause
+  researcherId String?
+  researcher   Researcher? @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  reason       String?
+  at           DateTime    @default(now())
 }

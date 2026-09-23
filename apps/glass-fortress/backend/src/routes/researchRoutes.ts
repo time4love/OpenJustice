@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { documentsOf } from '../mcp/tools/documentTools';
 import { debateOf } from '../mcp/tools/getDebate';
 import { framingOf } from '../mcp/tools/getFraming';
 import { getThesisContextSchema, thesisContextOf } from '../mcp/tools/getThesisContext';
@@ -21,11 +22,12 @@ import { pageById, param, reader, researchRoute } from './toolRoute';
 // THE RESEARCHER'S READ VIEW — docs/gf-ui-flows.md §7 :278–:310, §7.1 :312–:327; docs/gf-ui-refactor-plan.md UI-3
 // :253–:260; the R53 sketch §a3, §c3.
 //
-// FOURTEEN GATED READS, and not one gate among them: `server.ts` mounts this router as `app.use('/api/research',
+// FIFTEEN GATED READS, and not one gate among them: `server.ts` mounts this router as `app.use('/api/research',
 // requireResearcher, researchRouter)`, so 401 and 403 come before any route here runs, and the gated door places the
 // researcher the gate admitted in context for the core. No route reads a caller or filters by one; `scope` is `all`,
 // fixed by the route (plan :256), and a `scope` in the query is a malformed parameter. A refusal inside the prefix is
-// the tool's own `{ error, code }` (§7 :308–:310). The document plan's three reads are RESERVED and not mounted (§7 :304).
+// the tool's own `{ error, code }` (§7 :308–:310). Of the document plan's three reads (§7 :307), `list_documents` is mounted
+// at document step 30 (plan :182, ui §24 :719's DOCUMENTS lens); `get_arrivals` and `read_document` stay RESERVED.
 // ---------------------------------------------------------------------------
 
 export const researchRouter = Router();
@@ -50,6 +52,7 @@ researchRouter.get('/corpus', researchRoute(readCorpus, (input) => corpusOf({ ..
 researchRouter.get('/corpus/claims', researchRoute(readClaims, (input) => trajectoriesOf({ ...input, scope: 'all' })));
 researchRouter.get('/corpus/search', researchRoute(readSearch, (input) => searchOf({ ...input, scope: 'all' })));
 researchRouter.get('/pages', researchRoute(nothing, () => pagesOf()));
+researchRouter.get('/documents', researchRoute(nothing, () => documentsOf({ scope: 'all' })));
 researchRouter.get(
   '/pages/:trackedUrlId/captures',
   researchRoute(

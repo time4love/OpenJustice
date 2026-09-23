@@ -42,7 +42,7 @@ import { AUTHOR, FRAMING, THESIS } from './thesis/fixtures';
 import { actAs, researcherContextDouble, resetTools, tripped } from './thesis/tools';
 
 // ---------------------------------------------------------------------------
-// THE RESEARCHER'S READ VIEW, STATUS BY STATUS — docs/gf-ui-flows.md §7 :278–:310 (the fourteen gated routes, ONE
+// THE RESEARCHER'S READ VIEW, STATUS BY STATUS — docs/gf-ui-flows.md §7 :278–:310 (the fifteen gated routes, ONE
 // mount-level gate, a 404 inside the prefix naming its refusal), §7.1 :312–:327 (`scope` fixed to `all` by the route);
 // docs/gf-ui-refactor-plan.md UI-3 :253–:260; the R53 sketch §a3 and §d3 (round 2). WRITTEN FIRST, RED BY NAME until
 // UI-3 builds `routes/researchRoutes` — the app is `test/helpers/routeWorld.ts`' `appOf`, loaded with the owner "UI-3".

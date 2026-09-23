@@ -208,6 +208,28 @@ html, body {
     background: var(--paper);
   }
 
+  /* A DIALOG'S FRAME — docs/gf-ui-flows.md §1 :39, the dialog without the shell. THE SAME CONTRACT AS
+     `.shell` ABOVE AND `.shell-centre` BELOW, for the same reason: `html, body` are `overflow: hidden`, so
+     the frame is exactly the viewport and its body holds the one scrollport. Built first as
+     `min-h-screen` with an unscrolled body, the marking page ran 1570px inside an 891px document that
+     could not scroll, and 679px of it were unreachable by any means (R78 chunk-3 round 3, REVIEW,
+     measured signed in): the defect `.shell-centre`'s comment records, reintroduced by a frame no test
+     read a scroll dimension of. `test/builtAsDrawn.test.tsx` holds both rules by value. */
+  .dialog-frame {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+    background: var(--paper);
+  }
+
+  /* `min-height: 0` or `overflow-y: auto` is inert in a column: see `.shell-centre`. */
+  .dialog-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
   .shell-sidebar {
     display: none;
     flex-direction: column;

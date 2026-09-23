@@ -185,7 +185,12 @@ const PUBLIC_ROUTES: readonly RouteRow[] = [
   { door: 'public', path: `/api/records/${DIFF_NAME}`, seed: corpusWorld, tool: () => resolveRecordHandler({ fileHash: DIFF_NAME }) },
 ];
 
-/** THE FOURTEEN GATED ROUTES (§7), each beside its tool as the same researcher, `scope` fixed to `all` where the tool takes one. */
+/**
+ * FOURTEEN OF THE FIFTEEN GATED ROUTES (§7), each beside its tool as the same researcher, `scope` fixed to `all` where the
+ * tool takes one. THE FIFTEENTH, `/api/research/documents` (document step 30), is held route-is-tool in
+ * `test/documentsRoute.test.ts` over the DOCUMENT world: this table's world is `test/helpers/evidenceDouble.ts`, a KEEP
+ * file that models no document delegate, so a row here could only crash. G2 counts all fifteen registrations.
+ */
 const RESEARCH_ROUTES: readonly RouteRow[] = [
   { door: 'research', path: '/api/research/reviews', seed: thesisWorld, tool: () => asAuthor(() => listThesisReviewsHandler({ scope: 'all' })) },
   { door: 'research', path: '/api/research/evidence-reviews', seed: () => { thesisWorld(); seedEvidenceReview(); }, tool: () => asAuthor(() => listEvidenceReviewsHandler()) },
@@ -518,7 +523,7 @@ describe('gate-by-prefix — one gate at the /api/research mount; the caller rea
     const research = codeAt('routes/researchRoutes.ts');
     const corpus = codeAt('routes/corpusRoutes.ts');
     const thesis = codeAt('routes/publicThesisRoutes.ts');
-    expect([registrations(research, 'researchRouter').length, ['corpusRouter', 'pagesRouter', 'recordsRouter'].map((r) => registrations(corpus, r).length).reduce((a, b) => a + b, 0), registrations(thesis, 'publicThesisRouter').length]).toEqual([14, 9, 4]);
+    expect([registrations(research, 'researchRouter').length, ['corpusRouter', 'pagesRouter', 'recordsRouter'].map((r) => registrations(corpus, r).length).reduce((a, b) => a + b, 0), registrations(thesis, 'publicThesisRouter').length]).toEqual([15, 9, 4]);
     expect(offDoor(research, 'researchRouter', 'researchRoute')).toEqual([]);
     expect(['corpusRouter', 'pagesRouter', 'recordsRouter'].flatMap((r) => offDoor(corpus, r, 'publicRoute'))).toEqual([]);
     expect(offDoor(thesis, 'publicThesisRouter', 'publicRoute')).toEqual([]);
@@ -548,7 +553,7 @@ describe('gate-by-prefix — one gate at the /api/research mount; the caller rea
     expect(offDoor("researchRouter.get('/pages', researchRoute(noQuery, pagesOf));", 'researchRouter', 'researchRoute')).toEqual([]);
   });
 
-  it('G5 gate-by-prefix — every research route answers 401 with no bearer and an unverified one, 403 for a login with no researcher and an unapproved one — one body per kind across the fourteen routes and a made-up id — before any lookup but the gate\'s', async () => {
+  it('G5 gate-by-prefix — every research route answers 401 with no bearer and an unverified one, 403 for a login with no researcher and an unapproved one — one body per kind across the fourteen routes of the table and a made-up id (the fifteenth: documentsRoute.test.ts) — before any lookup but the gate\'s', async () => {
     const paths = [...RESEARCH_ROUTES.map((r) => r.path), `/api/research/theses/${MISSING_THESIS_ID}`];
     const kinds = { none: null, unverified: TOKEN.unverified, stranger: TOKEN.stranger, pending: TOKEN.pending } as const;
     const seen: Record<string, Set<string>> = {};

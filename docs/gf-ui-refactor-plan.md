@@ -258,7 +258,7 @@ A2 :1141–:1156 (recomputed 2026-09-19; read :1004–:1014) (the states a route
   `reviews`, `evidence-reviews`, `theses`, `theses/:id?since=`, `framings`, `framings/:id`, `debates/:sessionId`,
   `corpus`, `corpus/claims`, `corpus/search`, `pages`, `pages/:id/captures?outcome=`, `pages/:id/rules`,
   `pages/:id/rules/:ruleId/history`. The document plan's three (`get_arrivals`, `list_documents`, `read_document`) are
-  RESERVED and not mounted (§7 :304).
+  RESERVED and not mounted (§7 :307 — CONFORMED 2026-09-23: the line said :304, which is `get_article_rules`' row).
 - **Retired, in this step** (§6 :269–:273; A4 :1044): `/api/forensics` unmounted and `routes/forensicsRoutes.ts` deleted —
   it lists every surveyed page to anyone and serves trajectories with no PUBLIC_PAGE gate; the `/api/stats` handler
   removed from `server.ts` (:181–:195) — it counts drafts and serves the number anonymously. `retiredNames` gains both
