@@ -2,7 +2,7 @@ jest.mock('../src/lib/prisma', () => (require('./document/world') as typeof impo
 jest.mock('../src/services/documentBucket', () => (require('./document/world') as typeof import('./document/world')).bucketDouble);
 
 import { auditDocuments, exitCodeForAudit } from '../src/services/auditDocuments';
-import { commitmentsOwed, exitCodeForOwed } from '../src/services/commitmentsOwed';
+import { commitmentsOwed, exitCodeForOwed, formatCommitmentsOwed, OWED_AGE_FLOOR_MS } from '../src/services/commitmentsOwed';
 import { SWEEP_LIFETIME_DAYS, sweepUnclaimedObjects } from '../src/services/sweepUnclaimedObjects';
 import { bucketCalls, fixture, nameOf, objects, resetWorld, seedDocument, seedObject, store } from './document/world';
 import { commitment as commitmentOf } from '../src/lib/documentIdentity';
@@ -70,34 +70,85 @@ describe('document-recomputable — forensics:audit-documents (A7 :1549–:1552;
   });
 });
 
-describe('commitments-owed — forensics:commitments-owed (A7 :1558–:1560; plan :188–:189)', () => {
-  it('EXIT 2 listing EXACTLY the documents whose commitment the registry does not attribute to us, with their age', async () => {
+describe('commitments-owed — forensics:commitments-owed (A7 :1558–:1560 as ruled 2026-09-24; plan :188–:189; relay item 8)', () => {
+  // THE READ IS THE ONE ANCHORED(d) READ — both arms (A3 :1366 as ruled): the double answers per DOCUMENT, as
+  // `readStanding` does, so OWED and ANCHORED cannot be two spellings. Ages are measured in MILLISECONDS against the
+  // floor, then floored to whole MINUTES for the row (relay item 8: `ageDays` could not tell 9 minutes from 11).
+  const NOW = new Date(Date.UTC(2026, 8, 23, 12, 0, 0));
+  const minutesAgo = (m: number): Date => new Date(NOW.getTime() - m * 60_000);
+  const answering =
+    (verdictOf: (commitment: string) => 'ATTRIBUTED' | 'UNREGISTERED' | 'FOREIGN_SUBMITTER') =>
+    (d: { commitment: string }): Promise<{ anchored: boolean; by: 'COMMITMENT' | 'CAPTURE' | null; verdict: 'ATTRIBUTED' | 'UNREGISTERED' | 'FOREIGN_SUBMITTER' | null }> => {
+      const verdict = verdictOf(d.commitment);
+      return Promise.resolve({ anchored: verdict === 'ATTRIBUTED', by: verdict === 'ATTRIBUTED' ? 'COMMITMENT' : null, verdict });
+    };
+
+  it('EXIT 2 listing EXACTLY the documents the chain does not attribute, with the moment and the age in MINUTES', async () => {
     const owed = heldDocument(PDF.docId, new Date(Date.UTC(2026, 8, 20)));
     const paid = heldDocument('0x' + 'ab'.repeat(32), new Date(Date.UTC(2026, 8, 21)));
     const asked: string[] = [];
-    const report = await commitmentsOwed(
-      (commitment) => {
-        asked.push(commitment);
-        return Promise.resolve(commitment === paid ? 'ATTRIBUTED' : 'UNREGISTERED');
-      },
-      new Date(Date.UTC(2026, 8, 23)),
-    );
-    // It asks about the COMMITMENT, never the DOC_ID (§4 :429–:438), and about every document.
+    const report = await commitmentsOwed((d) => {
+      asked.push(d.commitment);
+      return answering((c) => (c === paid ? 'ATTRIBUTED' : 'UNREGISTERED'))(d);
+    }, NOW);
+    // It asks about every document, by its COMMITMENT (§4 :429–:438) — the capture arm is the read's own business.
     expect(asked.sort()).toEqual([owed, paid].sort());
-    expect(report.owed).toEqual([{ commitment: owed, verdict: 'UNREGISTERED', ageDays: 3 }]);
+    expect(report.owed.map(({ commitment, verdict, receivedAt, ageMinutes }) => ({ commitment, verdict, receivedAt, ageMinutes }))).toEqual([
+      { commitment: owed, verdict: 'UNREGISTERED', receivedAt: '2026-09-20T00:00:00.000Z', ageMinutes: 3 * 24 * 60 + 12 * 60 },
+    ]);
     expect(exitCodeForOwed(report)).toBe(2);
   });
 
   it('a commitment someone ELSE registered is still owed — ATTRIBUTED is ours, and FOREIGN_SUBMITTER is not', async () => {
     const commitment = heldDocument(PDF.docId);
-    const report = await commitmentsOwed(() => Promise.resolve('FOREIGN_SUBMITTER'), new Date(Date.UTC(2026, 8, 23)));
+    const report = await commitmentsOwed(answering(() => 'FOREIGN_SUBMITTER'), NOW);
     expect(report.owed.map((row) => [row.commitment, row.verdict])).toEqual([[commitment, 'FOREIGN_SUBMITTER']]);
   });
 
   it('EXIT 0 when nothing is owed — and the count of documents asked is reported', async () => {
     heldDocument(PDF.docId);
-    const report = await commitmentsOwed(() => Promise.resolve('ATTRIBUTED'), new Date(Date.UTC(2026, 8, 23)));
+    const report = await commitmentsOwed(answering(() => 'ATTRIBUTED'), NOW);
     expect([report.examined, report.owed, exitCodeForOwed(report)]).toEqual([1, [], 0]);
+  });
+
+  it('THE FLOOR: at 9 minutes a document is NOT owed and is counted on the YOUNGER line; at 11 it IS owed', async () => {
+    const young = heldDocument(PDF.docId, minutesAgo(9));
+    const old = heldDocument('0x' + 'ab'.repeat(32), minutesAgo(11));
+    const report = await commitmentsOwed(answering(() => 'UNREGISTERED'), NOW);
+    expect(report.owed.map((row) => row.commitment)).toEqual([old]);
+    expect(report.owed.map((row) => row.commitment)).not.toContain(young);
+    expect(report.younger).toBe(1);
+    expect(formatCommitmentsOwed(report)).toMatch(/^ {2}1 younger than the floor, not yet owed$/m);
+  });
+
+  it('exactly the floor, 10:00, IS owed — the comparison is on milliseconds, before any flooring', async () => {
+    heldDocument(PDF.docId, minutesAgo(10));
+    const report = await commitmentsOwed(answering(() => 'UNREGISTERED'), NOW);
+    expect([report.owed.length, report.younger]).toEqual([1, 0]);
+  });
+
+  it('EXIT 2 counts only the documents BEYOND the floor — a younger one alone exits 0', async () => {
+    heldDocument(PDF.docId, minutesAgo(3));
+    const report = await commitmentsOwed(answering(() => 'UNREGISTERED'), NOW);
+    expect([report.owed.length, report.younger, exitCodeForOwed(report)]).toEqual([0, 1, 0]);
+  });
+
+  it('a document ANCHORED by the capture arm is EXCLUDED and counted on its own line (A7 :1559 as ruled)', async () => {
+    heldDocument(PDF.docId);
+    const report = await commitmentsOwed(() => Promise.resolve({ anchored: true, by: 'CAPTURE', verdict: null }), NOW);
+    expect([report.owed, report.byCapture]).toEqual([[], 1]);
+    expect(formatCommitmentsOwed(report)).toMatch(/^ {2}1 anchored by an equal capture$/m);
+  });
+
+  it('BOTH lines are ALWAYS printed, zero included — a line that appears only when non-zero cannot be told from one never written', async () => {
+    heldDocument(PDF.docId, minutesAgo(60));
+    const text = formatCommitmentsOwed(await commitmentsOwed(answering(() => 'ATTRIBUTED'), NOW));
+    expect(text).toMatch(/^ {2}0 younger than the floor, not yet owed$/m);
+    expect(text).toMatch(/^ {2}0 anchored by an equal capture$/m);
+  });
+
+  it('the floor is TEN MINUTES, one named constant (relay item 8)', () => {
+    expect(OWED_AGE_FLOOR_MS).toBe(10 * 60_000);
   });
 });
 

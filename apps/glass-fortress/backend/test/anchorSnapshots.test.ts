@@ -67,6 +67,13 @@ function registrar(state: { total: number; indexZeroCategory?: string }): Captur
   };
 }
 
+/**
+ * THE ALLOW an INJECTED window states — `openRegistryWindow`'s guard has no default (document step 31, REVIEW
+ * chunk 2 round 1), so every window this file builds over a double names what it allows. A test double sends
+ * nothing to any chain; the deployment guard is the environment window's and is tested there.
+ */
+const INJECTED_MAY_SEND = (): boolean => true;
+
 beforeEach(() => jest.clearAllMocks());
 
 describe('WRITES_ALLOWED(registry) — evidence flows §8, A3', () => {
@@ -106,7 +113,7 @@ describe('WRITES_ALLOWED(registry) — evidence flows §8, A3', () => {
     // opens one window per call; every anchor in that call asks the window, and
     // the window asks the chain the first time only.
     const reader = registrar({ total: 0 });
-    const window = openRegistryWindow(() => reader);
+    const window = openRegistryWindow(() => reader, INJECTED_MAY_SEND);
 
     await window.writable();
     await anchorAcquiredCapture(window, 'snap-1', { documentHash: DOCUMENT });
@@ -121,7 +128,7 @@ describe('anchorAcquiredCapture — anchored as it is stored, awaited', () => {
   it("registers the capture's hash under ANCHOR_SCHEME and claims the anchor: tx and hash together", async () => {
     const reader = registrar({ total: 0 });
 
-    await anchorAcquiredCapture(openRegistryWindow(() => reader), 'snap-1', { documentHash: DOCUMENT });
+    await anchorAcquiredCapture(openRegistryWindow(() => reader, INJECTED_MAY_SEND), 'snap-1', { documentHash: DOCUMENT });
 
     expect(reader.registerEvidenceHash).toHaveBeenCalledWith(`0x${DOCUMENT}`, ZERO_ADDRESS, ANCHOR_SCHEME);
     // The transaction AND the hash it registered, written together. Writing
@@ -140,7 +147,7 @@ describe('anchorAcquiredCapture — anchored as it is stored, awaited', () => {
     const bare = 'abc123'.repeat(10) + 'abcd';
     const reader = registrar({ total: 0 });
 
-    await anchorAcquiredCapture(openRegistryWindow(() => reader), 'snap-bare', { documentHash: bare });
+    await anchorAcquiredCapture(openRegistryWindow(() => reader, INJECTED_MAY_SEND), 'snap-bare', { documentHash: bare });
 
     expect(reader.registerEvidenceHash).toHaveBeenCalledWith(`0x${bare}`, expect.any(String), ANCHOR_SCHEME);
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ anchoredHash: bare }) }));
@@ -155,7 +162,7 @@ describe('anchorAcquiredCapture — anchored as it is stored, awaited', () => {
       }),
     );
 
-    const anchoring = anchorAcquiredCapture(openRegistryWindow(() => reader), 'snap-1', { documentHash: DOCUMENT });
+    const anchoring = anchorAcquiredCapture(openRegistryWindow(() => reader, INJECTED_MAY_SEND), 'snap-1', { documentHash: DOCUMENT });
     await new Promise((r) => setImmediate(r));
     expect(update).not.toHaveBeenCalled();
 
@@ -170,7 +177,7 @@ describe('anchorAcquiredCapture — anchored as it is stored, awaited', () => {
     // after the write, which is the property the receipt-horizon lesson wanted.
     const reader = registrar({ total: 0 });
 
-    await anchorAcquiredCapture(openRegistryWindow(() => reader), 'snap-1', { documentHash: DOCUMENT });
+    await anchorAcquiredCapture(openRegistryWindow(() => reader, INJECTED_MAY_SEND), 'snap-1', { documentHash: DOCUMENT });
 
     expect(verdict).toHaveBeenCalledWith({
       subjectType: IntegrityCheckSubject.URL_SNAPSHOT,
@@ -190,7 +197,7 @@ describe('anchorAcquiredCapture — anchored as it is stored, awaited', () => {
     // production contract's shape, and the write that would end the clean cut.
     const reader = registrar({ total: 20, indexZeroCategory: CLASSIFIER_CATEGORIES });
 
-    const attempt = anchorAcquiredCapture(openRegistryWindow(() => reader), 'snap-1', { documentHash: DOCUMENT });
+    const attempt = anchorAcquiredCapture(openRegistryWindow(() => reader, INJECTED_MAY_SEND), 'snap-1', { documentHash: DOCUMENT });
 
     await expect(attempt).rejects.toBeInstanceOf(RegistryFrozenError);
     await expect(attempt).rejects.toMatchObject({
@@ -213,7 +220,7 @@ describe('anchorAcquiredCapture — anchored as it is stored, awaited', () => {
     (reader.registerEvidenceHash as jest.Mock).mockRejectedValue(new DuplicateEvidenceError(`0x${DOCUMENT}`));
 
     await expect(
-      anchorAcquiredCapture(openRegistryWindow(() => reader), 'snap-1', { documentHash: DOCUMENT }),
+      anchorAcquiredCapture(openRegistryWindow(() => reader, INJECTED_MAY_SEND), 'snap-1', { documentHash: DOCUMENT }),
     ).rejects.toBeInstanceOf(DuplicateEvidenceError);
     expect(update).not.toHaveBeenCalled();
     expect(verdict).not.toHaveBeenCalled();
@@ -227,7 +234,7 @@ describe('anchorAcquiredCapture — anchored as it is stored, awaited', () => {
     (reader.registerEvidenceHash as jest.Mock).mockRejectedValue(new Error('invalid BytesLike value'));
 
     await expect(
-      anchorAcquiredCapture(openRegistryWindow(() => reader), 'snap-1', { documentHash: DOCUMENT }),
+      anchorAcquiredCapture(openRegistryWindow(() => reader, INJECTED_MAY_SEND), 'snap-1', { documentHash: DOCUMENT }),
     ).rejects.toThrow('invalid BytesLike value');
     expect(update).not.toHaveBeenCalled();
   });
@@ -242,7 +249,7 @@ describe('anchorAcquiredCapture — anchored as it is stored, awaited', () => {
     // capture. The next walk call opens a new window and asks again.
     const reader = registrar({ total: 0 });
     (reader.getTotalEvidence as jest.Mock).mockRejectedValue(new Error('no backend is currently healthy'));
-    const window = openRegistryWindow(() => reader);
+    const window = openRegistryWindow(() => reader, INJECTED_MAY_SEND);
 
     const first = anchorAcquiredCapture(window, 'snap-1', { documentHash: DOCUMENT });
     await expect(first).rejects.toBeInstanceOf(ChainUnavailableError);
@@ -262,7 +269,7 @@ describe('anchorAcquiredCapture — anchored as it is stored, awaited', () => {
     const connect = jest.fn(() => {
       throw new Error('RPC_URL environment variable is not set.');
     });
-    const window = openRegistryWindow(connect);
+    const window = openRegistryWindow(connect, INJECTED_MAY_SEND);
 
     const attempt = anchorAcquiredCapture(window, 'snap-1', { documentHash: DOCUMENT });
     await expect(attempt).rejects.toBeInstanceOf(ChainUnavailableError);
@@ -276,7 +283,7 @@ describe('anchorAcquiredCapture — anchored as it is stored, awaited', () => {
   it('the registrar is connected on first need, never when the window is opened', async () => {
     // A call that acquires nothing never touches the chain's configuration.
     const connect = jest.fn(() => registrar({ total: 0 }));
-    openRegistryWindow(connect);
+    openRegistryWindow(connect, INJECTED_MAY_SEND);
     expect(connect).not.toHaveBeenCalled();
   });
 
@@ -286,7 +293,7 @@ describe('anchorAcquiredCapture — anchored as it is stored, awaited', () => {
       ethers.makeError('could not detect network', 'NETWORK_ERROR', { event: 'noNetwork' }),
     );
 
-    const outage = anchorAcquiredCapture(openRegistryWindow(() => reader), 'snap-1', { documentHash: DOCUMENT });
+    const outage = anchorAcquiredCapture(openRegistryWindow(() => reader, INJECTED_MAY_SEND), 'snap-1', { documentHash: DOCUMENT });
     await expect(outage).rejects.toBeInstanceOf(ChainUnavailableError);
     await expect(outage).rejects.toMatchObject({ phase: 'WRITE' });
     expect(update).not.toHaveBeenCalled();
@@ -303,7 +310,7 @@ describe('anchorAcquiredCapture — anchored as it is stored, awaited', () => {
         revert: null,
       }),
     );
-    const answered = anchorAcquiredCapture(openRegistryWindow(() => reader), 'snap-1', { documentHash: DOCUMENT });
+    const answered = anchorAcquiredCapture(openRegistryWindow(() => reader, INJECTED_MAY_SEND), 'snap-1', { documentHash: DOCUMENT });
     await expect(answered).rejects.not.toBeInstanceOf(ChainUnavailableError);
     await expect(answered).rejects.toThrow('execution reverted');
   });
@@ -389,12 +396,14 @@ describe('the registry’s submit has one caller under the walk and the store', 
     expect(submitted).toBeGreaterThan(evaluated);
   });
 
-  // THE ANCHORING MODULE HAS ONE CALLER TODAY — the store, on ACQUIRED (M4,
-  // 2026-09-06; evidence A7: "a test that breaks it with a third caller"). Its
-  // second, a document's receipt or its standing pass (document flows §4), is
-  // not built; when it is, it is added HERE, deliberately, and the count moves
-  // to two. Src-wide, because a caller anywhere else is a research act reaching
-  // the chain by a side door.
+  // THE ANCHORING MODULE HAS TWO CALLERS — the store, on ACQUIRED (M4,
+  // 2026-09-06; evidence A7: "a test that breaks it with a third caller"), and
+  // since document step 31 the ONE document-anchoring function, through
+  // `anchorDocumentCommitment` (document flows §4; plan §4 :408). The second was
+  // added HERE, deliberately, as the case after the next. Src-wide, because a
+  // caller anywhere else is a research act reaching the chain by a side door;
+  // `test/documentAnchoringCallers.test.ts` counts the same two over scripts/ too,
+  // and the document function's own named callers.
   it('anchorAcquiredCapture is called from exactly one module under src — the store — at its two sites', () => {
     // Two calls in one module: the first anchor after the row is created, and
     // the retry on a held row whose anchor was owed. A third — anywhere — is
@@ -404,6 +413,39 @@ describe('the registry’s submit has one caller under the walk and the store', 
       .map((file) => ({ file: rel(file), calls: [...codeOf(file).matchAll(CALL)].length }))
       .filter((f) => f.calls > 0);
     expect(callers).toEqual([{ file: 'services/recordCapture.ts', calls: 2 }]);
+  });
+
+  it('openRegistryWindow’s maySend is REQUIRED — no default; a window that omits the guard does not compile', () => {
+    // REVIEW's P4 (chunk 2 round 1): with `maySend = () => true`, a second
+    // `openRegistryWindow(() => new Web3Service())` anywhere was an unguarded chain
+    // writer nothing saw. Without a default every window states its guard.
+    const DEFAULTED = /maySend\s*:\s*\(\)\s*=>\s*boolean\s*=/;
+    // The control: the pattern SEES the spelling it forbids. Its first version,
+    // `maySend[^,)]*=`, stopped at the `)` of `() =>` and passed on a defaulted
+    // parameter — a check that ran and did not see.
+    expect('  maySend: () => boolean = () => true,').toMatch(DEFAULTED);
+    const code = codeOf(ANCHORING_MODULE);
+    const signature = code.slice(code.indexOf('export function openRegistryWindow('), code.indexOf('): RegistryWindow {'));
+    expect(signature).toMatch(/maySend: \(\) => boolean/);
+    expect(signature).not.toMatch(DEFAULTED);
+  });
+
+  it('inside the module a window is built ONCE — the environment window, with the deployment guard', () => {
+    const CALL = /(?<![\w.]|function\s)openRegistryWindow\s*\(/g;
+    const code = codeOf(ANCHORING_MODULE);
+    expect([...code.matchAll(CALL)]).toHaveLength(1);
+    expect(code).toMatch(/openRegistryWindow\(\(\) => new Web3Service\(\), \(\) => inADeployment\(process\.env\)\)/);
+  });
+
+  it('anchorDocumentCommitment is called from exactly one module under src — the document-anchoring function — once', () => {
+    // The module's SECOND caller (document step 31, plan §4 :408). One call in one
+    // module: `anchorDocument`, which every document path goes through. A call
+    // anywhere else is the third caller this case exists to break.
+    const CALL = /(?<![\w.]|function\s)anchorDocumentCommitment\s*\(/g;
+    const callers = tsFiles(SRC)
+      .map((file) => ({ file: rel(file), calls: [...codeOf(file).matchAll(CALL)].length }))
+      .filter((f) => f.calls > 0);
+    expect(callers).toEqual([{ file: 'services/anchorDocuments.ts', calls: 1 }]);
   });
 
   it('DETECTS a third caller — proven against a decoy', () => {

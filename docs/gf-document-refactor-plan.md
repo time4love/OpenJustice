@@ -208,7 +208,7 @@ on a planted entry no document row explains, by index, then 0; in the suite, wit
 chain client that fails, a receipt through either door completes with `anchored: false` and the
 document listed as owed — the outage proven on every commit, never staged on an environment; on
 staging, `commitments-owed` exit 2 over step 30's documents, the pass run, exit 0 after, and
-`check_on_chain_status` on each commitment ATTRIBUTED under `DOCUMENT_COMMITMENT`.
+`check_on_chain_status` on each commitment ATTRIBUTED under `DOCUMENT_COMMITMENT`. **STATUS 2026-09-24:** MET ON STAGING → `docs/gf-document-step-31-staging-pass-2026-09-24.md` (PR #588; `commitments-owed` exit 2 over step 30’s two, the pass, exit 0 after; both commitments ATTRIBUTED under `DOCUMENT_COMMITMENT`, registry indices 27 and 28; `anchors-explainable` 29 entries, 0 unexplained; and a new document anchored AT RECEIPT through MCP, index 29). The PRODUCTION pass HELD until the researcher’s word (:191). Owed: the ledger kind for a commitment entry (#587, at the next rotation).
 
 ### 32 · The public door — the receipt, the arrival, the author told
 

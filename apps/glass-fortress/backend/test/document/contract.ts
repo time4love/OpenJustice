@@ -142,7 +142,7 @@ export const MODULES = {
       currentVersion: fn(29),
       verdict: fn(29),
       anchored: fn(31),
-      verified: fn(31),
+      verifiedDocument: fn(31),
       equalsCapture: fn(30),
       answered: fn(32),
       arrived: fn(32),

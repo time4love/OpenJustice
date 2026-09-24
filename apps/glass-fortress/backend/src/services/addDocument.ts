@@ -5,9 +5,12 @@ import { CURRENT_EXTRACTOR } from '../lib/documentExtractor';
 import { commitment as commitmentOf, docId as docIdOf } from '../lib/documentIdentity';
 import { prisma } from '../lib/prisma';
 import { WRITE_TRANSACTION } from '../walk/pageLog';
+import { anchorDocument, anchoredOf, type AnchorableDocument } from './anchorDocuments';
+import { openDocumentRegistryWindow } from './anchorSnapshots';
 import { readObject, statObject } from './documentBucket';
+import { capturesEqualTo } from './documentCaptures';
 import { deriveContent, recordContentVersion, type DerivedContent } from './documentContentVersions';
-import { currentVersion, digestOf, equalsCapture } from './documentPredicates';
+import { currentVersion } from './documentPredicates';
 import { documentRefusal, NO_RESEARCHER, type DocumentRefusal } from './documentRefusals';
 
 // ---------------------------------------------------------------------------
@@ -32,9 +35,13 @@ import { documentRefusal, NO_RESEARCHER, type DocumentRefusal } from './document
 // attributed) and changes none of them; every value it gave that differs is answered as
 // IGNORED — never stored, never silently dropped.
 //
-// NO CHAIN WRITE. The commitment is OWED by construction at this step (plan :179-:180); step 31
-// builds the anchoring module's second caller that pays it. This module imports nothing that
-// reaches the chain, and `anchored` is false on every answer.
+// THE ANCHOR AT RECEIPT — plan step 31 :195–:196; relay item 8 as ruled 2026-09-24. The FIRST
+// arrival — the call that creates the row — anchors the commitment through the one
+// document-anchoring function, AFTER the receipt's transaction has committed: a chain call is never
+// inside a transaction, and a receipt is never refused for the chain. EVERY failure completes the
+// receipt OWED, logged; the standing pass pays it. A LATER arrival writes nothing to the chain — "what
+// closes it is the pass" (§4 :448). Every answer READS `anchored` from chain state (A3 :1366), never
+// assumes it; nothing about the anchor is stored.
 // ---------------------------------------------------------------------------
 
 export interface AddDocumentArgs {
@@ -70,8 +77,8 @@ export interface AddDocumentAnswer {
    * spreadsheet's text inline blew the client's result cap and cut every field after it.
    */
   content: { contentVersionHash: string } | null;
-  /** FALSE BY CONSTRUCTION at step 30 — the commitment is owed until step 31's pass pays it. */
-  anchored: false;
+  /** ANCHORED(d), A3 :1366 — READ from chain state for this answer; false while owed. */
+  anchored: boolean;
   equalsCapture: { url: string; capture: string } | null;
   existed: boolean;
   assertions: Assertions;
@@ -178,7 +185,8 @@ async function receive(
       await arrive(tx, commitment, researcherId);
       return recordContentVersion(tx, commitment, derived);
     }, WRITE_TRANSACTION);
-    return answerFor(key, commitment, version, false, call, {});
+    const document = { commitment, docId: key, held: true };
+    return answerFor(key, commitment, version, false, call, {}, await anchorAtReceipt(document));
   }
 
   if (existing.bytes === null) {
@@ -200,7 +208,25 @@ async function receive(
     return derived === null ? null : recordContentVersion(tx, existing.commitment, derived);
   }, WRITE_TRANSACTION);
   const content = version ?? ('awaiting' in current || 'shed' in current ? null : current);
-  return answerFor(key, existing.commitment, content, true, stored, ignored);
+  return answerFor(key, existing.commitment, content, true, stored, ignored, await anchoredNow({ commitment: existing.commitment, docId: key, held: true }));
+}
+
+/**
+ * The FIRST arrival's anchor: ANCHORED as the chain answers after the attempt, or — on any failure — OWED, logged, and
+ * read again, because a write that timed out may still have landed and the answer says what the chain holds.
+ */
+async function anchorAtReceipt(document: AnchorableDocument): Promise<boolean> {
+  try {
+    return (await anchorDocument(openDocumentRegistryWindow(), document)).anchored;
+  } catch (error) {
+    console.error(`add_document: the anchor of ${document.commitment} is OWED — ${error instanceof Error ? error.message : String(error)}`);
+    return anchoredNow(document);
+  }
+}
+
+/** ANCHORED(d) for one document, read from chain state — false where the chain cannot be read. */
+async function anchoredNow(document: AnchorableDocument): Promise<boolean> {
+  return (await anchoredOf(openDocumentRegistryWindow(), [document])).get(document.commitment)?.anchored ?? false;
 }
 
 /** One RESEARCHER arrival and its document — attributed (A2 :1278-:1286). */
@@ -216,30 +242,19 @@ async function answerFor(
   existed: boolean,
   assertions: Assertions,
   ignored: Ignored,
+  anchored: boolean,
 ): Promise<AddDocumentAnswer> {
   return {
     commitment,
     docId: key,
     custody: 'HELD',
     content: version === null ? null : { contentVersionHash: version.contentVersionHash },
-    anchored: false,
+    anchored,
     equalsCapture: await capturesEqualTo(key),
     existed,
     assertions,
     ignored,
   };
-}
-
-/** EQUALS_CAPTURE(d), read on demand (A3 :1383) — the snapshots whose stored digest is this DOC_ID's. */
-export async function capturesEqualTo(key: string): Promise<{ url: string; capture: string } | null> {
-  const snapshots = await prisma.urlSnapshot.findMany({
-    where: { documentHash: digestOf(key) },
-    select: { documentHash: true, waybackTimestamp: true, trackedUrl: { select: { url: true } } },
-  });
-  return equalsCapture(
-    { docId: key } as Document,
-    snapshots.flatMap((s) => (s.waybackTimestamp === null ? [] : [{ documentHash: s.documentHash, url: s.trackedUrl.url, capture: s.waybackTimestamp }])),
-  );
 }
 
 /** The four assertions as the row holds them, with derived-from's title for its label. */

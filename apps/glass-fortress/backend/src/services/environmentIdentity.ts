@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { assertEnvironmentIdentity, maskProjectRef, type AppEnv } from '../lib/appEnv';
 import { readChainIdentity, EXPECTED_CHAIN_ID, type ChainIdentity } from '../lib/chainIdentity';
+import { documentsOwedNow } from './commitmentsOwed';
 
 // ---------------------------------------------------------------------------
 // "Which environment am I talking to?"
@@ -43,6 +44,11 @@ export interface CorpusFingerprint {
   trackedUrls: number;
   snapshots: number;
   snapshotsUnanchored: number;
+  /**
+   * Documents owed an anchor beyond the 10-minute floor (plan :201–:203) — the document debt on the first read of
+   * every session. NULL where the chain could not be read, never 0.
+   */
+  documentsOwed: number | null;
   diffs: number;
   evidence: number;
   theses: number;
@@ -148,6 +154,7 @@ async function readCorpusFingerprint(): Promise<CorpusFingerprint> {
     evidence,
     theses,
     thesesPublished,
+    documentsOwed,
   ] = await Promise.all([
     prisma.trackedUrl.count(),
     prisma.urlSnapshot.count(),
@@ -156,12 +163,14 @@ async function readCorpusFingerprint(): Promise<CorpusFingerprint> {
     prisma.evidence.count(),
     prisma.thesis.count(),
     prisma.thesis.count({ where: { publishedVersionId: { not: null } } }),
+    documentsOwedNow(new Date()),
   ]);
 
   return {
     trackedUrls,
     snapshots,
     snapshotsUnanchored,
+    documentsOwed,
     diffs,
     evidence,
     theses,

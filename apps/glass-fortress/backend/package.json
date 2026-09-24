@@ -37,6 +37,8 @@
     "forensics:rederive-documents": "node dist/scripts/rederiveDocuments.js",
     "forensics:audit-documents": "node dist/scripts/auditDocuments.js",
     "forensics:commitments-owed": "node dist/scripts/commitmentsOwed.js",
+    "forensics:anchor-documents": "node dist/scripts/anchorDocuments.js",
+    "forensics:audit-registry": "node dist/scripts/auditRegistry.js",
     "forensics:sweep-unclaimed-objects": "node dist/scripts/sweepUnclaimedObjects.js",
     "forensics:audit-theses": "node dist/scripts/auditTheses.js",
     "forensics:audit-anchors": "node dist/scripts/auditOnChainAnchors.js",

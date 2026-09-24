@@ -214,6 +214,7 @@ function explained(
           'the same documentHash registered afresh on the successor registry with its own block time, ' +
           'its category carrying the anchoring scheme; this entry stays as the earlier date',
       };
+    case 'DOCUMENT_COMMITMENT': // refused by name before this is asked — see buildRegistryLedger
     case 'UNEXPLAINED':
       return null;
   }
@@ -275,7 +276,19 @@ export function buildRegistryLedger(input: LedgerInput): RegistryLedger {
   const refusals: string[] = [];
   const entries: LedgerEntry[] = [];
   for (const entry of state.entries) {
-    let explanation = explained(entry, classifyEntry(entry, corpus));
+    const classification = classifyEntry(entry, corpus);
+    if (classification.kind === 'DOCUMENT_COMMITMENT') {
+      // EXPLAINED, AND STILL REFUSED — by name. The join found the Document row that reproduces it; the LEDGER has no
+      // kind to write it under, because what a commitment entry ATTESTED is the researcher's wording to rule (document
+      // step 31). Reporting it as a hash "no column explains" would be false.
+      refusals.push(
+        `  index ${String(entry.index)} (${iso(entry.timestamp)}, category "${entry.category}") is a DOCUMENT COMMITMENT, ` +
+          `reproduced by document ${classification.commitment}; the ledger has no kind for it yet — its attested ` +
+          "wording is the researcher's to rule",
+      );
+      continue;
+    }
+    let explanation = explained(entry, classification);
     if (explanation === null) {
       const kind = ruled(entry, registry, chainId);
       if (kind === null) {
@@ -300,7 +313,7 @@ export function buildRegistryLedger(input: LedgerInput): RegistryLedger {
   if (refusals.length > 0) {
     throw new LedgerRefusal(
       `Refusing to emit a ledger for ${registry}: ${String(refusals.length)} of ${String(state.entries.length)} ` +
-        `entries are unexplained.\n${refusals.join('\n')}\n` +
+        `entries cannot be written into a ledger.\n${refusals.join('\n')}\n` +
         'Nothing below step 2 runs while an index is unexplained (evidence flows §8).',
     );
   }

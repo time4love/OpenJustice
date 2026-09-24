@@ -1,5 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { toBytes32 } from '../lib/bytes32';
+import { DOCUMENT_COMMITMENT } from '../lib/anchoredCaptureHash';
+import { commitment as commitmentOf } from '../lib/documentIdentity';
 import { Web3Service, type OnChainEvidenceRecord } from './Web3Service';
 
 // ---------------------------------------------------------------------------
@@ -26,9 +28,12 @@ import { Web3Service, type OnChainEvidenceRecord } from './Web3Service';
 //   index was submitted by OUR registrar. A hash someone else registered is not
 //   ours to claim, and the two reads must agree about what sits at the index.
 //
-//   A LIVE ENTRY IS A CAPTURE'S documentHash, OR IT IS UNEXPLAINED. Evidence
-//   flows A7 :1268–:1273: a live registry's every entry is the SHA-256 of a page
-//   as served, and a capture row holds it as `documentHash`. A frozen registry's
+//   A LIVE ENTRY IS A CAPTURE'S documentHash, A DOCUMENT'S COMMITMENT, OR IT IS
+//   UNEXPLAINED. Evidence flows A7 :1268–:1273: a live registry's capture entry is
+//   the SHA-256 of a page as served, and a capture row holds it as `documentHash`.
+//   Document flows A7 :1554–:1556 (document step 31): an entry whose CATEGORY is
+//   DOCUMENT_COMMITMENT is explained only by a Document row whose (docId, salt)
+//   REPRODUCES it — `commitment()` recomputed, never a stored name trusted. A frozen registry's
 //   other kinds — extraction anchors over `contentHash`, evidence names over
 //   `fileHash` — are explained by its COMMITTED LEDGER, never by a row: the columns
 //   that once explained them left the schema (evidence step 11b, R45-B). A hash no
@@ -183,21 +188,43 @@ export interface CorpusHashes {
     /** Bare hex, as stored. */
     documentHash: string;
   }[];
+  /** Every document's name and what reproduces it — `commitment(docId, salt)` (document flows A7 :1555–:1556). */
+  documents: { commitment: string; docId: string; salt: Uint8Array }[];
 }
 
 export type EntryKind =
   /** The payload anchor — the target's scheme, SHA-256 of the bytes as served. */
   | 'DOCUMENT_HASH'
-  /** No capture holds it. The state step 2 refuses on. */
+  /** A document's COMMITMENT, reproduced by one Document row's (docId, salt) — document step 31. */
+  | 'DOCUMENT_COMMITMENT'
+  /** Nothing explains it. The state the ledger and the audit refuse on. */
   | 'UNEXPLAINED';
 
-export interface EntryClassification {
-  kind: EntryKind;
-  snapshots: { id: string; waybackTimestamp: string | null; url: string }[];
+interface CaptureRef {
+  id: string;
+  waybackTimestamp: string | null;
+  url: string;
 }
 
-/** Which captures, if any, hold this entry's hash as their `documentHash`. */
+export type EntryClassification =
+  | { kind: 'DOCUMENT_HASH'; snapshots: CaptureRef[] }
+  | { kind: 'DOCUMENT_COMMITMENT'; snapshots: []; commitment: string }
+  | { kind: 'UNEXPLAINED'; snapshots: [] };
+
+/**
+ * What explains this entry. THE CATEGORY IS READ FIRST (document step 31): a DOCUMENT_COMMITMENT entry is explained by
+ * the one Document row whose `commitment(docId, salt)` — `lib/documentIdentity`'s formula, CALLED — equals it, and by
+ * nothing else; a capture holding that hash does not explain it. EVERY OTHER CATEGORY takes the documentHash arm
+ * exactly as before, so a frozen registry's entries — categories that are retired labels — classify unchanged, and
+ * the category RULE for a LIVE registry (only the two schemes) is `anchors-explainable`'s, not this join's.
+ */
 export function classifyEntry(entry: RegistryEntry, corpus: CorpusHashes): EntryClassification {
+  if (entry.category === DOCUMENT_COMMITMENT) {
+    const reproduced = corpus.documents.find((d) => commitmentOf(d.docId, d.salt).toLowerCase() === entry.fileHash);
+    return reproduced === undefined
+      ? { kind: 'UNEXPLAINED', snapshots: [] }
+      : { kind: 'DOCUMENT_COMMITMENT', snapshots: [], commitment: reproduced.commitment };
+  }
   const holders = corpus.snapshots
     .filter((s) => toBytes32(s.documentHash).toLowerCase() === entry.fileHash)
     .map((s) => ({ id: s.id, waybackTimestamp: s.waybackTimestamp, url: s.url }));
@@ -206,9 +233,9 @@ export function classifyEntry(entry: RegistryEntry, corpus: CorpusHashes): Entry
     : { kind: 'DOCUMENT_HASH', snapshots: holders };
 }
 
-/** Every capture's hash, for the join and for the claim walk. */
+/** Every capture's hash and every document's name, for the join and for the claim walk. */
 export async function loadCorpusHashes(): Promise<CorpusHashes> {
-  const [snapshots] = await Promise.all([
+  const [snapshots, documents] = await Promise.all([
     prisma.urlSnapshot.findMany({
       orderBy: [{ trackedUrlId: 'asc' }, { capturedAt: 'asc' }],
       select: {
@@ -218,6 +245,7 @@ export async function loadCorpusHashes(): Promise<CorpusHashes> {
         trackedUrl: { select: { url: true } },
       },
     }),
+    prisma.document.findMany({ select: { commitment: true, docId: true, salt: true } }),
   ]);
   return {
     snapshots: snapshots.map((s) => ({
@@ -226,6 +254,7 @@ export async function loadCorpusHashes(): Promise<CorpusHashes> {
       url: s.trackedUrl.url,
       documentHash: s.documentHash,
     })),
+    documents,
   };
 }
 
@@ -276,7 +305,7 @@ export async function readRegistryAttribution(
   const [state, corpus] = await Promise.all([readRegistryState(reader), loadCorpusHashes()]);
 
   const entries = state.entries.map((entry) => ({ entry, classification: classifyEntry(entry, corpus) }));
-  const byKind: Record<EntryKind, number> = { DOCUMENT_HASH: 0, UNEXPLAINED: 0 };
+  const byKind: Record<EntryKind, number> = { DOCUMENT_HASH: 0, DOCUMENT_COMMITMENT: 0, UNEXPLAINED: 0 };
   for (const e of entries) byKind[e.classification.kind] += 1;
 
   const claims: CorpusClaim[] = [];

@@ -5,8 +5,10 @@ import { Web3Service } from './Web3Service';
 import type { RegistryReader } from './registryState';
 import { recordOnChainCheckNeverThrowing } from './onChainVerification';
 import { toBytes32 } from '../lib/bytes32';
+import { inADeployment } from '../lib/inADeployment';
 import {
   ANCHOR_SCHEME,
+  DOCUMENT_COMMITMENT,
   anchoredCaptureHash,
   storedAnchorHash,
   type AnchorableCapture,
@@ -37,8 +39,19 @@ import {
 // classifier's category list, so every write refuses, and the clean cut a
 // fresh registry gives a verifier stays clean whatever the configuration says.
 //
-// A document's receipt is this module's second caller (document flows §4), on
-// its own category; it is not built yet, and nothing here presumes its shape.
+// A DOCUMENT IS THIS MODULE'S SECOND CALLER (document flows §4; plan §4 :408),
+// by addition: `anchorDocumentCommitment` registers a document's COMMITMENT under
+// DOCUMENT_COMMITMENT, through the same one write, behind the same
+// WRITES_ALLOWED. It writes no row — ANCHORED(d) is read from chain state and
+// never stored (A3 :1366, :1389). Its one caller is `anchorDocuments.ts`, whose
+// callers open their window with `openDocumentRegistryWindow`.
+//
+// A CHAIN WRITE IS SENT ONLY FROM INSIDE A DEPLOYMENT (document step 31, Q8 as
+// ruled 2026-09-24). The window this module builds FROM THE ENVIRONMENT refuses
+// the write anywhere else — a laptop's backend holds a registrar key and would
+// otherwise write a public chain from outside the environment that names it.
+// Reads stay open. `maySend` has NO DEFAULT: every window states its guard, so a
+// second window over the real client cannot be built by omission (REVIEW, chunk 2).
 // ---------------------------------------------------------------------------
 
 /**
@@ -145,9 +158,14 @@ export class ChainUnavailableError extends Error {
 export interface RegistryWindow {
   registrar(): Promise<CaptureRegistrar>;
   writable(): Promise<RegistryWritability>;
+  /** Whether a write may leave from this process — asked at the moment of the write, never at opening. */
+  maySend(): boolean;
 }
 
-export function openRegistryWindow(connect: () => CaptureRegistrar): RegistryWindow {
+export function openRegistryWindow(
+  connect: () => CaptureRegistrar,
+  maySend: () => boolean,
+): RegistryWindow {
   let registrar: Promise<CaptureRegistrar> | null = null;
   let verdict: Promise<RegistryWritability> | null = null;
   const connected = (): Promise<CaptureRegistrar> =>
@@ -160,6 +178,7 @@ export function openRegistryWindow(connect: () => CaptureRegistrar): RegistryWin
     }));
   return {
     registrar: connected,
+    maySend,
     writable: () =>
       (verdict ??= connected().then((reader) =>
         writesAllowed(reader).catch((err: unknown) => {
@@ -175,7 +194,44 @@ export function openRegistryWindow(connect: () => CaptureRegistrar): RegistryWin
  * the walk itself imports nothing of it — the chain is this module's.
  */
 export function openWalkRegistryWindow(): RegistryWindow {
-  return openRegistryWindow(() => new Web3Service());
+  return openEnvironmentWindow();
+}
+
+/**
+ * The window a document's anchoring and its reads open: the same client, built
+ * the same way, through the one factory below — so the deployment guard cannot
+ * be on the walk's path and missing from the document's.
+ */
+export function openDocumentRegistryWindow(): RegistryWindow {
+  return openEnvironmentWindow();
+}
+
+/**
+ * THE WINDOW BUILT FROM THE ENVIRONMENT — the deployment's registrar, and the
+ * deployment guard (Q8 as ruled 2026-09-24): a write leaves only while
+ * `inADeployment(process.env)`, read at the moment of the write. Every window
+ * this module builds from the environment comes from here, so the guard cannot
+ * be on one caller's path and missing from the other's.
+ *
+ * THE GUARD SITS ON THE WINDOW, NOT IN A WRAPPER AROUND THE CLIENT'S WRITE, and
+ * the reason is this module's own invariant: the registry's `submit` is spelled
+ * ONCE, in `registerOnce`, after WRITES_ALLOWED (`test/anchorSnapshots.test.ts`,
+ * "calls it once" and "before its one chain write"). A wrapper would be a second
+ * spelling of the write; the window's answer is asked by that one spelling.
+ */
+function openEnvironmentWindow(): RegistryWindow {
+  return openRegistryWindow(() => new Web3Service(), () => inADeployment(process.env));
+}
+
+/** Why a chain write was refused on a machine that is not a running deployment. */
+export class NotInADeploymentError extends Error {
+  constructor() {
+    super(
+      'Chain writes run only inside a deployment (RAILWAY_DEPLOYMENT_ID is not set). ' +
+        'Reads are answered; nothing is written from here.',
+    );
+    this.name = 'NotInADeploymentError';
+  }
 }
 
 /**
@@ -199,6 +255,42 @@ export async function requireWritable(window: RegistryWindow): Promise<void> {
  */
 function chainDidNotAnswer(err: unknown): boolean {
   return ethers.isError(err, 'NETWORK_ERROR') || ethers.isError(err, 'TIMEOUT') || ethers.isError(err, 'SERVER_ERROR');
+}
+
+/**
+ * THE MODULE'S ONE WRITE — WRITES_ALLOWED, then the registration, awaited.
+ * Both callers come through here, so the registry's `submit` is spelled once and
+ * the refusal before it cannot be skipped by one of them (evidence A7 :1297–:1301;
+ * plan §4 :408). A chain that did not answer is CHAIN_UNAVAILABLE; a chain that
+ * answered — a duplicate, a revert — propagates as itself.
+ *
+ * OUTSIDE A DEPLOYMENT the environment's window refuses here, after the reads and
+ * before the write: a ChainUnavailableError, phase WRITE, its cause
+ * NotInADeploymentError — a CONFIGURATION, "never a fact about the capture"
+ * (ChainUnavailableError, above). The walk halts CHAIN_UNAVAILABLE with the row
+ * kept; a document's receipt completes owed. Each caller's existing outage path.
+ */
+async function registerOnce(window: RegistryWindow, hash: string, category: string): Promise<string> {
+  await requireWritable(window);
+  const registrar = await window.registrar();
+  if (!window.maySend()) throw new ChainUnavailableError('WRITE', new NotInADeploymentError());
+  try {
+    return await registrar.registerEvidenceHash(toBytes32(hash), NO_SUBMITTER, category);
+  } catch (err) {
+    if (chainDidNotAnswer(err)) throw new ChainUnavailableError('WRITE', err);
+    throw err;
+  }
+}
+
+/**
+ * Anchor a document's COMMITMENT — the module's second caller, by addition
+ * (document flows §4 :410–:427). The commitment is the document's public name,
+ * `sha256(DOC_ID ‖ salt)`; the DOC_ID never reaches the chain. Nothing is
+ * written to a row: ANCHORED(d) is read from chain state on every read (A3
+ * :1366), so this returns the transaction hash for its caller's log alone.
+ */
+export async function anchorDocumentCommitment(window: RegistryWindow, commitment: string): Promise<string> {
+  return registerOnce(window, commitment, DOCUMENT_COMMITMENT);
 }
 
 /**
@@ -251,17 +343,8 @@ export async function anchorAcquiredCapture(
   snapshotId: string,
   capture: AnchorableCapture,
 ): Promise<void> {
-  await requireWritable(window);
-  const registrar = await window.registrar();
-
   const anchoredHash = storedAnchorHash(anchoredCaptureHash(capture));
-  let txHash: string;
-  try {
-    txHash = await registrar.registerEvidenceHash(toBytes32(anchoredHash), NO_SUBMITTER, ANCHOR_SCHEME);
-  } catch (err) {
-    if (chainDidNotAnswer(err)) throw new ChainUnavailableError('WRITE', err);
-    throw err;
-  }
+  const txHash = await registerOnce(window, anchoredHash, ANCHOR_SCHEME);
   await claimAnchor(snapshotId, txHash, anchoredHash);
 
   // LEVEL 3a — a write that leaves a row asserting an anchor is checked against

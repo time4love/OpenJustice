@@ -2,6 +2,7 @@ import { writeSync } from 'fs';
 import { EXPECTED_CHAIN_ID, readChainIdentity } from './chainIdentity';
 import { assertEnvironmentIdentity, maskProjectRef, type AppEnv } from './appEnv';
 import { identifyEnvironment } from './dbEnvironment';
+import { inADeployment } from './inADeployment';
 
 // ---------------------------------------------------------------------------
 // WHERE AN OPERATIONAL SCRIPT MAY RUN, AND WHAT IT MUST AGREE WITH FIRST.
@@ -210,10 +211,10 @@ export async function assertOperationalContext(
   argv: readonly string[] = process.argv.slice(2),
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<OperationalContext> {
-  const deploymentId = env.RAILWAY_DEPLOYMENT_ID;
-  if (deploymentId === undefined || deploymentId === '') {
+  if (!inADeployment(env)) {
     throw new OperationalContextError(NOT_IN_A_DEPLOYMENT);
   }
+  const deploymentId = env.RAILWAY_DEPLOYMENT_ID;
 
   const declared = readDeclaredEnv(argv);
 

@@ -587,6 +587,9 @@ export function createMcpServer(): McpServer {
         'check with its version and date. READ FROM CHAIN STATE, NEVER FROM A TRANSACTION RECEIPT: ' +
         'state answers forever, a receipt only inside the RPC\'s retention window. Reports the ' +
         'chain id and registry address it actually reached, so a wrong environment shows itself. ' +
+        'Asked about a document\'s COMMITMENT instead, answers about that commitment\'s own entry — or, ' +
+        'for a held document the walk already anchored as a capture, that capture\'s entry — and never ' +
+        'calls a document so anchored unregistered. ' +
         'Writes nothing. Refuses NOT_SURVEYED, NOT_PUBLIC, NOT_A_CAPTURE, NOT_A_RECORD and ' +
         'CHAIN_UNAVAILABLE — which is a verdict about the CHECK and is never evidence that a hash ' +
         'is unregistered.',
