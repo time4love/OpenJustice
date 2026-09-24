@@ -165,7 +165,8 @@ export async function recordContentVersion(
  * The BODY of a model's reading — the fields §3 :294-:295 names: a transcription, a
  * description, a summary, a date, the actors, a category. ZOD because it is a model's output,
  * validated at its boundary without exception. Each field is optional because a model that
- * could not read one must be able to say so rather than invent it.
+ * could not read one must be able to say so rather than invent it. It is what an OPINION ROW
+ * STORES — A2 :1302-:1303's fields and nothing else (Q2 of R79's round 2, ruled 2026-09-24).
  */
 export const documentReadingBody = z.object({
   transcription: z.string().optional(),
@@ -174,6 +175,20 @@ export const documentReadingBody = z.object({
   date: z.string().optional(),
   actors: z.array(z.string()).optional(),
   categories: z.array(z.string()).optional(),
+});
+
+/**
+ * The model's ANSWER — the body and ONE field more, `wholeAnswer`, the TERMINAL SENTINEL (A4 :1439 as
+ * ruled 2026-09-23, F3). Six optional fields cannot tell an OMITTED field from a LOST one, so a body cut
+ * by the model's output limit parsed as a reading and was stored. The sentinel is the answer schema's LAST
+ * field and REQUIRED, so an answer that stops before it does not parse. Its NAME also sorts last: Gemini
+ * emits keys alphabetically when no order is sent, and the adapter sends none. It is an `enum`, not a
+ * `literal` — a literal compiles to JSON-schema `const`, which the Gemini adapter passes through untouched
+ * and Gemini's response schema does not take. The describer STRIPS it before the body is stored: it proves
+ * the answer arrived whole and says nothing about the document (Q2, ruled 2026-09-24).
+ */
+export const documentReadingAnswer = documentReadingBody.extend({
+  wholeAnswer: z.enum(['END']),
 });
 
 export type DocumentReadingBody = z.infer<typeof documentReadingBody>;

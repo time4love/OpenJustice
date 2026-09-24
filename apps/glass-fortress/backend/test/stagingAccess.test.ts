@@ -3,6 +3,7 @@ import express from 'express';
 import { KNOWN_ENVIRONMENTS } from '../src/lib/dbEnvironment';
 import type { AppEnv } from '../src/lib/appEnv';
 import { requireStagingAccess } from '../src/middleware/stagingAccess';
+import { mintTextLink } from '../src/lib/documentTextLink';
 
 function buildApp() {
   const app = express();
@@ -182,5 +183,70 @@ describe('the gate does not depend on a variable that can go missing', () => {
     process.env['STAGING_API_TOKEN'] = 'correct-token';
 
     expect((await request(buildApp()).get('/probe')).status).toBe(401);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE ONE EXEMPTION — RULED 2026-09-24 (the researcher, Q1 of R79's round 2): a VALID text-link signature passes the
+// staging gate for `GET /api/documents/:commitment/content` ONLY — A5 :1504's SIGNED TEXT ARM, `read_document`'s
+// `textUrl` — verified by `verifyTextLink`, the one verifier. A browser opening the link through the frontend's
+// `/api` proxy carries no X-Staging-Token, so without this the link could never open on staging. Unsigned requests,
+// and a signed query on every other path, still meet the gate.
+// ---------------------------------------------------------------------------
+
+describe('requireStagingAccess — the signed text link, and nothing else (A5 :1505 as ruled; Q1 2026-09-24)', () => {
+  const ORIGINAL_ENV = process.env;
+  const COMMITMENT = '0x' + 'c1'.repeat(32);
+  const VERSION = '0x' + 'e1'.repeat(32);
+
+  function gatedApp() {
+    const app = express();
+    app.use(requireStagingAccess);
+    app.get('/api/documents/:commitment/content', (_req, res) => res.json({ served: true }));
+    app.get('/api/documents/:commitment/bytes', (_req, res) => res.json({ served: true }));
+    app.get('/probe', (_req, res) => res.json({ ok: true }));
+    return app;
+  }
+
+  /** The path and query of a link `read_document` minted — as the browser sends it. */
+  const signed = (commitment = COMMITMENT) => {
+    const url = new URL(mintTextLink(commitment, VERSION).url);
+    return { path: url.pathname, search: url.search };
+  };
+
+  beforeEach(() => {
+    process.env = { ...ORIGINAL_ENV, APP_ENV: 'staging', STAGING_API_TOKEN: 'correct-token', TOKEN_HMAC_SECRET: 'token-hmac-secret-for-tests', FRONTEND_URL: 'https://gf.test' };
+  });
+
+  afterAll(() => {
+    process.env = ORIGINAL_ENV;
+  });
+
+  it('a SIGNED text link passes on staging with no X-Staging-Token', async () => {
+    const { path, search } = signed();
+    expect((await request(gatedApp()).get(path + search)).status).toBe(200);
+  });
+
+  it('the same path UNSIGNED meets the gate — 401', async () => {
+    expect((await request(gatedApp()).get(`/api/documents/${COMMITMENT}/content`)).status).toBe(401);
+  });
+
+  it('a TAMPERED or EXPIRED signature meets the gate — the one verifier decides', async () => {
+    const { path, search } = signed();
+    const tampered = search.replace(/sig=[0-9a-f]{64}/, `sig=${'0'.repeat(64)}`);
+    expect((await request(gatedApp()).get(path + tampered)).status).toBe(401);
+    const expired = search.replace(/expires=\d+/, 'expires=1');
+    expect((await request(gatedApp()).get(path + expired)).status).toBe(401);
+  });
+
+  it('a signed query on ANOTHER path meets the gate — /bytes and /probe, each 401', async () => {
+    const { search } = signed();
+    expect((await request(gatedApp()).get(`/api/documents/${COMMITMENT}/bytes${search}`)).status).toBe(401);
+    expect((await request(gatedApp()).get(`/probe${search}`)).status).toBe(401);
+  });
+
+  it('a link signed for ANOTHER document does not open this one — 401', async () => {
+    const { search } = signed('0x' + 'c2'.repeat(32));
+    expect((await request(gatedApp()).get(`/api/documents/${COMMITMENT}/content${search}`)).status).toBe(401);
   });
 });

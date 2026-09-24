@@ -1252,10 +1252,12 @@ export function createMcpServer(): McpServer {
     'read_document',
     {
       description:
-        'READ ONE DOCUMENT YOU HOLD — its computed text, every version, the labelled readings, the facts asserted, ' +
-        'and uploadUrl: the dialog\'s link with this document as derived-from. Free; writes nothing. The file itself ' +
-        'never rides as text: an image of up to 5 MB comes as an image; a scanned PDF, a larger image and any other ' +
-        'file with no text come as bytesUrl, a short-lived download link. Refuses NO_RESEARCHER and NOT_A_DOCUMENT.',
+        'READ ONE DOCUMENT YOU HOLD — every version with its labelled readings, the facts asserted, uploadUrl (the ' +
+        'dialog\'s link with this document as derived-from), and LAST its computed text, cut at 80,000 characters: ' +
+        'textTruncated says whether it was cut, and textUrl (each version has its own) is a ten-minute link to the ' +
+        'whole. Free; writes nothing. The file itself never rides as text: an image of up to 5 MB comes as an image; ' +
+        'a scanned PDF, a larger image and any other file with no text come as bytesUrl, a short-lived download link. ' +
+        'Refuses NO_RESEARCHER and NOT_A_DOCUMENT.',
       inputSchema: readDocumentSchema,
     },
     async (input) => {
@@ -1291,7 +1293,8 @@ export function createMcpServer(): McpServer {
         'second reading is added beside the first. An image or a PDF is read as its file, a spreadsheet through its ' +
         'computed text. Refuses NO_RESEARCHER, NOT_A_DOCUMENT, NOT_HELD, AWAITING_DERIVATION, UNSUPPORTED_TYPE ' +
         '(audio, video, or a spreadsheet with no text — the reason given) and TOO_LARGE (an image or a PDF over the ' +
-        'model\'s 50 MB — its computed text, if any, is still in read_document); a refusal spends nothing.',
+        'model\'s 50 MB — its computed text, if any, is still in read_document) — a refusal before the call spends ' +
+        'nothing — and INCOMPLETE_ANSWER (the model\'s answer was cut): that one was charged and wrote nothing.',
       inputSchema: describeDocumentSchema,
     },
     async (input) => ({

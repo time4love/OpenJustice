@@ -6,6 +6,7 @@ import type {
   CaptureRow,
   Cause,
   CitedOn,
+  DocumentCurrent,
   DocumentRow,
   DocumentsList,
   ContentUnit,
@@ -47,7 +48,7 @@ import type {
   VersionView,
   Voice,
 } from '@/types/research';
-import { ASSESSOR_VERDICTS, CUSTODIES, FLAG_REASONS, GAP_DECISIONS, GATES, NOT_EVALUABLE_REASONS, OPENINGS, OUTCOMES, THREAD_STEPS, TURN_KINDS } from '@/types/research';
+import { ASSESSOR_VERDICTS, AWAITING, CUSTODIES, FLAG_REASONS, GAP_DECISIONS, GATES, NOT_EVALUABLE_REASONS, OPENINGS, OUTCOMES, THREAD_STEPS, TURN_KINDS } from '@/types/research';
 // ONE CITATION PARSER FOR BOTH DOORS (A4 :1476's one citation shape) — called, never re-spelled.
 import { citation } from '@/lib/thesisBody';
 
@@ -1016,6 +1017,13 @@ export function parseRuleHistory(value: unknown): RuleHistory {
   };
 }
 
+/** CURRENT(d) — `{ contentVersionHash }` or `{ awaiting }` (A4 :1434 as ruled 2026-09-23); never null, never a bare hash. */
+function currentOf(value: unknown, at: string): DocumentCurrent {
+  const current = object(value, at);
+  if ('awaiting' in current) return { awaiting: oneOf(current.awaiting, AWAITING, `${at}.awaiting`) };
+  return { contentVersionHash: text(current.contentVersionHash, `${at}.contentVersionHash`) };
+}
+
 /**
  * `list_documents` — document flows A4 :1434, the envelope AS RULED 2026-09-23. Every field the line names is read and
  * NONE is defaulted: `by` is `{ handle, mine }` or null (a public-door arrival, step 32), `anchored` a boolean,
@@ -1045,7 +1053,7 @@ export function parseDocuments(value: unknown): DocumentsList {
             ? null
             : { commitment: text(derivedRow.commitment, `${at}.assertions.derivedFrom.commitment`), title: maybeText(derivedRow.title, `${at}.assertions.derivedFrom.title`) },
       },
-      current: maybeText(row.current, `${at}.current`),
+      current: currentOf(row.current, `${at}.current`),
       anchored: flag(row.anchored, `${at}.anchored`),
       citedBy: list(row.citedBy, `${at}.citedBy`).map((cited, n) => {
         const entry = object(cited, `${at}.citedBy[${String(n)}]`);

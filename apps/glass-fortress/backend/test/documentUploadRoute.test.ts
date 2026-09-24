@@ -1,13 +1,13 @@
 const minted: { key: string }[] = [];
-const bucketState: { absent: boolean } = { absent: false };
+/** What the bucket module answers: a link, an absent bucket, bytes already stored, or a storage failure (a throw). */
+const bucketState: { value: 'signs' | 'absent' | 'stored' | 'fails' } = { value: 'signs' };
 jest.mock('../src/services/documentBucket', () => ({
   mintUploadUrl: (key: string) => {
     minted.push({ key });
-    return Promise.resolve(
-      bucketState.absent
-        ? { absent: true }
-        : { uploadUrl: `https://storage.test/upload/sign/documents/${key}?token=t`, expiresAt: new Date(Date.UTC(2026, 8, 23, 14)) },
-    );
+    if (bucketState.value === 'fails') return Promise.reject(new Error('documentBucket: could not ask whether the key exists — fetch failed'));
+    if (bucketState.value === 'absent') return Promise.resolve({ absent: true });
+    if (bucketState.value === 'stored') return Promise.resolve({ stored: true });
+    return Promise.resolve({ uploadUrl: `https://storage.test/upload/sign/documents/${key}?token=t`, expiresAt: new Date(Date.UTC(2026, 8, 23, 14)) });
   },
 }));
 // THE GATE, doubled by the one fact a route test needs from it: which of its three answers it gives. The gate's own
@@ -55,7 +55,7 @@ const post = (body: unknown, who: string | null = 'researcher') => {
 
 beforeEach(() => {
   minted.length = 0;
-  bucketState.absent = false;
+  bucketState.value = 'signs';
 });
 
 describe('the gate comes FIRST — before the body is read (ui A2 :1150-:1151)', () => {
@@ -89,6 +89,27 @@ describe('ONE answer — the signed upload URL and its expiry (ui A1 :1129; no h
   });
 });
 
+describe('THE SECOND ANSWER — { stored: true }, without minting (ui A1 :1129, §9 :998 as ruled 2026-09-23, F2)', () => {
+  it('bytes already in the bucket answer 200 { stored: true } and nothing else — "already exists" is a fact, not an error', async () => {
+    bucketState.value = 'stored';
+    const answer = await post(PDF);
+    expect(answer.status).toBe(200);
+    expect(answer.body).toEqual({ stored: true });
+  });
+});
+
+describe('EVERY storage error is a CODE, never a bare 500 (§9 :998 as ruled 2026-09-23, F2)', () => {
+  it('a storage failure the route meets answers 503 { error, code: STORAGE_UNAVAILABLE } — injected', async () => {
+    bucketState.value = 'fails';
+    const answer = await post(PDF);
+    expect(answer.status).toBe(503);
+    expect(answer.body.code).toBe('STORAGE_UNAVAILABLE');
+    expect(typeof answer.body.error).toBe('string');
+    // THE FLOOR: the failure really was met — the route asked the bucket.
+    expect(minted).toEqual([{ key: DOC_ID }]);
+  });
+});
+
 describe('the refusals, each `{ error, code }` and each before anything is minted', () => {
   it.each([
     ['a docId that is not 0x + 64 lowercase hex', { ...PDF, docId: DOC_ID.toUpperCase() }],
@@ -118,7 +139,7 @@ describe('the refusals, each `{ error, code }` and each before anything is minte
   });
 
   it('503 BUCKET_ABSENT, LOUDLY — the route never creates the bucket (§12 :1185 as ruled)', async () => {
-    bucketState.absent = true;
+    bucketState.value = 'absent';
     const answer = await post(PDF);
     expect(answer.status).toBe(503);
     expect(answer.body.code).toBe('BUCKET_ABSENT');

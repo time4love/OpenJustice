@@ -64,6 +64,18 @@ function isBucketNotFound(error: unknown): boolean {
 }
 
 /**
+ * Whether an object is stored under `key` — `exists()` read AS THE LIBRARY ANSWERS IT (`@supabase/storage-js`
+ * `async exists`): `{ data: true }` for a stored key; `{ data: false, error }` — a StorageApiError of status 400 or
+ * 404 — for an ABSENT one; and a THROW for every other status. So the `error` beside `data: false` IS the absence
+ * and is never a failure; a failure has already thrown. REVIEW round 2 (R79): reading `error` first made every absent
+ * key a storage failure — every new file refused STORAGE_UNAVAILABLE, every missing object a throw, never NO_BYTES.
+ */
+async function objectExists(storage: ReturnType<typeof bucket>, key: string): Promise<boolean> {
+  const { data } = await storage.exists(key);
+  return data;
+}
+
+/**
  * The object's size and creation moment, or NULL when no object is stored under `key`.
  *
  * ABSENCE IS AN ANSWER, EVERY OTHER FAILURE THROWS. "Nothing was uploaded under this key" is
@@ -72,9 +84,7 @@ function isBucketNotFound(error: unknown): boolean {
  */
 export async function statObject(key: string): Promise<ObjectStat | null> {
   const storage = bucket();
-  const exists = await storage.exists(key);
-  if (exists.error !== null) throw new Error(`documentBucket: could not ask whether ${key} exists — ${exists.error.message}`);
-  if (!exists.data) return null;
+  if (!(await objectExists(storage, key))) return null;
   const info = await storage.info(key);
   if (info.error !== null) throw new Error(`documentBucket: could not read ${key}'s metadata — ${info.error.message}`);
   const size = info.data.size;
@@ -101,23 +111,40 @@ export async function mintDownloadUrl(key: string): Promise<{ url: string; expir
 }
 
 /**
- * A signed UPLOAD link for `key`, or `{ absent: true }` when the bucket does not exist.
+ * A signed UPLOAD link for `key`; `{ stored: true }` when the bucket ALREADY holds an object under it; or
+ * `{ absent: true }` when the bucket does not exist.
  *
  * THE BUCKET IS NEVER CREATED HERE (§12 :1185 as ruled 2026-09-23): it comes to exist by its migration, so an
  * absent bucket is a refusal the route answers LOUDLY — `BUCKET_ABSENT` — and never a reason to make one. Any
  * other failure to read the bucket THROWS: an outage reported as "no bucket" would be a false statement about
  * the environment.
+ *
+ * BYTES ALREADY STORED ARE A FACT, NOT AN ERROR — §9 :998 and ui A1 :1129 as ruled 2026-09-23 (F2 rule (ii)). The key
+ * IS the bytes' hash, so an object under it is the very file the dialog holds, and storage refuses to sign a key that
+ * holds one (`upsert: false`). The answer is `{ stored: true }` WITHOUT minting — never upsert, which would resend up to
+ * 50 MB for nothing and silently repair a wrong object `NAME_MISMATCH` exists to report. Asked BEFORE minting, and
+ * storage's own "already exists" at the sign — an object that arrived between the two calls — says the same.
  */
-export async function mintUploadUrl(key: string): Promise<{ uploadUrl: string; expiresAt: Date } | { absent: true }> {
+export async function mintUploadUrl(key: string): Promise<{ uploadUrl: string; expiresAt: Date } | { stored: true } | { absent: true }> {
   const client = storage();
   const found = await client.getBucket(DOCUMENTS_BUCKET);
   if (found.error !== null) {
     if (isBucketNotFound(found.error)) return { absent: true };
     throw new Error(`documentBucket: could not read the bucket ${DOCUMENTS_BUCKET} — ${found.error.message}`);
   }
-  const { data, error } = await client.from(DOCUMENTS_BUCKET).createSignedUploadUrl(key, { upsert: false });
-  if (error !== null) throw new Error(`documentBucket: could not sign an upload link for ${key} — ${error.message}`);
+  const objects = client.from(DOCUMENTS_BUCKET);
+  if (await objectExists(objects, key)) return { stored: true };
+  const { data, error } = await objects.createSignedUploadUrl(key, { upsert: false });
+  if (error !== null) {
+    if (isAlreadyExists(error)) return { stored: true };
+    throw new Error(`documentBucket: could not sign an upload link for ${key} — ${error.message}`);
+  }
   return { uploadUrl: data.signedUrl, expiresAt: new Date(Date.now() + UPLOAD_LINK_SECONDS * 1000) };
+}
+
+/** Storage's OWN answer for a key that already holds an object: "The resource already exists", `statusCode '409'`. */
+function isAlreadyExists(error: unknown): boolean {
+  return (error as { statusCode?: unknown }).statusCode === '409';
 }
 
 /** How many objects one `list` call asks for — the storage API pages, and this reads every page. */

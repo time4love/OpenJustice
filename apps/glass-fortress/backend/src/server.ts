@@ -18,6 +18,7 @@ process.on('uncaughtException', (err) => {
 });
 import { walkArticleRulesRouter } from './walk/routes';
 import { documentUploadRouter } from './routes/documentUploadRoutes';
+import { documentContentRouter } from './routes/documentContentRoutes';
 import { mcpRouter } from './mcp/mcpRoutes';
 import { authRouter } from './routes/authRoutes';
 import { publicThesisRouter } from './routes/publicThesisRoutes';
@@ -190,6 +191,9 @@ app.use('/api/thesis', publicThesisRouter);
 app.use('/api/corpus', corpusRouter);
 app.use('/api/pages', pagesRouter);
 app.use('/api/records', recordsRouter);
+// The document CONTENT serve — A5 :1504's SIGNED TEXT ARM (read_document's `textUrl`, #579) and its PUBLIC branch,
+// which refuses NOT_PUBLIC for every document until step 34 builds the opening (docs/gf-document-flows.md A5 :1505).
+app.use('/api/documents', documentContentRouter);
 // The researcher's read view — ONE gate at the mount: 401 and 403 before any route runs (docs/gf-ui-flows.md §7).
 app.use('/api/research', requireResearcher, researchRouter);
 

@@ -5,6 +5,7 @@ jest.mock('../../src/factories/LLMFactory', () => (require('./world') as typeof 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CURRENT_EXTRACTOR } from '../../src/lib/documentExtractor';
+import { verifyTextLink } from '../../src/lib/documentTextLink';
 import { built } from './built';
 import { DESCRIBE_DOCUMENT_REFUSALS, LIST_DOCUMENTS_REFUSALS, READ_DOCUMENT_REFUSALS } from './contract';
 import {
@@ -12,6 +13,7 @@ import {
   fixture,
   modelAnswer,
   modelCalls,
+  modelFinish,
   nameOf,
   resetWorld,
   seedArrival,
@@ -56,7 +58,8 @@ interface HeldShape {
   docId: string;
   mimeType: string;
   byteLength: number;
-  versions: readonly { contentVersionHash: string; text: string | null; opinions: readonly unknown[] }[];
+  /** A4 :1425 as ruled 2026-09-23 (§9 Q2) — a version carries its own `textUrl` and NO inline text. */
+  versions: readonly { contentVersionHash: string; opinions: readonly unknown[]; textUrl: { url: string; expiresAt: string } | null }[];
   current: { contentVersionHash: string } | { awaiting: 'AWAITING_DERIVATION' };
   /** A4 :1425 as ruled 2026-09-23 — the bytes NEVER ride the answer; a link does, for a non-image bytes-only kind. */
   bytesUrl: { url: string; expiresAt: string } | null;
@@ -64,6 +67,8 @@ interface HeldShape {
   equalsCapture: { url: string; capture: string } | null;
   assertions: { assertedUrl: string | null; assertedAt: string | null; title: string | null };
   uploadUrl: string;
+  /** CURRENT(d)'s text, CAPPED — the envelope's FINAL field (A4 :1426 as ruled). */
+  text: string | null;
 }
 
 interface SealedShape {
@@ -88,7 +93,8 @@ interface ListedDocument {
   byteLength: number;
   anchored: boolean;
   assertions: { assertedUrl: string | null; assertedAt: string | null };
-  current: string | null;
+  /** A4 :1434 as ruled 2026-09-23 (the LOW) — ONE shape with read_document's. */
+  current: { contentVersionHash: string } | { awaiting: 'AWAITING_DERIVATION' };
   citedBy: readonly { thesisId: string; published: boolean }[];
   opening: string | null;
   /** A4 :1432 as ruled — ui §7.1's shape: a handle and `mine`, never an id. */
@@ -134,6 +140,12 @@ const BROKEN_SHEET_COMMITMENT = '0x' + 'c6'.repeat(32);
 /** THE symbol, imported — a literal here would be a second spelling of `CURRENT_EXTRACTOR`. */
 const CURRENT: string = CURRENT_EXTRACTOR;
 
+beforeAll(() => {
+  // `textUrl` is signed with TOKEN_HMAC_SECRET (A5 :1505 as ruled 2026-09-24) and composed on the public origin.
+  process.env['TOKEN_HMAC_SECRET'] = 'token-hmac-secret-for-tests';
+  process.env['FRONTEND_URL'] = 'https://gf.test';
+});
+
 beforeEach(() => {
   resetWorld();
   seedResearcher('res_1', 'researcher-one');
@@ -166,9 +178,9 @@ describe('A4 :1424-:1430 — read_document, and its THREE shapes by custody', ()
     const { readDocument } = await reads();
     const answer = await readDocument(HELD_COMMITMENT, 'res_1');
     expect(!isRefusal(answer) && answer.custody).toBe('HELD');
-    // STRENGTHENED, and :1425 as ruled: the text rides; the BYTES do not, in any field.
+    // STRENGTHENED, and :1425 as ruled: the text rides — LAST, on the envelope (§9 Q2); the BYTES do not, in any field.
     const held = answer as HeldShape;
-    expect(held.versions.at(0)?.text).toBe('Ministry of Health - circular 4/2026');
+    expect(held.text).toBe('Ministry of Health - circular 4/2026');
     expect('bytes' in held).toBe(false);
     expect(held.bytesUrl).toBeNull();
   });
@@ -265,6 +277,110 @@ describe('A4 :1424-:1430 — read_document, and its THREE shapes by custody', ()
   });
 });
 
+describe('A4 :1425-:1426 as ruled 2026-09-23 (F1 ruling 2, §9 Q2) — TEXT LAST AND CAPPED, a signed `textUrl` (#579)', () => {
+  interface Link { url: string; expiresAt: string }
+  interface Envelope {
+    versions: { contentVersionHash: string; textUrl: Link | null }[];
+    current: { contentVersionHash: string } | { awaiting: string };
+    textUrl: Link | null;
+    textTruncated: boolean;
+    anchored: boolean;
+    text: string | null;
+  }
+  const read = async (commitment: string): Promise<Envelope> => {
+    const { readDocument } = await reads();
+    const answer = await readDocument(commitment, 'res_1');
+    if (isRefusal(answer)) throw new Error(`expected a document, got ${answer.code}`);
+    return answer as unknown as Envelope;
+  };
+  /** The query of a signed link, as the content route reads it (A5 :1505). */
+  const signedOf = (link: Link) => {
+    const url = new URL(link.url);
+    return { commitment: url.pathname.split('/').at(3) ?? '', version: url.searchParams.get('version') ?? '', expires: url.searchParams.get('expires') ?? '', sig: url.searchParams.get('sig') ?? '' };
+  };
+
+  it('THE FIELD ORDER — provenance and opinions before any text, and `text` the envelope’s FINAL field (A4 :1426)', async () => {
+    const answer = await read(HELD_COMMITMENT);
+    expect(Object.keys(answer)).toEqual([
+      'custody', 'commitment', 'docId', 'mimeType', 'byteLength', 'receivedAt', 'assertions', 'arrivals', 'versions',
+      'current', 'bytesUrl', 'textUrl', 'textTruncated', 'anchored', 'equalsCapture', 'uploadUrl', 'text',
+    ]);
+    // A version carries its hash, provenance, opinions and its OWN link — and NO inline text (§9 Q2).
+    expect(answer.versions.map((version) => Object.keys(version))).toEqual([['contentVersionHash', 'provenance', 'opinions', 'textUrl']]);
+    // And the order SURVIVES the wire — the MCP answer is this object, serialised.
+    expect(Object.keys(JSON.parse(JSON.stringify(answer)) as object).at(-1)).toBe('text');
+  });
+
+  it('text UNDER the cap rides whole: textTruncated false, and the envelope’s textUrl is CURRENT’s, signed', async () => {
+    const answer = await read(HELD_COMMITMENT);
+    expect(answer.text).toBe('Ministry of Health - circular 4/2026');
+    expect(answer.textTruncated).toBe(false);
+    if (answer.textUrl === null) throw new Error('a document with text carries its textUrl');
+    expect(signedOf(answer.textUrl)).toMatchObject({ commitment: HELD_COMMITMENT, version: '0x' + 'e1'.repeat(32) });
+    expect(verifyTextLink(signedOf(answer.textUrl), Date.now())).toBe(true);
+  });
+
+  it('text OVER the cap is CUT at 80,000 characters, `textTruncated: true`, and every field before it is still there', async () => {
+    // WORLD: the staging exercise's spreadsheet — 112,602 characters of serialised cells (REVIEW's measurement).
+    const commitment = '0x' + 'cf'.repeat(32);
+    const long = 'א'.repeat(112_602);
+    seedDocument({ docId: '0x' + 'df'.repeat(32), commitment, bytes: '0x' + 'df'.repeat(32), mimeType: SHEET.mimeType, title: 'the sheet' });
+    seedArrival('res_1', commitment);
+    seedVersion({ commitment, text: long, contentVersionHash: '0x' + 'ef'.repeat(32), derivedUnder: [CURRENT] });
+    const answer = await read(commitment);
+    expect(answer.textTruncated).toBe(true);
+    expect(answer.text).toBe(long.slice(0, 80_000));
+    expect(answer.textUrl).not.toBeNull();
+    expect(answer.anchored).toBe(false);
+  });
+
+  it('the cap counts CHARACTERS, not UTF-16 units — a cut never splits a character in two', async () => {
+    const commitment = '0x' + 'cb'.repeat(32);
+    const astral = '𝔸'.repeat(80_001);
+    seedDocument({ docId: '0x' + 'db'.repeat(32), commitment, bytes: '0x' + 'db'.repeat(32), title: 'astral' });
+    seedArrival('res_1', commitment);
+    seedVersion({ commitment, text: astral, contentVersionHash: '0x' + 'eb'.repeat(32), derivedUnder: [CURRENT] });
+    const answer = await read(commitment);
+    expect([...(answer.text ?? '')]).toHaveLength(80_000);
+    expect(answer.textTruncated).toBe(true);
+  });
+
+  it('a bytes-only document: text null, textUrl null, textTruncated false — the bytes ride `bytesUrl` (A4 :1425)', async () => {
+    const answer = await read(AUDIO_COMMITMENT);
+    expect(answer.text).toBeNull();
+    expect(answer.textUrl).toBeNull();
+    expect(answer.textTruncated).toBe(false);
+    expect(answer.versions.at(0)?.textUrl).toBeNull();
+  });
+
+  it('a bytes-only IMAGE still rides as its image block — `imageFor` reads the envelope’s `text`, versions carrying none (A4 :1425)', async () => {
+    // WORLD: a photograph within the image cap, with no computed text (no OCR runs — the door rulings of 2026-09-23).
+    const scan = fixture('SCAN');
+    const commitment = '0x' + 'ce'.repeat(32);
+    seedObject(scan.docId, scan.bytes);
+    seedDocument({ docId: scan.docId, commitment, bytes: scan.docId, mimeType: scan.mimeType, byteLength: scan.byteLength, title: 'the photograph' });
+    seedArrival('res_1', commitment);
+    seedVersion({ commitment, text: null, contentVersionHash: scan.docId, derivedUnder: [CURRENT] });
+    const { readDocument, imageFor } = (await reads()) as unknown as Reads & { imageFor: (answer: unknown) => Promise<{ mimeType: string } | null> };
+    const held = await readDocument(commitment, 'res_1');
+    const withText = await readDocument(HELD_COMMITMENT, 'res_1');
+    expect(await imageFor(held)).toMatchObject({ mimeType: 'image/png' });
+    // THE FLOOR's other half: a document WITH text never rides as an image.
+    expect(await imageFor(withText)).toBeNull();
+  });
+
+  it('EACH VERSION’S OWN textUrl names ITS hash — an older version’s text stays reachable (§3 :348, :350; §9 Q2)', async () => {
+    seedVersion({ commitment: HELD_COMMITMENT, text: 'the older text', contentVersionHash: '0x' + 'e0'.repeat(32), derivedUnder: ['older'], derivedAt: new Date(Date.UTC(2026, 8, 10)) });
+    const answer = await read(HELD_COMMITMENT);
+    // THE FLOOR: two versions, so a link naming CURRENT on both would fail here.
+    expect(answer.versions.map((v) => v.contentVersionHash)).toEqual(['0x' + 'e0'.repeat(32), '0x' + 'e1'.repeat(32)]);
+    for (const version of answer.versions) {
+      if (version.textUrl === null) throw new Error('each version with text carries its link');
+      expect(signedOf(version.textUrl).version).toBe(version.contentVersionHash);
+    }
+  });
+});
+
 describe('A4 :1432-:1435 — list_documents, GATED, oldest first', () => {
   it('every document of the caller’s scope, with title, custody, anchored, citedBy and opening', async () => {
     const { listDocuments } = await reads();
@@ -298,6 +414,21 @@ describe('A4 :1432-:1435 — list_documents, GATED, oldest first', () => {
     const row = listed.documents.find((d) => d.commitment === HELD_COMMITMENT);
     expect(row?.by).toEqual({ handle: 'researcher-one', mine: false });
     expect(row?.by).toEqual(arrivals.find((a) => a.by !== null)?.by);
+  });
+
+  it('`current` is ONE shape in BOTH envelopes — `{ contentVersionHash } | { awaiting }` (A4 :1434 as ruled, #582)', async () => {
+    const { listDocuments, readDocument } = await reads();
+    const listed = await listDocuments({ scope: 'all' }, 'res_1');
+    if (isRefusal(listed)) throw new Error(listed.code);
+    // THE FLOOR: both arms are in the world — a current version AND an owed one.
+    const current = (commitment: string) => listed.documents.find((d) => d.commitment === commitment)?.current;
+    expect(current(HELD_COMMITMENT)).toEqual({ contentVersionHash: '0x' + 'e1'.repeat(32) });
+    expect(current(AWAITING_COMMITMENT)).toEqual({ awaiting: 'AWAITING_DERIVATION' });
+    for (const commitment of [HELD_COMMITMENT, AWAITING_COMMITMENT]) {
+      const read = await readDocument(commitment, 'res_1');
+      if (isRefusal(read)) throw new Error(read.code);
+      expect(current(commitment)).toEqual((read as HeldShape).current);
+    }
   });
 
   it('`scope: all` adds every researcher’s documents, each with its handle and `mine` (A4 :1432, ui §7.1)', async () => {
@@ -345,7 +476,7 @@ describe('A4 :1432-:1435 — list_documents, GATED, oldest first', () => {
 describe('A4 :1437-:1441 — describe_document, PAID, on the researcher’s word', () => {
   it('appends an OPINION to CURRENT(d) — §3’s last row, never a citation', async () => {
     const { describeDocument } = await describe_();
-    modelAnswer.value = { summary: 'a ministry circular about the reporting channel' };
+    modelAnswer.value = { summary: 'a ministry circular about the reporting channel', wholeAnswer: 'END' };
     const answer = await describeDocument(HELD_COMMITMENT, 'res_1');
     expect(!isRefusal(answer) && 'opinion' in answer).toBe(true);
     // STRENGTHENED, and A2 :1302 as ruled: ONE row APPENDED, attributed, labelled.
@@ -354,11 +485,21 @@ describe('A4 :1437-:1441 — describe_document, PAID, on the researcher’s word
     expect(modelCalls).toHaveLength(1);
   });
 
+  it('the STORED body carries no sentinel — `wholeAnswer` is the answer’s, never the opinion’s (Q2 ruled 2026-09-24)', async () => {
+    const { describeDocument } = await describe_();
+    modelAnswer.value = { summary: 'a ministry circular', wholeAnswer: 'END' };
+    await describeDocument(HELD_COMMITMENT, 'res_1');
+    const body = store.opinions.at(0)?.['body'] as Record<string, unknown> | undefined;
+    // THE FLOOR: the opinion was written, with its reading.
+    expect(body).toEqual({ summary: 'a ministry circular' });
+    expect(body !== undefined && 'wholeAnswer' in body).toBe(false);
+  });
+
   it('a SECOND reading is APPENDED beside the first, never over it (A2 :1302 as ruled)', async () => {
     const { describeDocument } = await describe_();
-    modelAnswer.value = { summary: 'first' };
+    modelAnswer.value = { summary: 'first', wholeAnswer: 'END' };
     await describeDocument(HELD_COMMITMENT, 'res_1');
-    modelAnswer.value = { summary: 'second' };
+    modelAnswer.value = { summary: 'second', wholeAnswer: 'END' };
     await describeDocument(HELD_COMMITMENT, 'res_2');
     expect(store.opinions.map((o) => (o['body'] as { summary: string }).summary)).toEqual(['first', 'second']);
   });
@@ -395,7 +536,7 @@ describe('A4 :1437-:1441 — describe_document, PAID, on the researcher’s word
   it('its ONE write, the opinion, goes through the transaction’s client — interaction A7 :1273, composed by flows :1223', async () => {
     // The double hands each `$transaction` callback a DISTINCT client tagged `transaction` (world.ts).
     const { describeDocument } = await describe_();
-    modelAnswer.value = { summary: 'a ministry circular' };
+    modelAnswer.value = { summary: 'a ministry circular', wholeAnswer: 'END' };
     await describeDocument(HELD_COMMITMENT, 'res_1');
     const rows = writes.filter((write) => write.op !== '$transaction');
     // THE FLOOR: exactly the opinion — zero writes would pass the next line vacuously.
@@ -403,9 +544,60 @@ describe('A4 :1437-:1441 — describe_document, PAID, on the researcher’s word
     expect(rows.filter((write) => write.via !== 'transaction')).toEqual([]);
   });
 
-  it('THE SET IS CLOSED — six codes (TOO_LARGE RULED 2026-09-23 at A4 :1440)', () => {
+  it('the model is TOLD whether CURRENT(d) has computed text — prompt v3 transcribes only where it has none (A4 :1439)', async () => {
+    // WORLD: HELD_COMMITMENT is a PDF with a text layer (its version's text is set); a scanned PDF's version has none.
+    const scan = '0x' + 'cd'.repeat(32);
+    const bytes = new TextEncoder().encode('a scanned page, no text layer');
+    const docId = nameOf(bytes);
+    seedObject(docId, bytes);
+    seedDocument({ docId, commitment: scan, bytes: docId, mimeType: 'application/pdf', byteLength: bytes.length, title: 'the scan' });
+    seedArrival('res_1', scan);
+    seedVersion({ commitment: scan, text: null, contentVersionHash: docId, derivedUnder: [CURRENT] });
+    const { describeDocument } = await describe_();
+    modelAnswer.value = { summary: 'a page', wholeAnswer: 'END' };
+    await describeDocument(HELD_COMMITMENT, 'res_1');
+    await describeDocument(scan, 'res_1');
+    const told = modelCalls.map((call) => JSON.stringify(call));
+    // THE FLOOR: both draws were made.
+    expect(told).toHaveLength(2);
+    expect(told.at(0)).toContain('יש לפלטפורמה טקסט מחושב של המסמך: כן');
+    expect(told.at(1)).toContain('יש לפלטפורמה טקסט מחושב של המסמך: לא');
+  });
+
+  it('INCOMPLETE_ANSWER — a CUT answer is refused, NOTHING IS WRITTEN, and the refusal never says nothing was spent (A4 :1441 as ruled)', async () => {
+    // WORLD: the staging exercise's own (D doc §4 F3) — a paid draw that hit the model's output limit. The body PARSES,
+    // sentinel and all: the finish reason refuses on its own (REVIEW's MEDIUM, "twice over").
+    const { describeDocument } = await describe_();
+    modelFinish.metadata = { finishReason: 'MAX_TOKENS' };
+    modelAnswer.value = { summary: 'a body that looks whole', wholeAnswer: 'END' };
+    const answer = await describeDocument(HELD_COMMITMENT, 'res_1');
+    expect(isRefusal(answer) && answer.code).toBe('INCOMPLETE_ANSWER');
+    // THE FLOOR: the draw WAS made — a refusal before the call would pass the write checks vacuously.
+    expect(modelCalls).toHaveLength(1);
+    expect(store.opinions).toEqual([]);
+    expect(writes.filter((write) => write.op !== '$transaction')).toEqual([]);
+    expect(isRefusal(answer) && answer.error).toMatch(/MAX_TOKENS/);
+    expect(isRefusal(answer) && answer.error).toMatch(/nothing was written/i);
+    expect(isRefusal(answer) && answer.error).not.toMatch(/nothing was spent/i);
+  });
+
+  it('INCOMPLETE_ANSWER on a missing sentinel too — the finish reason STOP, the body cut short', async () => {
+    const { describeDocument } = await describe_();
+    modelAnswer.value = { summary: 'the first field, and then nothing' };
+    const answer = await describeDocument(HELD_COMMITMENT, 'res_1');
+    expect(isRefusal(answer) && answer.code).toBe('INCOMPLETE_ANSWER');
+    expect(store.opinions).toEqual([]);
+    // REVIEW round 2's LOW: the finish reason was STOP — so the refusal names WHAT WAS MISSING, never "cut (… STOP)".
+    expect(isRefusal(answer) && answer.error).toMatch(/wholeAnswer/);
+    expect(isRefusal(answer) && answer.error).not.toMatch(/was cut/);
+    expect(isRefusal(answer) && answer.error).toMatch(/STOP/);
+    expect(isRefusal(answer) && answer.error).toMatch(/nothing was written/i);
+  });
+
+  it('THE SET IS CLOSED — seven codes (TOO_LARGE at A4 :1440, INCOMPLETE_ANSWER at :1441, both RULED 2026-09-23)', () => {
     expect([...DESCRIBE_DOCUMENT_REFUSALS].sort()).toEqual([
       'AWAITING_DERIVATION',
+      'INCOMPLETE_ANSWER',
       'NOT_A_DOCUMENT',
       'NOT_HELD',
       'NO_RESEARCHER',
@@ -436,7 +628,7 @@ describe('A4 :1440 as ruled 2026-09-23 — describe_document refuses TOO_LARGE a
   it('a PDF one byte over the bound is refused TOO_LARGE, and the model is NEVER called and the bucket never read', async () => {
     seedOversizePdf(null);
     const { describeDocument } = await describe_();
-    modelAnswer.value = { summary: 'must not be reached' };
+    modelAnswer.value = { summary: 'must not be reached', wholeAnswer: 'END' };
     const answer = await describeDocument(OVERSIZE_COMMITMENT, 'res_1');
     expect(isRefusal(answer) && answer.code).toBe('TOO_LARGE');
     expect(isRefusal(answer) && answer.error).toMatch(/50000000/);
@@ -464,7 +656,7 @@ describe('A4 :1440 as ruled 2026-09-23 — describe_document refuses TOO_LARGE a
     seedArrival('res_1', commitment);
     seedVersion({ commitment, text: null, contentVersionHash: docId, derivedUnder: [CURRENT] });
     const { describeDocument } = await describe_();
-    modelAnswer.value = { summary: 'at the bound' };
+    modelAnswer.value = { summary: 'at the bound', wholeAnswer: 'END' };
     const answer = await describeDocument(commitment, 'res_1');
     expect(isRefusal(answer) ? answer.code : 'READ').toBe('READ');
     expect(modelCalls).toHaveLength(1);
@@ -483,7 +675,7 @@ describe('A4 :1440 as ruled 2026-09-23 — describe_document refuses TOO_LARGE a
     seedArrival('res_1', commitment);
     seedVersion({ commitment, text: null, contentVersionHash: docId, derivedUnder: [CURRENT] });
     const { describeDocument } = await describe_();
-    modelAnswer.value = { summary: 'must not be reached' };
+    modelAnswer.value = { summary: 'must not be reached', wholeAnswer: 'END' };
     const answer = await describeDocument(commitment, 'res_1');
     expect(isRefusal(answer) && answer.code).toBe('TOO_LARGE');
     expect(modelCalls).toHaveLength(0);
@@ -498,7 +690,7 @@ describe('A4 :1440 as ruled 2026-09-23 — describe_document refuses TOO_LARGE a
     seedArrival('res_1', commitment);
     seedVersion({ commitment, text: '# sheet1\nthe cells of the large workbook', contentVersionHash: '0x' + 'eb'.repeat(32), derivedUnder: [CURRENT] });
     const { describeDocument } = await describe_();
-    modelAnswer.value = { summary: 'a large workbook' };
+    modelAnswer.value = { summary: 'a large workbook', wholeAnswer: 'END' };
     const answer = await describeDocument(commitment, 'res_1');
     expect(isRefusal(answer) ? answer.code : 'READ').toBe('READ');
     expect(modelCalls).toHaveLength(1);
