@@ -4,12 +4,8 @@ import { toBytes32 } from '../../lib/bytes32';
 import { normaliseAddress } from '../../lib/anchoringTarget';
 import { readChainIdentity } from '../../lib/chainIdentity';
 import { Web3Service } from '../../services/Web3Service';
-import {
-  attributeClaim,
-  entryFromChain,
-  RegistryReadError,
-  type ClaimAttribution,
-} from '../../services/registryState';
+import { attributeClaim, entryFromChain, type ClaimAttribution } from '../../services/registryState';
+import { chainUnavailable, commitmentOnChain } from '../../services/checkOnChainStatus';
 import { storedAttributionFor, type StoredAttribution } from '../../services/evidencePredicates';
 import {
   loadCaptures,
@@ -46,6 +42,9 @@ import { answer, refusal, openPage, pageByUrl, type Refusal } from './evidenceRe
 // `isRegistered` returned — so a per-capture question costs two calls rather
 // than a walk of the whole registry.
 //
+// A DOCUMENT'S COMMITMENT IS THE THIRD WAY IN (document flows A4 :1468–:1469 as ruled 2026-09-24): its arm is
+// `services/checkOnChainStatus.ts`, with the document gate and its own envelope; this file dispatches to it.
+//
 // THE CHAIN IS NEVER READ AS AGREEMENT. An unreachable chain, or two reads of
 // one state that disagree, is `CHAIN_UNAVAILABLE` — "a verdict about the CHECK",
 // never a `registered: false` a caller could mistake for a negative.
@@ -61,6 +60,10 @@ export const checkOnChainStatusSchema = {
     .string()
     .optional()
     .describe("A record's name instead: answers about every capture beneath it"),
+  commitment: z
+    .string()
+    .optional()
+    .describe("A document's public name (its #doc_ token): answers about ITS entry, or the equal capture's that attests it"),
 };
 
 interface CaptureStatus {
@@ -91,7 +94,12 @@ export async function checkOnChainStatusHandler(input: {
   url?: string;
   capture?: string;
   fileHash?: string;
+  commitment?: string;
 }): Promise<string> {
+  if (input.commitment !== undefined && input.commitment !== '') {
+    const commitment = input.commitment;
+    return answer(() => commitmentOnChain(commitment));
+  }
   return answer(async (): Promise<OnChainStatus | Refusal> => {
     if (input.fileHash !== undefined && input.fileHash !== '') {
       const subject = await recordSubject(input.fileHash);
@@ -172,22 +180,6 @@ function statusOf(
     anchoredHashMatchesDocumentHash: capture.anchoredHash === capture.documentHash,
     storedVerdict: reportable(stored),
   };
-}
-
-/**
- * A chain that would not answer, or answered inconsistently, is a verdict about
- * the CHECK. `RegistryReadError` is the second case — "two reads of one state
- * that contradict each other are not a verdict" — and it is reported here rather
- * than swallowed, because the safe direction is to decide nothing.
- */
-function chainUnavailable(err: unknown): Refusal<'CHAIN_UNAVAILABLE'> {
-  const message = err instanceof Error ? err.message : String(err);
-  const kind = err instanceof RegistryReadError ? 'The registry answered inconsistently' : 'The registry could not be reached';
-  return refusal(
-    'CHAIN_UNAVAILABLE',
-    `${kind}: ${message}. This is a verdict about the CHECK, not about the capture: it is NOT ` +
-      'evidence that the hash is unregistered.',
-  );
 }
 
 /**

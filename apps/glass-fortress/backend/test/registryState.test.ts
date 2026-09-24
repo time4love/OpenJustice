@@ -36,6 +36,8 @@ import {
 } from '../src/services/registryState';
 import { countByVerdict, type CorpusClaim } from '../src/services/registryState';
 import type { OnChainEvidenceRecord } from '../src/services/Web3Service';
+import { DOCUMENT_COMMITMENT } from '../src/lib/anchoredCaptureHash';
+import { commitment as commitmentOf } from '../src/lib/documentIdentity';
 
 const REGISTRAR = '0x9DE2e74b3C5dAc4C3E2a0d18A5b76EEAc8989A28';
 const STRANGER = '0x000000000000000000000000000000000000dEaD';
@@ -233,6 +235,7 @@ describe('classifyEntry: a live entry is a capture\'s documentHash, or it is une
       { id: 's1', waybackTimestamp: '20220724130104', url: 'https://x/', documentHash: hash(1).slice(2) },
       { id: 's2', waybackTimestamp: '20220805053301', url: 'https://x/', documentHash: hash(3).slice(2) },
     ],
+    documents: [],
   };
 
   it('DOCUMENT_HASH — the payload anchor, the target scheme', () => {
@@ -252,6 +255,44 @@ describe('classifyEntry: a live entry is a capture\'s documentHash, or it is une
     expect(classifyEntry(entry(0, { fileHash: hash(77) }), corpus)).toEqual({
       kind: 'UNEXPLAINED',
       snapshots: [],
+    });
+  });
+});
+
+describe('classifyEntry reads the CATEGORY — a DOCUMENT_COMMITMENT entry is explained by ONE document row (document step 31)', () => {
+  // docs/gf-document-flows.md A7 :1554–:1556: "every commitment entry is reproduced by one Document row's (docId,
+  // salt)". The COMMITMENT is recomputed by `lib/documentIdentity`'s one formula, never compared to a stored column
+  // alone — a wrong salt is a row that does NOT reproduce it. Every OTHER category keeps the documentHash arm
+  // unchanged, so a frozen registry's entries (category = a retired label) classify exactly as before.
+  const docId = hash(5);
+  const salt = Buffer.alloc(32, 9);
+  const name = commitmentOf(docId, salt);
+  const capture = { id: 's1', waybackTimestamp: '20220724130104', url: 'https://x/', documentHash: hash(1).slice(2) };
+
+  it('explained by the row whose (docId, salt) REPRODUCES it', () => {
+    const corpus: CorpusHashes = { snapshots: [capture], documents: [{ commitment: name, docId, salt }] };
+    expect(classifyEntry(entry(0, { fileHash: name, category: DOCUMENT_COMMITMENT }), corpus)).toEqual({
+      kind: 'DOCUMENT_COMMITMENT',
+      snapshots: [],
+      commitment: name,
+    });
+  });
+
+  it('a WRONG salt leaves it UNEXPLAINED — the stored name alone is not the explanation', () => {
+    const corpus: CorpusHashes = { snapshots: [capture], documents: [{ commitment: name, docId, salt: Buffer.alloc(32, 1) }] };
+    expect(classifyEntry(entry(0, { fileHash: name, category: DOCUMENT_COMMITMENT }), corpus)).toEqual({ kind: 'UNEXPLAINED', snapshots: [] });
+  });
+
+  it('a DOCUMENT_COMMITMENT entry whose hash is a CAPTURE’s is not explained by the capture', () => {
+    const corpus: CorpusHashes = { snapshots: [capture], documents: [] };
+    expect(classifyEntry(entry(0, { fileHash: hash(1), category: DOCUMENT_COMMITMENT }), corpus)).toEqual({ kind: 'UNEXPLAINED', snapshots: [] });
+  });
+
+  it('EVERY OTHER category takes the documentHash arm, UNCHANGED — the frozen registry’s labels', () => {
+    const corpus: CorpusHashes = { snapshots: [capture], documents: [{ commitment: name, docId, salt }] };
+    expect(classifyEntry(entry(0, { fileHash: hash(1), category: 'Wayback Snapshot' }), corpus)).toEqual({
+      kind: 'DOCUMENT_HASH',
+      snapshots: [{ id: 's1', waybackTimestamp: '20220724130104', url: 'https://x/' }],
     });
   });
 });

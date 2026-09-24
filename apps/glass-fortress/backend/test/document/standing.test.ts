@@ -17,7 +17,7 @@ import { held, sealed } from './fixtures';
 
 interface Standing {
   anchored: (commitment: string, attributed: (hash: string) => boolean) => boolean;
-  verified: (
+  verifiedDocument: (
     document: DocumentRow,
     shed: ShedRow | null,
     bytes: Uint8Array | null,
@@ -60,25 +60,25 @@ describe('A3 :1366 — ANCHORED(d) = ATTRIBUTED(d.commitment), from CHAIN STATE'
 
 describe('A3 :1367 — VERIFIED(d) = RECOMPUTABLE(d) AND ANCHORED(d)', () => {
   it('a HELD document whose bytes hash to its name AND is attributed is VERIFIED', async () => {
-    const { verified } = await standing(['verified']);
+    const { verifiedDocument } = await standing(['verifiedDocument']);
     const bytes = new Uint8Array([1, 2, 3]);
     const { createHash } = await import('node:crypto');
     const name = '0x' + createHash('sha256').update(bytes).digest('hex');
-    expect(verified(held({ docId: name }), null, bytes, ATTRIBUTES_EVERYTHING)).toBe(true);
+    expect(verifiedDocument(held({ docId: name }), null, bytes, ATTRIBUTES_EVERYTHING)).toBe(true);
   });
 
   it('an OWED commitment makes it NOT verified, whatever the bytes say', async () => {
-    const { verified } = await standing(['verified']);
+    const { verifiedDocument } = await standing(['verifiedDocument']);
     const bytes = new Uint8Array([1, 2, 3]);
     const { createHash } = await import('node:crypto');
     const name = '0x' + createHash('sha256').update(bytes).digest('hex');
-    expect(verified(held({ docId: name }), null, bytes, ATTRIBUTES_NOTHING)).toBe(false);
+    expect(verifiedDocument(held({ docId: name }), null, bytes, ATTRIBUTES_NOTHING)).toBe(false);
   });
 
   it('a SEALED document is VERIFIED on the RECEIPT STAMP plus the anchor — one witness and one observation (§4 :464-:470)', async () => {
-    const { verified } = await standing(['verified']);
-    expect(verified(sealed(), null, null, ATTRIBUTES_EVERYTHING)).toBe(true);
-    expect(verified(sealed({ verifiedAtReceipt: null }), null, null, ATTRIBUTES_EVERYTHING)).toBe(false);
+    const { verifiedDocument } = await standing(['verifiedDocument']);
+    expect(verifiedDocument(sealed(), null, null, ATTRIBUTES_EVERYTHING)).toBe(true);
+    expect(verifiedDocument(sealed({ verifiedAtReceipt: null }), null, null, ATTRIBUTES_EVERYTHING)).toBe(false);
   });
 });
 

@@ -51,7 +51,7 @@ describe('plan §4 :408 — the caller-count scan, and what it counts IN THIS RO
     expect(source).toMatch(/anchorDocumentCommitment/);
   });
 
-  it('THE DECOY: a planted THIRD caller of the module is caught — plan §4 :408', async () => {
+  it('add_document reaches the module and never `registerEvidenceHash` or `submit(` — the third-caller COUNT is test/documentAnchoringCallers.test.ts', async () => {
     await anchor();
     // The scan itself is `test/onChainSingleWriter.test.ts`, which is KEEP. What this case
     // fixes is that the document layer's new caller reaches the MODULE and never `submit`.

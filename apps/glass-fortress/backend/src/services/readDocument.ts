@@ -3,8 +3,11 @@ import { familyOf, IMAGE_BLOCK_BYTES } from '../lib/acceptedDocumentTypes';
 import { CURRENT_EXTRACTOR } from '../lib/documentExtractor';
 import { mintTextLink } from '../lib/documentTextLink';
 import { prisma } from '../lib/prisma';
-import { storedAssertions, capturesEqualTo, type Assertions } from './addDocument';
+import { storedAssertions, type Assertions } from './addDocument';
+import { anchoredOf } from './anchorDocuments';
+import { openDocumentRegistryWindow } from './anchorSnapshots';
 import { mintDownloadUrl, readObject } from './documentBucket';
+import { capturesEqualTo } from './documentCaptures';
 import { currentVersion, custody, type Custody } from './documentPredicates';
 import { documentRefusal, NO_RESEARCHER, type DocumentRefusal } from './documentRefusals';
 import { uploadUrl } from './documentUploadUrl';
@@ -120,7 +123,7 @@ export interface ReadDocumentHeld {
   textUrl: SignedLink | null;
   /** Whether `text` was cut at TEXT_CAP_CHARACTERS. */
   textTruncated: boolean;
-  /** ANCHORED(d), A3 :1366 — false by construction until step 31 builds the pass that pays the commitment. */
+  /** ANCHORED(d), A3 :1366 as ruled 2026-09-24 — READ from chain state on this read, both arms; false while owed. */
   anchored: boolean;
   equalsCapture: { url: string; capture: string } | null;
   /** The dialog's link, THIS document as derived-from and its assertions as defaults (:1428). */
@@ -139,7 +142,7 @@ export interface ListedDocument {
   assertions: Omit<Assertions, 'title'>;
   /** CURRENT(d) — ONE shape with read_document's (A4 :1434 as ruled 2026-09-23): the object form can say awaiting. */
   current: CurrentView;
-  /** ANCHORED(d), A3 :1366 — false by construction until step 31 builds the pass that pays the commitment. */
+  /** ANCHORED(d), A3 :1366 as ruled 2026-09-24 — READ from chain state on this read, both arms; false while owed. */
   anchored: boolean;
   citedBy: { thesisId: string; published: boolean }[];
   opening: 'PASSAGE' | 'CONTENT' | 'BYTES' | null;
@@ -199,6 +202,7 @@ export async function readDocument(commitment: string, researcherId: string | nu
   const arrivals = (await arrivalsOf([commitment], researcherId)).get(commitment) ?? [];
   const currentText = 'awaiting' in current || 'shed' in current ? null : current;
   const text = capped(currentText?.text ?? null);
+  const standing = await anchoredOf(openDocumentRegistryWindow(), [{ commitment, docId: document.docId, held: true }]);
 
   return {
     custody: 'HELD',
@@ -235,7 +239,7 @@ export async function readDocument(commitment: string, researcherId: string | nu
     bytesUrl: link === null ? null : { url: link.url, expiresAt: iso(link.expiresAt) },
     textUrl: currentText === null ? null : textLinkOf(commitment, currentText),
     textTruncated: text.truncated,
-    anchored: false,
+    anchored: standing.get(commitment)?.anchored ?? false,
     equalsCapture: await capturesEqualTo(document.docId),
     uploadUrl: uploadUrl({
       url: document.assertedUrl,
@@ -289,6 +293,10 @@ export async function listDocuments(
   }
 
   const scoped = documents.filter((d) => (args.scope ?? 'mine') === 'all' || byOf(d.commitment)?.mine === true);
+  const standing = await anchoredOf(
+    openDocumentRegistryWindow(),
+    scoped.map((d) => ({ commitment: d.commitment, docId: d.docId, held: custody(d, d.shed) === 'HELD' })),
+  );
   const rows = await Promise.all(
     scoped
       .sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime() || (a.commitment < b.commitment ? -1 : 1))
@@ -304,7 +312,7 @@ export async function listDocuments(
           receivedAt: iso(document.receivedAt),
           assertions: { assertedUrl: assertions.assertedUrl, assertedAt: assertions.assertedAt, derivedFrom: assertions.derivedFrom },
           current: currentView(current),
-          anchored: false,
+          anchored: standing.get(document.commitment)?.anchored ?? false,
           citedBy: citedByOf(mentions, document.commitment),
           // No decision exists — the guard above throws on one (step 34 reads OPENED(d)).
           opening: null,

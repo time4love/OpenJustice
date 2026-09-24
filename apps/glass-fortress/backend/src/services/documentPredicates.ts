@@ -151,6 +151,42 @@ export function recomputableEvidence(fileHash: string, document: Document): bool
 }
 
 /**
+ * ANCHORED(d) — A3 :1366, as ruled 2026-09-24: ATTRIBUTED(d.commitment), OR, for a HELD document, EQUALS_CAPTURE(d)
+ * with that capture ATTRIBUTED.
+ *
+ * `attributed` IS THE CHAIN'S ANSWER, handed in: ATTRIBUTED is read from chain state by `registryState`'s one spelling
+ * and never re-derived here, and this module stays pure (its header). It is asked about the COMMITMENT — the public
+ * name, never the DOC_ID (§4 :429–:438) — and, only when a caller hands one, about `equalCapture`: the documentHash of a
+ * capture EQUALS_CAPTURE matched, which the ruling makes the one sanctioned look-up of that plain hash, because it is
+ * already public as the capture's documentHash with two witnesses. A caller passes it only for a HELD document
+ * (`verified` enforces that itself; `anchorDocuments.ts` reads custody before it asks).
+ */
+export function anchored(commitment: string, attributed: (hash: string) => boolean, equalCapture: string | null = null): boolean {
+  return attributed(commitment) || (equalCapture !== null && attributed(equalCapture));
+}
+
+/**
+ * VERIFIED(d) — A3 :1367: RECOMPUTABLE(d) AND ANCHORED(d). CALLS both; spells neither. The capture arm is HELD only —
+ * §4 :441 names "a HELD document", and a SEALED DOC_ID never leaves the platform — so for any other custody the
+ * capture is not passed on, whatever the caller handed in.
+ *
+ * THE NAME IS QUALIFIED, as `recomputableDocument` is and for the same reason: evidence A3's VERIFIED(e) is
+ * `evidencePredicates.verified`, and `test/evidence/scans.test.ts` holds that no other module declares a `verified`.
+ * That suite stays unedited (plan §1 :47–:49: "a seam that needs a sibling's test edited is a seam this plan got
+ * wrong"); the researcher ruled `recomputable` the same way on 2026-09-23.
+ */
+export function verifiedDocument(
+  document: Document,
+  shed: Shed | null,
+  bytes: Uint8Array | null,
+  attributed: (hash: string) => boolean,
+  equalCapture: string | null = null,
+): boolean {
+  const held = shed === null && custody(document, null) === 'HELD';
+  return recomputableDocument(document, shed, bytes) && anchored(document.commitment, attributed, held ? equalCapture : null);
+}
+
+/**
  * CURRENT(d) — A3 :1368-:1371, by custody mode.
  *
  *   HELD    the version whose `derivedUnder` CONTAINS `CURRENT_EXTRACTOR` (below, and A3

@@ -1363,7 +1363,7 @@ RECOMPUTABLE(d)           HELD:   sha256(bytes) = docId — held at every write,
                           NONE:   what was last recorded, as recorded
 RECOMPUTABLE(e)           kind DOCUMENT: e.fileHash = sha256(bytes32(d.docId) ‖ d.salt) for the
                           Document keyed by e.documentCommitment — evidence A3's predicate, third arm
-ANCHORED(d)               ATTRIBUTED(d.commitment)                             evidence A3
+ANCHORED(d)               ATTRIBUTED(d.commitment)                             evidence A3 — **RULED 2026-09-24 (the researcher, R80 Q1): OR, for a HELD document, EQUALS_CAPTURE(d) with that capture ATTRIBUTED — §4 :440–:442 "nothing is written for it", the flows winning over this line: the bytes' plain hash is already public as the capture's documentHash with two witnesses. The COMMITMENT is still computed at receipt (the public name, the token); a commitment written before the equality appeared stands.**
 VERIFIED(d)               RECOMPUTABLE(d) AND ANCHORED(d)
 CURRENT(d)                HELD:   the DocumentContentVersion whose `derivedUnder` CONTAINS
                                   CURRENT_EXTRACTOR; none → AWAITING_DERIVATION (evidence A3's name) — **RULED 2026-09-23 (the researcher): MEMBERSHIP, never equality on `extractorVersion` (A2 :1300, §3 :324) — a re-derivation that reproduces the text APPENDS to the list and moves no row, so the identical-text case is current rather than permanently awaiting.**
@@ -1466,7 +1466,7 @@ list_findings({ url })      evidence A4 — gains the `documents` register (§9)
 resolve_record({ fileHash })  evidence A4 — a commitment resolves to §7's public block;
                             NOT_PUBLIC unless OPENED(d)
 check_on_chain_status({ commitment })  evidence A4 — asked about a commitment, answers about its
-                            entry: registered · ATTRIBUTED · block time · category
+                            entry: registered · ATTRIBUTED · block time · category — **RULED 2026-09-24 (the researcher, R80): a document ANCHORED by A3 :1366's capture arm is answered as attested by that capture, with its index, never as unregistered; NOT_PUBLIC unless PUBLIC(d) (A3 :1379), the gate resolve_record carries at :1466–:1467**
 review_evidence             evidence A4 — unchanged over kind DOCUMENT
 ```
 
@@ -1556,7 +1556,7 @@ anchors-explainable          evidence A7, extended
   reproduced by one Document row's (docId, salt); exit 1 on an unexplained entry, by index
 
 commitments-owed             §4         npm run forensics:commitments-owed -- --env <env>
-  documents with no ATTRIBUTED commitment, with age — the standing pass's input
+  documents with no ATTRIBUTED commitment, with age — the standing pass's input — **RULED 2026-09-24 (the researcher, R80 Q1): excluding a document ANCHORED by A3 :1366's capture arm**
   exit 0: none owed · exit 2: owed, listed — an expected state, never a failure
 
 no-plaintext-at-rest         §2, §5     a source scan and a test, in the suite

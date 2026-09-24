@@ -24,6 +24,8 @@ import {
   type LedgerInput,
 } from '../src/services/registryLedger';
 import type { CorpusHashes, RegistryEntry, RegistryState } from '../src/services/registryState';
+import { DOCUMENT_COMMITMENT } from '../src/lib/anchoredCaptureHash';
+import { commitment as commitmentOf } from '../src/lib/documentIdentity';
 
 const REGISTRY = '0x65b9a7acb45Aa05e7Ed207844F93a2b308373853';
 const REGISTRAR = '0x9de2e74b3c5dac4c3e2a0d18a5b76eeac8989a28';
@@ -65,6 +67,7 @@ const corpus: CorpusHashes = {
     { id: 's1', waybackTimestamp: '20220724130104', url: 'https://x/', documentHash: hash(1).slice(2) },
     { id: 's2', waybackTimestamp: '20220805053301', url: 'https://x/', documentHash: hash(3).slice(2) },
   ],
+  documents: [],
 };
 
 // THE EVIDENCE FIXTURE WENT WITH THE ARM AT EVIDENCE STEP 11b. `CorpusHashes`
@@ -232,6 +235,21 @@ describe('the ledger refuses rather than emits', () => {
 
   it('a ledger of nothing: an empty registry has no history to explain', () => {
     expect(() => buildRegistryLedger(input({ state: state([]) }))).toThrow(/nothing to explain/);
+  });
+
+  it('a DOCUMENT COMMITMENT entry REFUSES, NAMED as one — no ledger kind exists for it (document step 31, [3])', () => {
+    // `classifyEntry` explains it by a document row; the LEDGER has no kind to write it under, because its attested
+    // wording is the researcher's to rule (an issue, not code). The refusal names it as what it is — never as a hash
+    // "no column explains", which would be false.
+    const docId = hash(7);
+    const salt = Buffer.alloc(32, 3);
+    const name = commitmentOf(docId, salt);
+    const entries = [entry(0, { fileHash: hash(1) }), entry(1, { fileHash: name, category: DOCUMENT_COMMITMENT, timestamp: at('2026-09-24T10:00:00Z') })];
+    const withDocument = { ...corpus, documents: [{ commitment: name, docId, salt }] };
+    const attempt = () => buildRegistryLedger(input({ state: state(entries), corpus: withDocument }));
+    expect(attempt).toThrow(LedgerRefusal);
+    expect(attempt).toThrow(/index 1[^\n]*DOCUMENT COMMITMENT/);
+    expect(attempt).not.toThrow(/index 1[^\n]*matches no hash column/);
   });
 
   it('a refusal names every offending index, not the first', () => {
