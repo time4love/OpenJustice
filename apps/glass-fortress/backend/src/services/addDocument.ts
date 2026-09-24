@@ -64,8 +64,12 @@ export interface AddDocumentAnswer {
   commitment: string;
   docId: string;
   custody: 'HELD';
-  /** The derived version, or null while the derivation is owed (A4 :1407-:1408). */
-  content: { contentVersionHash: string; text: string | null } | null;
+  /**
+   * The derived version's HASH, or null while the derivation is owed (A4 :1407-:1409). NEVER its text — RULED
+   * 2026-09-23 (F1 ruling 1): a write's answer is the RECEIPT of the act, and the content is `read_document`'s. A real
+   * spreadsheet's text inline blew the client's result cap and cut every field after it.
+   */
+  content: { contentVersionHash: string } | null;
   /** FALSE BY CONSTRUCTION at step 30 — the commitment is owed until step 31's pass pays it. */
   anchored: false;
   equalsCapture: { url: string; capture: string } | null;
@@ -217,7 +221,7 @@ async function answerFor(
     commitment,
     docId: key,
     custody: 'HELD',
-    content: version === null ? null : { contentVersionHash: version.contentVersionHash, text: version.text },
+    content: version === null ? null : { contentVersionHash: version.contentVersionHash },
     anchored: false,
     equalsCapture: await capturesEqualTo(key),
     existed,

@@ -35,6 +35,7 @@ type Step =
   | { step: 'HASHING'; file: File }
   | { step: 'UPLOADING'; file: File }
   | { step: 'UPLOADED'; file: File; command: AddDocumentCommand }
+  | { step: 'STORED'; file: File; command: AddDocumentCommand }
   | { step: 'REFUSED'; file: File; code: UploadRefusal }
   | { step: 'FAILED'; file: File }
   | { step: 'OFFLINE'; file: File }
@@ -74,6 +75,9 @@ export function UploadDialog({ link }: { link: UploadLink }) {
     if (signed.state === 'NOT_A_RESEARCHER') return setState({ step: 'FORBIDDEN' });
     if (signed.state === 'UNREACHABLE') return setState({ step: 'OFFLINE', file });
     if (signed.state === 'REFUSED') return setState({ step: 'REFUSED', file, code: signed.code });
+    // THE BYTES ARE ALREADY IN THE STORE (§9 :998 as ruled 2026-09-23, F2): nothing is re-sent, and the command is the
+    // same one — `add_document` answers `existed: true` for a document it already holds.
+    if (signed.state === 'STORED') return setState({ step: 'STORED', file, command: addDocumentCommand({ docId, mimeType: file.type }, link) });
     const put = await putToSignedUrl(signed.uploadUrl, file, file.type);
     if (put === 'FAILED') return setState({ step: 'FAILED', file });
     setState({ step: 'UPLOADED', file, command: addDocumentCommand({ docId, mimeType: file.type }, link) });
@@ -172,6 +176,7 @@ function Progress({ state }: { state: Exclude<Step, { step: 'CHOOSING' | 'FORBID
     HASHING: t('status.hashing'),
     UPLOADING: t('status.uploading'),
     UPLOADED: t('status.uploaded'),
+    STORED: t('status.stored'),
     REFUSED: null,
     FAILED: null,
     OFFLINE: null,
@@ -192,7 +197,7 @@ function Progress({ state }: { state: Exclude<Step, { step: 'CHOOSING' | 'FORBID
       {state.step === 'REFUSED' ? <p className="text-sm text-ink">{t(`refused.${state.code}`)}</p> : null}
       {state.step === 'FAILED' ? <p className="text-sm text-ink">{t('failed')}</p> : null}
       {state.step === 'OFFLINE' ? <p className="text-sm text-ink">{marking('offline')}</p> : null}
-      {state.step === 'UPLOADED' ? <Command command={state.command} /> : null}
+      {state.step === 'UPLOADED' || state.step === 'STORED' ? <Command command={state.command} /> : null}
     </>
   );
 }

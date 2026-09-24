@@ -1,5 +1,5 @@
 const objects = new Map<string, { bytes: Uint8Array; createdAt: string }>();
-const failures: { exists: boolean; info: boolean } = { exists: false, info: false };
+const failures: { exists: boolean; info: boolean; signExists: boolean } = { exists: false, info: false, signExists: false };
 const fromCalls: string[] = [];
 /** The bucket as storage answers `getBucket`: present, absent (storage's own "Bucket not found"), or unreachable. */
 const bucketAnswer: { value: 'present' | 'absent' | 'down' } = { value: 'present' };
@@ -21,8 +21,14 @@ jest.mock('@supabase/supabase-js', () => ({
       from: (bucket: string) => {
         fromCalls.push(bucket);
         return {
-          exists: (key: string) =>
-            Promise.resolve(failures.exists ? { data: null, error: new Error('storage down') } : { data: objects.has(key), error: null }),
+          // `exists()` AS THE LIBRARY ANSWERS (`@supabase/storage-js` index.cjs `async exists`, and REVIEW's read-only HEAD
+          // on staging's bucket): a stored key → { data: true, error: null }; an ABSENT key → { data: false, error } with a
+          // StorageApiError of status 400 (or 404); any other status THROWS from `exists()` itself.
+          exists: (key: string) => {
+            if (failures.exists) return Promise.reject(Object.assign(new Error('storage down'), { status: 503 }));
+            if (objects.has(key)) return Promise.resolve({ data: true, error: null });
+            return Promise.resolve({ data: false, error: Object.assign(new Error('Object not found'), { name: 'StorageApiError', status: 400 }) });
+          },
           info: (key: string) => {
             const object = objects.get(key);
             if (failures.info || object === undefined) return Promise.resolve({ data: null, error: new Error('no info') });
@@ -42,6 +48,11 @@ jest.mock('@supabase/supabase-js', () => ({
             return Promise.resolve({ data: [], error: null });
           },
           createSignedUploadUrl: (key: string, options?: unknown) => {
+            // STORAGE'S OWN REFUSAL TO SIGN a key that holds an object (`upsert: false`) — the staging exercise's F2:
+            // "The resource already exists", carried as `statusCode '409'` on a 400 response (storage-api's shape).
+            if (failures.signExists) {
+              return Promise.resolve({ data: null, error: Object.assign(new Error('The resource already exists'), { status: 400, statusCode: '409' }) });
+            }
             uploadMints.push({ key, options });
             return Promise.resolve({ data: { signedUrl: `https://storage.test/upload/sign/${key}?token=t`, token: 't', path: key }, error: null });
           },
@@ -74,6 +85,7 @@ beforeEach(() => {
   objects.clear();
   failures.exists = false;
   failures.info = false;
+  failures.signExists = false;
   fromCalls.length = 0;
   bucketAnswer.value = 'present';
   uploadMints.length = 0;
@@ -104,7 +116,7 @@ describe('ABSENCE IS AN ANSWER; every other failure THROWS', () => {
 
   it('a storage outage THROWS — never reported as "nothing is there"', async () => {
     failures.exists = true;
-    await expect(statObject(KEY)).rejects.toThrow(/could not ask whether/);
+    await expect(statObject(KEY)).rejects.toThrow(/storage down/);
   });
 
   it('metadata that cannot be read THROWS, for an object that exists', async () => {
@@ -139,7 +151,7 @@ describe('the UPLOAD link — minted `upsert: false`, EVERY time (R76 chunk-2 pr
     const before = Date.now();
     const link = await mintUploadUrl(KEY);
     expect(UPLOAD_LINK_SECONDS).toBe(2 * 60 * 60);
-    if ('absent' in link) throw new Error('the bucket is present in this world');
+    if (!('expiresAt' in link)) throw new Error('the bucket is present and holds no object in this world');
     expect(link.expiresAt.getTime()).toBeGreaterThanOrEqual(before + UPLOAD_LINK_SECONDS * 1000);
   });
 
@@ -153,6 +165,33 @@ describe('the UPLOAD link — minted `upsert: false`, EVERY time (R76 chunk-2 pr
     bucketAnswer.value = 'down';
     await expect(mintUploadUrl(KEY)).rejects.toThrow(/could not read the bucket/);
     expect(uploadMints).toEqual([]);
+  });
+});
+
+describe('BYTES ALREADY STORED are a FACT, not an error — { stored: true } (§9 :998, ui A1 :1129 as ruled 2026-09-23, F2)', () => {
+  it('an object ALREADY under the key answers { stored: true }, and NOTHING is minted', async () => {
+    objects.set(KEY, { bytes: new Uint8Array([1]), createdAt: '2026-09-23T10:00:00.000Z' });
+    expect(await mintUploadUrl(KEY)).toEqual({ stored: true });
+    expect(uploadMints).toEqual([]);
+  });
+
+  it('storage refusing to SIGN because the object appeared meanwhile (a race) is { stored: true } too — never a throw', async () => {
+    failures.signExists = true;
+    expect(await mintUploadUrl(KEY)).toEqual({ stored: true });
+  });
+
+  it('the existence check FAILING throws — an outage is never reported as "stored" or as "absent"', async () => {
+    failures.exists = true;
+    await expect(mintUploadUrl(KEY)).rejects.toThrow(/storage down/);
+    expect(uploadMints).toEqual([]);
+  });
+
+  it('a NEW file is SIGNED — an absent key is the library’s { data: false, error: 400 }, never a storage failure (REVIEW round 2)', async () => {
+    // THE FLOOR: the key really is absent.
+    expect(objects.has(KEY)).toBe(false);
+    const link = await mintUploadUrl(KEY);
+    expect(link).toEqual({ uploadUrl: `https://storage.test/upload/sign/${KEY}?token=t`, expiresAt: expect.any(Date) as Date });
+    expect(uploadMints).toEqual([{ key: KEY, options: { upsert: false } }]);
   });
 });
 

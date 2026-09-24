@@ -1,6 +1,7 @@
 import type { Document, DocumentContentVersion, Shed } from '@prisma/client';
 import { familyOf, IMAGE_BLOCK_BYTES } from '../lib/acceptedDocumentTypes';
 import { CURRENT_EXTRACTOR } from '../lib/documentExtractor';
+import { mintTextLink } from '../lib/documentTextLink';
 import { prisma } from '../lib/prisma';
 import { storedAssertions, capturesEqualTo, type Assertions } from './addDocument';
 import { mintDownloadUrl, readObject } from './documentBucket';
@@ -31,7 +32,22 @@ import { handlesOf } from './publishedThesis';
 //
 // OPINIONS ARE LABELLED AND SEPARATE (§3 :291-:296; `opinions-not-facts`, A7 :1571-:1573): each
 // version carries its `opinions` array, never folded into `text` or `contentVersionHash`.
+//
+// TEXT LAST AND CAPPED — A4 :1425-:1426 as ruled 2026-09-23 (F1 ruling 2, §9 Q2). On staging a real spreadsheet's
+// text rode inline BEFORE every other field and blew the client's result cap, and every field after it was lost. So
+// a version carries its hash, provenance, opinions and its OWN signed `textUrl` — no inline text — and the envelope
+// ENDS with `text`: CURRENT(d)'s, cut at TEXT_CAP_CHARACTERS, beside `textTruncated` and the envelope's own `textUrl`
+// (CURRENT's). Every `textUrl` is A5 :1504's SIGNED ARM (`lib/documentTextLink`), never a bucket object.
 // ---------------------------------------------------------------------------
+
+/**
+ * THE CLIENT'S RESULT CAP, in characters — the operational parameter A4 :1425 rules (interaction A8's kind), set from
+ * the measurement (the researcher, 2026-09-24): on staging the paper's text, 77,218 characters, FIT the claude.ai
+ * tool-result cap, and the spreadsheet's, 112,602 characters, did NOT (REVIEW's read of the two staging versions;
+ * `docs/gf-document-step-30-staging-exercise-2026-09-23.md` §4 F1). 80,000 sits between them, with a margin over the
+ * paper's. Characters are CODE POINTS, as that measurement counted them — a cut never splits one in two.
+ */
+export const TEXT_CAP_CHARACTERS = 80_000;
 
 export interface Researcher {
   handle: string;
@@ -48,9 +64,14 @@ export interface OpinionRow {
   body: unknown;
 }
 
+/** A signed link and its expiry — `bytesUrl`'s shape, and every `textUrl`'s (A4 :1425 as ruled 2026-09-24). */
+export interface SignedLink {
+  url: string;
+  expiresAt: string;
+}
+
 export interface VersionView {
   contentVersionHash: string;
-  text: string | null;
   provenance: {
     extractor: string;
     extractorVersion: string;
@@ -60,6 +81,8 @@ export interface VersionView {
     derivedAt: string;
   };
   opinions: OpinionRow[];
+  /** This version's own text, by a signed link — null where the version IS the bytes (§9 Q2: never inline). */
+  textUrl: SignedLink | null;
 }
 
 /**
@@ -69,6 +92,14 @@ export interface VersionView {
 export interface ArrivalView {
   by: Researcher | null;
   at: string;
+}
+
+/** CURRENT(d) as BOTH envelopes spell it — A4 :1426 and :1434 as ruled 2026-09-23. */
+export type CurrentView = { contentVersionHash: string } | { awaiting: 'AWAITING_DERIVATION' };
+
+/** CURRENT(d)'s one spelling in an answer — both envelopes call it, so they cannot drift apart again (#582). */
+function currentView(current: ReturnType<typeof currentVersion>): CurrentView {
+  return 'awaiting' in current || 'shed' in current ? { awaiting: 'AWAITING_DERIVATION' } : { contentVersionHash: current.contentVersionHash };
 }
 
 export interface ReadDocumentHeld {
@@ -82,14 +113,20 @@ export interface ReadDocumentHeld {
   /** Every arrival of these bytes, OLDEST FIRST (A4 :1426 as ruled). */
   arrivals: ArrivalView[];
   versions: VersionView[];
-  current: { contentVersionHash: string } | { awaiting: 'AWAITING_DERIVATION' };
+  current: CurrentView;
   /** Set iff CURRENT has no text AND the bytes do not ride as an image block (A4 :1425 as ruled). */
-  bytesUrl: { url: string; expiresAt: string } | null;
+  bytesUrl: SignedLink | null;
+  /** CURRENT(d)'s text by a signed link, whole — null where it has none (A4 :1425 as ruled). */
+  textUrl: SignedLink | null;
+  /** Whether `text` was cut at TEXT_CAP_CHARACTERS. */
+  textTruncated: boolean;
   /** ANCHORED(d), A3 :1366 — false by construction until step 31 builds the pass that pays the commitment. */
   anchored: boolean;
   equalsCapture: { url: string; capture: string } | null;
   /** The dialog's link, THIS document as derived-from and its assertions as defaults (:1428). */
   uploadUrl: string;
+  /** CURRENT(d)'s text, CAPPED — the envelope's FINAL field, so whatever the client cuts, it cuts nothing else. */
+  text: string | null;
 }
 
 export interface ListedDocument {
@@ -100,8 +137,8 @@ export interface ListedDocument {
   byteLength: number;
   receivedAt: string;
   assertions: Omit<Assertions, 'title'>;
-  /** CURRENT(d)'s hash, or null while the derivation is owed. */
-  current: string | null;
+  /** CURRENT(d) — ONE shape with read_document's (A4 :1434 as ruled 2026-09-23): the object form can say awaiting. */
+  current: CurrentView;
   /** ANCHORED(d), A3 :1366 — false by construction until step 31 builds the pass that pays the commitment. */
   anchored: boolean;
   citedBy: { thesisId: string; published: boolean }[];
@@ -121,6 +158,20 @@ export interface ListDocumentsAnswer {
 type Loaded = Document & { versions: DocumentContentVersion[]; shed: Shed | null };
 
 const iso = (at: Date): string => at.toISOString();
+
+/** A signed text link for one version, as the envelope carries it — null where the version has no text. */
+function textLinkOf(commitment: string, version: { contentVersionHash: string; text: string | null }): SignedLink | null {
+  if (version.text === null) return null;
+  const link = mintTextLink(commitment, version.contentVersionHash);
+  return { url: link.url, expiresAt: iso(link.expiresAt) };
+}
+
+/** The text cut at TEXT_CAP_CHARACTERS code points, and whether it was cut. */
+function capped(text: string | null): { text: string | null; truncated: boolean } {
+  if (text === null) return { text: null, truncated: false };
+  const characters = Array.from(text);
+  return characters.length <= TEXT_CAP_CHARACTERS ? { text, truncated: false } : { text: characters.slice(0, TEXT_CAP_CHARACTERS).join(''), truncated: true };
+}
 
 /** Whether a HELD document with no computed text rides as an image block — an image, within the cap. */
 const ridesAsImage = (document: Document): boolean =>
@@ -146,6 +197,8 @@ export async function readDocument(commitment: string, researcherId: string | nu
   const link = currentIsBytes && !ridesAsImage(document) ? await mintDownloadUrl(document.bytes ?? document.docId) : null;
   const assertions = await storedAssertions(document);
   const arrivals = (await arrivalsOf([commitment], researcherId)).get(commitment) ?? [];
+  const currentText = 'awaiting' in current || 'shed' in current ? null : current;
+  const text = capped(currentText?.text ?? null);
 
   return {
     custody: 'HELD',
@@ -158,7 +211,6 @@ export async function readDocument(commitment: string, researcherId: string | nu
     arrivals,
     versions: versions.map((version) => ({
       contentVersionHash: version.contentVersionHash,
-      text: version.text,
       provenance: {
         extractor: version.extractor,
         extractorVersion: version.extractorVersion,
@@ -177,9 +229,12 @@ export async function readDocument(commitment: string, researcherId: string | nu
           at: iso(o.createdAt),
           body: o.body,
         })),
+      textUrl: textLinkOf(commitment, version),
     })),
-    current: 'awaiting' in current || 'shed' in current ? { awaiting: 'AWAITING_DERIVATION' } : { contentVersionHash: current.contentVersionHash },
+    current: currentView(current),
     bytesUrl: link === null ? null : { url: link.url, expiresAt: iso(link.expiresAt) },
+    textUrl: currentText === null ? null : textLinkOf(commitment, currentText),
+    textTruncated: text.truncated,
     anchored: false,
     equalsCapture: await capturesEqualTo(document.docId),
     uploadUrl: uploadUrl({
@@ -187,6 +242,7 @@ export async function readDocument(commitment: string, researcherId: string | nu
       at: assertions.assertedAt,
       derivedFrom: { commitment, title: document.title, family: familyOf(document.mimeType) },
     }),
+    text: text.text,
   };
 }
 
@@ -195,7 +251,8 @@ export async function readDocument(commitment: string, researcherId: string | nu
  * image with no computed text, within IMAGE_BLOCK_BYTES; null for every other document.
  */
 export async function imageFor(answer: ReadDocumentHeld): Promise<{ data: string; mimeType: string } | null> {
-  const noText = 'contentVersionHash' in answer.current && answer.versions.find((v) => v.contentVersionHash === (answer.current as { contentVersionHash: string }).contentVersionHash)?.text === null;
+  // CURRENT exists and has no text — the envelope's `text` is CURRENT's (A4 :1426), and versions carry none inline.
+  const noText = 'contentVersionHash' in answer.current && answer.text === null;
   if (!noText || familyOf(answer.mimeType) !== 'IMAGE' || answer.byteLength > IMAGE_BLOCK_BYTES) return null;
   const bytes = await readObject(answer.docId);
   return bytes === null ? null : { data: Buffer.from(bytes).toString('base64'), mimeType: answer.mimeType };
@@ -246,7 +303,7 @@ export async function listDocuments(
           byteLength: document.byteLength,
           receivedAt: iso(document.receivedAt),
           assertions: { assertedUrl: assertions.assertedUrl, assertedAt: assertions.assertedAt, derivedFrom: assertions.derivedFrom },
-          current: 'awaiting' in current || 'shed' in current ? null : current.contentVersionHash,
+          current: currentView(current),
           anchored: false,
           citedBy: citedByOf(mentions, document.commitment),
           // No decision exists — the guard above throws on one (step 34 reads OPENED(d)).

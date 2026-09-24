@@ -217,7 +217,8 @@ export const LIST_DOCUMENTS_REFUSALS = ['NO_RESEARCHER', 'NOT_SURVEYED'] as cons
  * 2026-09-23 at :1440-:1441: audio and video, which no model reads, and a spreadsheet with no
  * computed text — the refusal carrying its version's reason. One spelling with add_document's.
  * `TOO_LARGE` RULED 2026-09-23 at :1440: above the DESCRIBER's bound — one word with add_document's,
- * two thresholds.
+ * two thresholds. `INCOMPLETE_ANSWER` RULED 2026-09-23 at :1441: the model's answer was CUT — by its finish reason or
+ * a missing sentinel — and nothing was written.
  */
 export const DESCRIBE_DOCUMENT_REFUSALS = [
   'NO_RESEARCHER',
@@ -226,6 +227,7 @@ export const DESCRIBE_DOCUMENT_REFUSALS = [
   'AWAITING_DERIVATION',
   'UNSUPPORTED_TYPE',
   'TOO_LARGE',
+  'INCOMPLETE_ANSWER',
 ] as const;
 
 /** A4 :1416 — a thesisId naming none. */

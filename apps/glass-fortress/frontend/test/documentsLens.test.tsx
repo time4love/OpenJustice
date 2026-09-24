@@ -25,7 +25,7 @@ const ENVELOPE = {
       // the wrong field must not pass by substring.
       receivedAt: '2026-09-25T10:00:00.000Z',
       assertions: { assertedUrl: PAGE, assertedAt: '2026-09-03', derivedFrom: null },
-      current: '0x' + 'e1'.repeat(32),
+      current: { contentVersionHash: '0x' + 'e1'.repeat(32) },
       anchored: false,
       citedBy: [],
       opening: null,
@@ -39,7 +39,7 @@ const ENVELOPE = {
       byteLength: 14000,
       receivedAt: '2026-09-23T11:00:00.000Z',
       assertions: { assertedUrl: 'https://www.youtube.com/watch', assertedAt: '2026-09-12', derivedFrom: { commitment: '0x' + 'c9'.repeat(32), title: 'הריאיון עם מנכ״ל המשרד' } },
-      current: null,
+      current: { awaiting: 'AWAITING_DERIVATION' },
       anchored: false,
       citedBy: [{ thesisId: 'thesis-1', published: false }],
       opening: null,
@@ -66,6 +66,10 @@ describe('the envelope parser — A4 :1434 as ruled, field by field', () => {
     ['`anchored` that is not a boolean', { anchored: 'false' }],
     ['a `by` that is neither null nor { handle, mine }', { by: { handle: 'x' } }],
     ['a custody outside HELD · SEALED · NONE', { custody: 'LOST' }],
+    // A4 :1434 as ruled 2026-09-23 (#582): `current` is ONE shape with read_document's — the bare-hash spelling is drift.
+    ['a `current` spelled as a bare hash', { current: '0x' + 'e1'.repeat(32) }],
+    ['a `current` that is null', { current: null }],
+    ['an `awaiting` that is not AWAITING_DERIVATION', { current: { awaiting: 'LATER' } }],
     ['a derivedFrom without its commitment', { assertions: { assertedUrl: null, assertedAt: null, derivedFrom: { title: 't' } } }],
   ])('REFUSES %s — naming the field, never a region silently empty', (_name, patch) => {
     const drifted = { ...ENVELOPE, documents: [{ ...ENVELOPE.documents[0], ...patch }] };

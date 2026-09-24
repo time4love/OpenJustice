@@ -23,6 +23,13 @@ describe('stampEnvironment', () => {
     expect(JSON.parse(stampEnvironment('{"framingId":"f1"}', staging))).toEqual({ framingId: 'f1', environment: 'staging' });
   });
 
+  it('the stamp goes FIRST and the answer’s own LAST field stays last — read_document’s `text` (A4 :1426 as ruled)', () => {
+    // A client that cuts a long answer cuts its TAIL: a stamp appended after the text would be lost with it, and
+    // `text` would no longer be the envelope's final field, which A4 :1425-:1426 rules (F1, the staging exercise).
+    const stamped = JSON.parse(stampEnvironment('{"anchored":false,"text":"the capped text"}', staging)) as object;
+    expect(Object.keys(stamped)).toEqual(['environment', 'anchored', 'text']);
+  });
+
   it('reads production when APP_ENV is unset, as the deployment does', () => {
     expect(JSON.parse(stampEnvironment('{"a":1}', {}))).toEqual({ a: 1, environment: 'production' });
   });

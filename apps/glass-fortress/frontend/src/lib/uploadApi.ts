@@ -3,8 +3,9 @@ import { authedFetch, authHeaders } from '@/lib/api';
 // ---------------------------------------------------------------------------
 // THE UPLOAD DIALOG'S TWO REQUESTS — docs/gf-ui-flows.md A1 :1129 (the route), R76 chunk-2 prompt §1 (MEDIUM 1).
 //
-// ONE POST to the dialog's own route, `/api/document-upload`, for a signed upload URL; then ONE PUT of the file to
-// that URL, straight into the private bucket. Minting is the dialog's CACHE act (thesis §2 :126–:132): neither
+// ONE POST to the dialog's own route, `/api/document-upload`, for a signed upload URL — or its answer that the bytes
+// are ALREADY STORED, when there is nothing to send (F2); then ONE PUT of the file to that URL, straight into the
+// private bucket. Minting is the dialog's CACHE act (thesis §2 :126–:132): neither
 // request writes a row, and `add_document` — run in the conversation — stays the one attributed act.
 //
 // IMPORTED BY NOTHING UNDER `/research`. The read view never writes (`test/noWriteFromResearch.test.ts`), and a
@@ -17,11 +18,13 @@ import { authedFetch, authHeaders } from '@/lib/api';
 export const UPLOAD_ROUTE = '/api/document-upload';
 
 /** The route's refusal codes (`backend/src/services/documentRefusals.ts`, `DocumentUploadCode`). */
-export type UploadRefusal = 'INVALID_BODY' | 'UNSUPPORTED_TYPE' | 'TOO_LARGE' | 'BUCKET_ABSENT';
-const REFUSALS: readonly UploadRefusal[] = ['INVALID_BODY', 'UNSUPPORTED_TYPE', 'TOO_LARGE', 'BUCKET_ABSENT'];
+export type UploadRefusal = 'INVALID_BODY' | 'UNSUPPORTED_TYPE' | 'TOO_LARGE' | 'BUCKET_ABSENT' | 'STORAGE_UNAVAILABLE';
+const REFUSALS: readonly UploadRefusal[] = ['INVALID_BODY', 'UNSUPPORTED_TYPE', 'TOO_LARGE', 'BUCKET_ABSENT', 'STORAGE_UNAVAILABLE'];
 
 export type SignAnswer =
   | { state: 'SIGNED'; uploadUrl: string; expiresAt: string }
+  /** The bucket already holds these bytes — nothing to send (§9 :998, ui A1 :1129 as ruled 2026-09-23, F2). */
+  | { state: 'STORED' }
   | { state: 'SIGNED_OUT' }
   | { state: 'NOT_A_RESEARCHER' }
   | { state: 'REFUSED'; code: UploadRefusal }
@@ -47,7 +50,8 @@ export async function requestUploadUrl(file: { docId: string; mimeType: string; 
     if (refusal === undefined) throw new Error(`upload route answered ${String(response.status)} with code ${JSON.stringify(code) ?? 'undefined'} — no approved state names it`);
     return { state: 'REFUSED', code: refusal };
   }
-  const { uploadUrl, expiresAt } = (body ?? {}) as { uploadUrl?: unknown; expiresAt?: unknown };
+  const { uploadUrl, expiresAt, stored } = (body ?? {}) as { uploadUrl?: unknown; expiresAt?: unknown; stored?: unknown };
+  if (stored === true) return { state: 'STORED' };
   if (typeof uploadUrl !== 'string' || typeof expiresAt !== 'string') throw new Error('upload route answered 200 without { uploadUrl, expiresAt }');
   return { state: 'SIGNED', uploadUrl, expiresAt };
 }
@@ -55,7 +59,9 @@ export async function requestUploadUrl(file: { docId: string; mimeType: string; 
 /**
  * The PUT of the file to its signed URL. `EXISTS` is storage's "the resource already exists" — every URL is minted
  * `upsert: false`, so an object once written is never replaced, and the same bytes under the same name ARE uploaded
- * (MEDIUM 1). Every other failure is a failure: a command for bytes that are not there would be a false statement.
+ * (MEDIUM 1). Since F2 the route answers `STORED` before any link for bytes already there, so this arm is left to a
+ * race — the same file finishing in another tab between the route's answer and this PUT. Every other failure is a
+ * failure: a command for bytes that are not there would be a false statement.
  */
 export async function putToSignedUrl(uploadUrl: string, file: Blob, mimeType: string): Promise<'UPLOADED' | 'EXISTS' | 'FAILED'> {
   let response: Response;

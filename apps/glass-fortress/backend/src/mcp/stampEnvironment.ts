@@ -32,5 +32,7 @@ export function stampEnvironment(text: string, env: Record<string, string | unde
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return text;
   if ('environment' in parsed) return text;
-  return JSON.stringify({ ...parsed, environment: getAppEnv(env) });
+  // FIRST, never last: a client that cuts a long answer cuts its tail, and an answer's final field may be ruled so —
+  // read_document's `text` is the envelope's FINAL field (document flows A4 :1425-:1426 as ruled 2026-09-23).
+  return JSON.stringify({ environment: getAppEnv(env), ...parsed });
 }

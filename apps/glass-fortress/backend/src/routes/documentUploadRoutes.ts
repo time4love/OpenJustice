@@ -13,11 +13,14 @@ import { documentRefusal, type DocumentRefusal, type DocumentUploadCode } from '
 // it (the marking router's shape, `walk/routes.ts` :141), mounted beside `/api/article-rules` and never
 // under the read view's prefix, whose routes are each a tool's answer (ui §7) — a dialog's route never was.
 //
-// ONE POST, ONE ANSWER. `{ docId, mimeType, byteLength }` in; `{ uploadUrl, expiresAt }` out, or a
-// refusal `{ error, code }`. There is NO held arm (R78 chunk-3 prompt amendment 1, superseding R76 sketch
-// §(c) :204-:214): every link is minted `upsert: false` by `documentBucket`, so an object once written is
-// never replaced, and a second upload of the same bytes meets storage's "already exists", which the dialog
-// reads as uploaded.
+// ONE POST, TWO ANSWERS. `{ docId, mimeType, byteLength }` in; `{ uploadUrl, expiresAt }` out — or `{ stored:
+// true }`, WITHOUT minting, when the bucket already holds the object for that docId (§9 :998 and ui A1 :1129 as
+// ruled 2026-09-23, F2 rule (ii), superseding R78 chunk-3 amendment 1's "no held arm": storage refuses to SIGN a key
+// that holds an object, so the second send of one file met a bare 500 and never reached the upload) — or a refusal
+// `{ error, code }`. Every link is still minted `upsert: false`, so an object once written is never replaced.
+//
+// EVERY STORAGE ERROR IS A CODE, NEVER A BARE 500 (same ruling): any failure `documentBucket` throws is answered 503
+// `STORAGE_UNAVAILABLE`, which the dialog names; the cause is logged here, never sent.
 //
 // MINTING IS THE DIALOG'S CACHE ACT (thesis §2 :126-:132), as the marking page's `PUT …/draft` is
 // (interaction :548). IT WRITES NO ROW: this module imports no database client, and `add_document` stays
@@ -63,9 +66,20 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     refuse(res, 413, documentRefusal('TOO_LARGE', `The file is ${String(byteLength)} bytes; the door takes at most ${String(TOO_LARGE_BYTES)} (50 MB).`));
     return;
   }
-  const minted = await mintUploadUrl(docId);
+  let minted: Awaited<ReturnType<typeof mintUploadUrl>>;
+  try {
+    minted = await mintUploadUrl(docId);
+  } catch (cause) {
+    console.error('document-upload: storage failed', cause);
+    refuse(res, 503, documentRefusal('STORAGE_UNAVAILABLE', 'The storage did not answer, and nothing was signed. Try again.'));
+    return;
+  }
   if ('absent' in minted) {
     refuse(res, 503, documentRefusal('BUCKET_ABSENT', 'The documents bucket does not exist in this environment — it is created by its migration, and nothing here creates it.'));
+    return;
+  }
+  if ('stored' in minted) {
+    res.json({ stored: true });
     return;
   }
   res.json({ uploadUrl: minted.uploadUrl, expiresAt: minted.expiresAt.toISOString() });

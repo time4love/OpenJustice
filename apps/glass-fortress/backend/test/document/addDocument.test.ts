@@ -72,7 +72,8 @@ interface AddDocumentResult {
   commitment: string;
   docId: string;
   custody: 'HELD';
-  content: { contentVersionHash: string; text: string | null } | null;
+  /** A4 :1407-:1409 as ruled 2026-09-23 — the RECEIPT: the content's hash, never its text. */
+  content: { contentVersionHash: string } | null;
   anchored: boolean;
   equalsCapture: { url: string; capture: string } | null;
   existed: boolean;
@@ -291,8 +292,8 @@ describe('A4 :1407-:1409 — what the tool RETURNS, and what it says about the d
     expect(store.documents.at(0)?.['title']).toBe(TITLE);
   });
 
-  it('the content is the derived version, or NULL while it is owed (A4 :1407-:1408)', async () => {
-    // A4 :1407-:1408 names exactly two answers — `{ contentVersionHash, text | null }`, or
+  it('the content is the derived version, or NULL while it is owed (A4 :1407-:1409)', async () => {
+    // A4 :1407-:1409 names exactly two answers — `{ contentVersionHash }` (the RECEIPT, as ruled 2026-09-23), or
     // `null` while the derivation is owed — and this case now asserts THOSE, over a `docId`.
     // It used to call the tool with a pasted string and assert the content came back equal
     // to it, which under the ruling is a world that cannot exist: EVERY document is a bucket
@@ -304,8 +305,21 @@ describe('A4 :1407-:1409 — what the tool RETURNS, and what it says about the d
     if (isRefusal(answer)) throw new Error(`expected a document, got ${answer.code}`);
     if (answer.content === null) return; // AWAITING_DERIVATION — the second arm, and an answer.
     expect(typeof answer.content.contentVersionHash).toBe('string');
-    // `text` is the extractor's output, or NULL where the content IS the bytes (§3 :284).
-    expect(answer.content.text === null || typeof answer.content.text === 'string').toBe(true);
+  });
+
+  it('THE ANSWER IS THE RECEIPT — `content` carries the hash and NO text (A4 :1409 as ruled 2026-09-23, F1 ruling 1)', async () => {
+    // WORLD: a spreadsheet — the family whose computed text blew the client's result cap on staging
+    // (`docs/gf-document-step-30-staging-exercise-2026-09-23.md` §4 F1) — uploaded through the dialog.
+    const sheet = fixture('SPREADSHEET');
+    seedObject(sheet.docId, sheet.bytes);
+    const { addDocument } = await tool();
+    const answer = await addDocument({ docId: sheet.docId, title: TITLE, mimeType: sheet.mimeType }, 'res_1');
+    if (isRefusal(answer)) throw new Error(`expected a document, got ${answer.code}`);
+    // THE FLOOR: a text WAS derived and stored — a document with none would pass the next lines vacuously.
+    const stored = store.versions.at(0)?.['text'];
+    expect(typeof stored === 'string' && stored.length > 0).toBe(true);
+    expect(answer.content === null ? null : Object.keys(answer.content)).toEqual(['contentVersionHash']);
+    expect(JSON.stringify(answer)).not.toContain(String(stored));
   });
 
   it('the assertions are recorded as the CALLER’S and VERIFIED BY NOTHING (§9 :1011-:1014)', async () => {
