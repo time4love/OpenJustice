@@ -71,6 +71,7 @@ export function resetWorld(): void {
   bucketCalls.length = 0;
   modelCalls.length = 0;
   modelAnswer.value = null;
+  modelFinish.metadata = { finishReason: 'STOP' };
   sequence = 0;
 }
 
@@ -285,20 +286,25 @@ export const bucketDouble = {
 /** Every model call a case caused — what "nothing spent" is checked against. */
 export const modelCalls: unknown[] = [];
 
-/** The reading the double's model returns — set per case. */
+/** The reading the double's model returns — set per case. A WHOLE answer carries `wholeAnswer: 'END'` (A4 :1439). */
 export const modelAnswer: { value: unknown } = { value: null };
 
+/** The provider's finish reason on the raw message (`response_metadata`) — STOP unless a case cuts the answer. */
+export const modelFinish: { metadata: Record<string, unknown> } = { metadata: { finishReason: 'STOP' } };
+
 /**
- * `factories/LLMFactory`, mocked AT ITS BOUNDARY: `withStructuredOutput(…).invoke(messages)`
- * records the messages and returns `modelAnswer.value`. No test in this suite reaches a model.
+ * `factories/LLMFactory`, mocked AT ITS BOUNDARY: `withStructuredOutput(…).invoke(messages)` records the messages
+ * and returns `modelAnswer.value` — beside the raw message and its finish reason when `includeRaw` asks, as LangChain's
+ * pipeline does (`@langchain/core` structured_output.js :61-:62). No test in this suite reaches a model.
  */
 export const llmDouble = {
   LLMFactory: {
     getChatModel: () => ({
-      withStructuredOutput: () => ({
+      withStructuredOutput: (_schema: unknown, config?: { includeRaw?: boolean }) => ({
         invoke: (messages: unknown) => {
           modelCalls.push(messages);
-          return Promise.resolve(modelAnswer.value);
+          const raw = { response_metadata: modelFinish.metadata };
+          return Promise.resolve(config?.includeRaw === true ? { raw, parsed: modelAnswer.value } : modelAnswer.value);
         },
       }),
     }),

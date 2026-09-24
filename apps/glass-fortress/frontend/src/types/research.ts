@@ -779,6 +779,12 @@ export interface RuleHistory {
 export const CUSTODIES = ['HELD', 'SEALED', 'NONE'] as const;
 export type Custody = (typeof CUSTODIES)[number];
 
+/** The one word CURRENT(d) says while the derivation is owed (document flows A4 :1426, :1434). */
+export const AWAITING = ['AWAITING_DERIVATION'] as const;
+
+/** CURRENT(d), ONE shape with `read_document`'s — A4 :1434 as ruled 2026-09-23: the object form can say awaiting. */
+export type DocumentCurrent = { contentVersionHash: string } | { awaiting: (typeof AWAITING)[number] };
+
 export const OPENINGS = ['PASSAGE', 'CONTENT', 'BYTES'] as const;
 export type Opening = (typeof OPENINGS)[number];
 
@@ -798,8 +804,7 @@ export interface DocumentRow {
   byteLength: number;
   receivedAt: string;
   assertions: DocumentAssertions;
-  /** CURRENT(d)'s contentVersionHash, or null while the derivation is owed. */
-  current: string | null;
+  current: DocumentCurrent;
   /** ANCHORED(d), A3 :1366 — false by construction until step 31. */
   anchored: boolean;
   citedBy: { thesisId: string; published: boolean }[];

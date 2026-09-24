@@ -29,6 +29,16 @@ export function publicUrl(path: string, locale: Locale = DEFAULT_LOCALE): string
   return `${frontendBase()}/${locale}${normalized}`;
 }
 
+/**
+ * Absolute public URL for a BACKEND path — `/api/…` on the frontend's origin, which proxies `/api/:path*` to the
+ * backend (frontend `next.config` rewrites). One origin for every link a researcher is handed; no locale segment,
+ * because the frontend's router never sees an `/api` path.
+ */
+export function publicApiUrl(path: string): string {
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  return `${frontendBase()}${normalized}`;
+}
+
 export const routing = {
   /**
    * The public Call for Whistleblowers page for a thesis, in every locale.

@@ -30,6 +30,10 @@ import type { OpinionRow } from './readDocument';
 // refused before the bucket read, and NEVER answered by quietly reading the computed text instead,
 // whose reading the opinion row would then misattribute to the file.
 //
+// ONE REFUSAL COMES AFTER THE DRAW — INCOMPLETE_ANSWER (A4 :1441 as ruled): the model's answer was CUT, by its
+// finish reason or a missing sentinel (`documentDescriber.ts`). Nothing is written and nothing is retried, and the
+// refusal says the draw was charged — the one refusal here that cannot say nothing was spent.
+//
 // THE MODEL IS CALLED OUTSIDE ANY TRANSACTION — a paid draw is seconds, and Prisma's window is
 // five — and the one opinion writer is called inside one.
 // ---------------------------------------------------------------------------
@@ -82,9 +86,25 @@ export async function describeDocument(
     if (bytes === null) {
       throw new Error(`describe_document: ${commitment} is HELD and its bucket object is gone — a malformed row that document-recomputable lists`);
     }
-    opinion = await describe({ title, file: { mimeType: document.mimeType, base64: Buffer.from(bytes).toString('base64') } });
+    opinion = await describe({ title, file: { mimeType: document.mimeType, base64: Buffer.from(bytes).toString('base64') }, computedText: current.text !== null });
   } else {
     opinion = await describe({ title, text: current.text ?? '' });
+  }
+
+  if ('incomplete' in opinion) {
+    // A4 :1441 as ruled: NAME the finish reason and say NOTHING WAS WRITTEN — never that nothing was spent: this draw
+    // was made and charged, and the opinion row that would record who paid for it does not exist. And name WHAT was
+    // missing: "cut" only when the finish reason says so (REVIEW round 2's LOW).
+    const { cause, finishReason } = opinion.incomplete;
+    const what = {
+      CUT: "The model's answer was cut",
+      NO_SENTINEL: "The model's answer stopped before its last field (wholeAnswer is missing)",
+      UNPARSEABLE: "The model's answer could not be parsed",
+    }[cause];
+    return documentRefusal(
+      'INCOMPLETE_ANSWER',
+      `${what} (finish reason: ${finishReason ?? 'none given'}) — nothing was written. The draw was made and charged; a reading is not retried.`,
+    );
   }
 
   const write = (tx: Prisma.TransactionClient) => recordOpinion(tx, current.id, { by: 'RESEARCHER', researcherId }, opinion);

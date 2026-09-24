@@ -8,7 +8,8 @@
 //
 // THE SET IS STEP 30'S TOOLS' — `add_document` A4 :1410-:1411 as ruled (:1404 adds NO_TITLE and
 // NAME_MISMATCH), `read_document` :1430, `list_documents` :1435, `describe_document` :1440-:1441
-// as ruled (UNSUPPORTED_TYPE, and TOO_LARGE against the describer's own bound). Later steps add theirs here.
+// as ruled (UNSUPPORTED_TYPE, TOO_LARGE against the describer's own bound, and INCOMPLETE_ANSWER, :1441 — a cut
+// answer). Later steps add theirs here.
 // ---------------------------------------------------------------------------
 
 export type DocumentToolCode =
@@ -21,21 +22,30 @@ export type DocumentToolCode =
   | 'NOT_A_DOCUMENT'
   | 'NAME_MISMATCH'
   | 'NOT_HELD'
-  | 'AWAITING_DERIVATION';
+  | 'AWAITING_DERIVATION'
+  | 'INCOMPLETE_ANSWER';
 
 /**
  * The UPLOAD DIALOG's route's codes (ui A1 :1129; R76 sketch §(c) as amended by the R78 chunk-3 prompt): a
- * malformed body, the door's accepted set and its cap — ONE spelling with `add_document`'s — and a bucket that
- * does not exist. The route is the dialog's CACHE act, not a tool, so its set sits beside the tools', not in it.
+ * malformed body, the door's accepted set and its cap — ONE spelling with `add_document`'s — a bucket that
+ * does not exist, and STORAGE_UNAVAILABLE: any other storage failure the route meets, which §9 :998 as ruled
+ * 2026-09-23 (F2) makes a CODE the dialog names, never a bare 500. The route is the dialog's CACHE act, not a tool,
+ * so its set sits beside the tools', not in it.
  */
-export type DocumentUploadCode = 'INVALID_BODY' | 'UNSUPPORTED_TYPE' | 'TOO_LARGE' | 'BUCKET_ABSENT';
+export type DocumentUploadCode = 'INVALID_BODY' | 'UNSUPPORTED_TYPE' | 'TOO_LARGE' | 'BUCKET_ABSENT' | 'STORAGE_UNAVAILABLE';
 
-export interface DocumentRefusal<C extends DocumentToolCode | DocumentUploadCode = DocumentToolCode> {
+/**
+ * A5 :1506 — the CONTENT serve's codes. Until step 34 builds the opening, its public branch refuses NOT_PUBLIC for
+ * every document (A5 :1505 as ruled 2026-09-24); NOT_OPENED_TO and SHED are named here because the contract names them.
+ */
+export type ContentServeCode = 'NOT_PUBLIC' | 'NOT_OPENED_TO' | 'SHED';
+
+export interface DocumentRefusal<C extends DocumentToolCode | DocumentUploadCode | ContentServeCode = DocumentToolCode> {
   error: string;
   code: C;
 }
 
-export function documentRefusal<C extends DocumentToolCode | DocumentUploadCode>(code: C, error: string): DocumentRefusal<C> {
+export function documentRefusal<C extends DocumentToolCode | DocumentUploadCode | ContentServeCode>(code: C, error: string): DocumentRefusal<C> {
   return { error, code };
 }
 

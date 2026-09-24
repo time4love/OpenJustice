@@ -34,6 +34,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { NextFunction, Request, Response } from 'express';
 import { getAppEnv } from '../lib/appEnv';
 import { identifyEnvironment } from '../lib/dbEnvironment';
+import { isSignedTextRead } from '../lib/documentTextLink';
 
 /** Header name for the staging gate token — deliberately not `Authorization`,
  * which researcher/MCP auth (`resolveResearcher`) and Supabase auth
@@ -63,6 +64,16 @@ export function isUngatedProduction(env: NodeJS.ProcessEnv = process.env): boole
  */
 export function requireStagingAccess(req: Request, res: Response, next: NextFunction): void {
   if (isUngatedProduction()) {
+    next();
+    return;
+  }
+
+  // THE ONE EXEMPTION — RULED 2026-09-24 (the researcher, Q1 of R79's round 2): a VALID text-link signature on
+  // `GET /api/documents/:commitment/content` — A5 :1504's SIGNED TEXT ARM, `read_document`'s `textUrl` — passes, verified
+  // by `verifyTextLink`, the one verifier. A browser opening the link through the frontend's `/api` proxy carries no
+  // staging token, so without this the link could never open on staging. The signature is the same proof of the mint
+  // the route itself trusts; the path unsigned, and every other path, still meet the gate below.
+  if (isSignedTextRead(req.method, req.path, req.query)) {
     next();
     return;
   }

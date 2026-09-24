@@ -2294,7 +2294,8 @@
     "status": {
       "hashing": "Computing the file's name…",
       "uploading": "Uploading…",
-      "uploaded": "Uploaded · waiting for the command"
+      "uploaded": "Uploaded · waiting for the command",
+      "stored": "Already in the store · waiting for the command"
     },
     "commandLabel": "The command for the conversation",
     "copy": "Copy for the conversation",
@@ -2303,6 +2304,7 @@
     "noTitle": "This link carries no document title. Return to the conversation, agree the title, and get a new link.",
     "refused": {
       "BUCKET_ABSENT": "The store does not exist in this environment yet, and nothing was uploaded.",
+      "STORAGE_UNAVAILABLE": "The store did not answer, and nothing was uploaded. Try again.",
       "TOO_LARGE": "The file is larger than 50 MB and was not uploaded.",
       "UNSUPPORTED_TYPE": "This type of file is not accepted, and nothing was uploaded.",
       "INVALID_BODY": "The browser gave no file type or size, and nothing was uploaded."

@@ -23,6 +23,10 @@ import { globalFetchDouble, renderWithIntl, setAuthState, type FetchDouble } fro
 const SENTENCE = 'הקובץ עולה מהדפדפן שלכם אל המחסן, תחת שם שחושב ממנו כאן. הוא נעשה מסמך רק כשהפקודה שלמטה נשלחת בשיחה.';
 const STRIP = 'קובץ אחד · PDF · XLSX · CSV · תמונה · שמע · וידאו · עד 50 MB';
 const UPLOADED = 'הועלה · ממתין לפקודה';
+/** The researcher's own words for bytes already in the store (D doc §5, F2) — drawn by no board, printed at the page. */
+const STORED = 'כבר במחסן · ממתין לפקודה';
+/** STORAGE_UNAVAILABLE's sentence — PROPOSED, printed at the page for the researcher's approval. */
+const STORAGE_UNAVAILABLE = 'המחסן לא ענה, ושום דבר לא הועלה. נסו שוב.';
 const CLOSING = 'אחרי שהפקודה תרוץ, המסמך יופיע במסמכים שלכם וניתן לצטט אותו בגרסה.';
 const FORBIDDEN = 'החשבון הזה אינו חוקר מאושר.';
 
@@ -216,6 +220,34 @@ describe('the upload — hash here, sign there, PUT, then the command (ui A1 :11
       expect(container.textContent).toContain(UPLOADED);
     });
     expect(container.querySelector('[data-upload-command]')).not.toBeNull();
+  });
+
+  it('the route answers { stored: true }: NO upload — the pill says the bytes are ALREADY in the store, and the command is printed (F2)', async () => {
+    fetching = globalFetchDouble({ [ROUTE]: { status: 200, body: { stored: true } } });
+    const { container } = render();
+    await chooseFile(container);
+    await waitFor(() => {
+      expect(container.textContent).toContain(STORED);
+    });
+    // NOTHING IS RE-SENT: the one request is the route's POST.
+    expect(fetching.calls).toHaveLength(1);
+    expect(container.textContent).not.toContain(UPLOADED);
+    expect(container.querySelector('[data-upload-command]')?.textContent).toBe(
+      `add_document docId=${DOC_ID} mimeType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet title="${TITLE}" assertedUrl=${PAGE} assertedAt=2026-09-03`,
+    );
+    expect(container.textContent).toContain(CLOSING);
+  });
+
+  it('STORAGE_UNAVAILABLE (503) is NAMED — never the unnamed failure, never a command (F2: every storage error a code)', async () => {
+    fetching = globalFetchDouble({ [ROUTE]: { status: 503, body: { code: 'STORAGE_UNAVAILABLE', error: 'The storage did not answer' } } });
+    const { container } = render();
+    await chooseFile(container);
+    await waitFor(() => {
+      expect(container.textContent).toContain(STORAGE_UNAVAILABLE);
+    });
+    expect(container.querySelector('[data-upload-command]')).toBeNull();
+    expect(container.textContent).not.toContain('ההעלאה נכשלה');
+    expect(fetching.calls).toHaveLength(1);
   });
 
   it('BUCKET_ABSENT (503) is SAID — until the migration lands, this is the page (amendment 4)', async () => {
