@@ -52,6 +52,13 @@ import { capturesAnchoredBy, storedAnchorHash } from '../src/lib/anchoredCapture
 /** The document hash a capture carries, as the database stores it: bare hex. */
 const DOCUMENT = 'a'.repeat(64);
 
+/**
+ * THE ALLOW an INJECTED window states — `openRegistryWindow`'s guard has no default (document step 31, REVIEW
+ * chunk 2 round 1), so the window this file builds over a double names what it allows. A test double sends
+ * nothing to any chain; the deployment guard is the environment window's and is tested there.
+ */
+const INJECTED_MAY_SEND = (): boolean => true;
+
 /** An EMPTY registry, so WRITES_ALLOWED passes and the write path reaches its one write. */
 function emptyRegistrar(): CaptureRegistrar {
   return {
@@ -84,7 +91,7 @@ function lookupMatches(where: Prisma.UrlSnapshotWhereInput, value: string): bool
 async function whatTheWritePathStored(): Promise<string> {
   mockWeb3.registerEvidenceHash.mockResolvedValue('0xtx');
 
-  await anchorAcquiredCapture(openRegistryWindow(emptyRegistrar), 'snap-1', { documentHash: DOCUMENT });
+  await anchorAcquiredCapture(openRegistryWindow(emptyRegistrar, INJECTED_MAY_SEND), 'snap-1', { documentHash: DOCUMENT });
 
   const call = (prisma.urlSnapshot.update as jest.Mock).mock.calls.at(0) as
     | [{ data: { anchoredHash: string } }]

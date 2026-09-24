@@ -15,9 +15,9 @@ import type { BlockerCode, RecordCode, Refusal } from '../mcp/tools/evidenceRefu
 // ONE TRANSACTION, and NOTHING ON CHAIN. §5: "No research act writes to the
 // chain. The walk is the only chain writer, it runs in the deployment, and the
 // hazard class that produced the fake-CONFIRMED audit … has no research-act path
-// left to travel." `registerEvidenceHash` keeps its one caller, which
-// test/evidence/scans.test.ts holds, and this module imports neither it nor
-// `Web3Service`.
+// left to travel." The registry's write keeps its one caller, the anchoring
+// module, which test/evidence/scans.test.ts holds, and this module imports
+// neither that module nor `Web3Service`.
 //
 // NO EvidenceDecision IS WRITTEN HERE. The review log is step 14's, and
 // promotion is not a review: the row's first `affirmed` is the version the

@@ -17,6 +17,9 @@ jest.mock('../src/lib/prisma', () => ({
   },
 }));
 
+const documentsOwedNow = jest.fn<Promise<number | null>, [Date]>().mockResolvedValue(0);
+jest.mock('../src/services/commitmentsOwed', () => ({ documentsOwedNow: (now: Date) => documentsOwedNow(now) }));
+
 import { describeEnvironment } from '../src/services/environmentIdentity';
 
 // Fabricated project refs — never the real ones. This repo is public.
@@ -137,5 +140,27 @@ describe('describeEnvironment', () => {
 
     expect(report.database.projectRef).not.toBe(REF);
     expect(JSON.stringify(report)).not.toContain(REF);
+  });
+});
+
+describe('corpus.documentsOwed — the document debt on the first read of every session (plan :201–:203)', () => {
+  it('carries the owed count beside snapshotsUnanchored', async () => {
+    setEnv('staging');
+    readChainIdentity.mockResolvedValue(onChain(84532));
+    documentsOwedNow.mockResolvedValueOnce(2);
+
+    const report = await describeEnvironment();
+
+    expect(report.corpus).toMatchObject({ snapshotsUnanchored: 0, documentsOwed: 2 });
+  });
+
+  it('is NULL when the chain could not be read — never 0, which would read as "nothing owed"', async () => {
+    setEnv('staging');
+    readChainIdentity.mockResolvedValue(onChain(84532));
+    documentsOwedNow.mockResolvedValueOnce(null);
+
+    const report = await describeEnvironment();
+
+    expect(report.corpus.documentsOwed).toBeNull();
   });
 });
