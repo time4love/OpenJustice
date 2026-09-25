@@ -1,8 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
-import { assessedContent, recordChecks } from '../../services/openDebate';
+import { debateInputOf, recordChecks, roundMaterial } from '../../services/openDebate';
 import { assessAndRecord, recordResponse } from '../../services/respondInDebate';
-import { passagesCiting } from '../../services/debatePassage';
 import { loadDebate, priorTurns, type DebateState } from '../../services/debateState';
 import { answer, refusal, type EvidenceWriteCode, type Refusal } from './evidenceRefusals';
 import { requireAuthor, requireResearcher, state } from './openDebate';
@@ -57,8 +56,8 @@ export async function respondInDebateHandler(input: {
     }
     if (debate.record === null) {
       throw new Error(
-        `respond_in_debate: session ${input.sessionId} names neither a capture nor a pair the corpus ` +
-          'holds. A debate is opened on a record; this is a malformed row.',
+        `respond_in_debate: session ${input.sessionId} names no capture, pair or document. A debate is ` +
+          'opened on a record; this is a malformed row.',
       );
     }
 
@@ -66,7 +65,7 @@ export async function respondInDebateHandler(input: {
     // a re-walk supersedes a text version and the diff's CURRENT goes with it.
     // The same seven checks `open_debate` ran, from the same function.
     const checked = await recordChecks({
-      record: debate.record,
+      record: debateInputOf(debate.record),
       thesisId: debate.thesisId,
       headVersionId: debate.thesis.headVersionId,
     });
@@ -86,9 +85,7 @@ export async function respondInDebateHandler(input: {
     }
 
     await assessAndRecord(input.sessionId, {
-      url: checked.page.url,
-      content: await assessedContent(checked),
-      passages: passagesCiting(version, checked.fileHash),
+      ...(await roundMaterial(checked, version)),
       rationale: input.response,
       // EVERY EARLIER TURN — the assessor judges the ACCUMULATED argument, not
       // this response alone. Without the priors "a researcher defending an

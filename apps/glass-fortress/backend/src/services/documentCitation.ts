@@ -2,6 +2,7 @@ import type { Document, DocumentContentVersion, Shed } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { CURRENT_EXTRACTOR } from '../lib/documentExtractor';
 import { currentVersion, custody, type Custody, type DocumentCurrent } from './documentPredicates';
+import type { Current } from './evidencePredicates';
 
 // ---------------------------------------------------------------------------
 // A CITED DOCUMENT, LOADED ONCE — document plan step 33 :243–:252; document flows §6 :695–:699, A3 :1360–:1371.
@@ -51,5 +52,40 @@ export async function documentsByCommitment(commitments: readonly string[]): Pro
         },
       ];
     }),
+  );
+}
+
+/**
+ * CURRENT(d) IN EVIDENCE A3's `Current` SHAPE — so NEEDS_REVIEW and CITATION_CURRENT over a document are evidence's
+ * predicates, CALLED: "everything else on the row … is evidence's, and applies to a document without a second spelling"
+ * (document §6 :675–:677; A3 :1372). ONE conversion for the debate's checks and both review surfaces. SHED has no such
+ * shape — the content was taken back — and each caller answers it before asking.
+ */
+export function evidenceCurrentOf(current: Exclude<DocumentCurrent, { shed: true }>): Current<never> {
+  if ('awaiting' in current) return { defined: false, reason: 'AWAITING_DERIVATION' };
+  return { defined: true, kind: 'DOCUMENT', contentVersionHash: current.contentVersionHash };
+}
+
+/**
+ * THE LOUD GUARD FOR A MOVED DOCUMENT — RULED (A) 2026-09-25 (the researcher, R82 Entry 8). A promoted document whose
+ * CURRENT(d) is not the version a human affirmed — the platform re-read the SAME bytes under a new extractor — is
+ * RE-AFFIRMED by a human (document flows §3 :348: CURRENT moves → NEEDS_REVIEW → evidence Flow E3). That review is built
+ * at document step 34 (its issue, `gate:document-34`). Until then every surface that meets one refuses LOUDLY here —
+ * never a false word, never a silent skip. ONE spelling: the review list, `review_evidence`, and `movedFrom` (which
+ * `flaggedReview` reaches) all throw this.
+ */
+export function documentReviewNotBuilt(commitment: string): Error {
+  return new Error(
+    `${commitment} is a promoted DOCUMENT, and reviewing it against a moved CURRENT(d) — NEEDS_REVIEW, REAFFIRM and the ` +
+      'material a review shows (document flows §3 :348 → evidence Flow E3) — is built at document step 34 (R82 Entry 8). ' +
+      'This refuses loudly rather than answer a false word.',
+  );
+}
+
+/** A promoted document that was SHED — unreachable until step 35 builds SHED, and named rather than read as awaiting. */
+export function documentShedNotBuilt(commitment: string): Error {
+  return new Error(
+    `${commitment} is a promoted DOCUMENT whose content was taken back (SHED), and what a review owes a shed document is ` +
+      'document step 35\'s. Nothing writes a Shed row before it.',
   );
 }

@@ -1,6 +1,8 @@
 import { prisma } from '../lib/prisma';
 import { WRITE_TRANSACTION } from '../walk/pageLog';
-import { PromotionAssessor, type AssessedContent } from './promotionAssessor';
+import { FORENSIC_PROMOTION_ASSESSMENT_PROMPT_VERSION } from '../prompts/forensicPromotionAssessment';
+import { auditDebateAssertions } from './debateAudit';
+import { PROMOTION_ASSESSOR_MODEL, PromotionAssessor, type AssessedContent } from './promotionAssessor';
 
 // ---------------------------------------------------------------------------
 // A TURN IN THE DEBATE — docs/gf-evidence-flows.md §4, A4.
@@ -34,7 +36,8 @@ export interface AssessmentRound {
   passages: string[];
   rationale: string;
   priorTurns: string[];
-  url: string;
+  /** The page — null for a document, which has none. */
+  url: string | null;
 }
 
 /**
@@ -45,6 +48,11 @@ export interface AssessmentRound {
  * `verdict` are the two columns the gate and the promotion read. Nothing here
  * re-words what the model said, and nothing decides on the merits: "nothing here
  * can refuse on the merits — promotedOverObjection is recorded instead".
+ *
+ * BESIDE IT, SINCE DOCUMENT STEP 33: the ASSERTIONS with the audit's verdicts (evidence A4 :1121, R81 QA — audited
+ * HERE, mechanically, before the row is written, the framing round's order) and WHICH MODEL AND PROMPT judged it
+ * (thesis A4 :1476's `M`, "an A2 :1317 debt for the writer", paid; R82 Entry 2). A row written before carries none of
+ * the three, and the transcript reads their absence as null.
  */
 export async function assessAndRecord(sessionId: string, round: AssessmentRound): Promise<void> {
   const assessment = await new PromotionAssessor().assess({
@@ -55,22 +63,24 @@ export async function assessAndRecord(sessionId: string, round: AssessmentRound)
     priorTurns: round.priorTurns,
   });
 
+  // DERIVED BEFORE THE TRANSACTION OPENS: the audit is pure, and nothing computed inside the window spends it.
+  const content = JSON.stringify({
+    hasSubstance: assessment.hasSubstance,
+    substanceGaps: assessment.substanceGaps,
+    verdict: assessment.verdict,
+    objection: assessment.objection,
+    assessment: assessment.assessment,
+    assertions: auditDebateAssertions(assessment.assertions, round.passages, round.content),
+    model: PROMOTION_ASSESSOR_MODEL(),
+    promptVersion: FORENSIC_PROMOTION_ASSESSMENT_PROMPT_VERSION,
+  });
+
   // The event and the two columns move TOGETHER: a recorded assessment whose
   // verdict never landed would be a debate that says one thing in its log and
   // another in its state. One transaction, under the shared window.
   await prisma.$transaction(async (tx) => {
     await tx.debateEvent.create({
-      data: {
-        sessionId,
-        type: 'ASSESSMENT_RETURNED',
-        content: JSON.stringify({
-          hasSubstance: assessment.hasSubstance,
-          substanceGaps: assessment.substanceGaps,
-          verdict: assessment.verdict,
-          objection: assessment.objection,
-          assessment: assessment.assessment,
-        }),
-      },
+      data: { sessionId, type: 'ASSESSMENT_RETURNED', content },
     });
     await tx.debateSession.update({
       where: { id: sessionId },

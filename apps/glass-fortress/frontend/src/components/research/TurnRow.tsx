@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { GLYPHS } from '@/components/glyphs';
 import { PlatformMark, type MarkKind } from '@/components/thesis/PlatformMark';
 import { formatDate } from '@/lib/format';
-import type { Turn, TurnKind } from '@/types/research';
+import type { Turn, TurnKind, VersionMentionRow } from '@/types/research';
 import { ModelVoice } from './ModelVoice';
 
 // ---------------------------------------------------------------------------
@@ -167,8 +167,9 @@ function isFilled(element: unknown): boolean {
 /**
  * HOW MANY OF A VERSION'S CITATIONS WERE NEVER ARGUED — §11 :431 makes this the PAGE's to compute from `body`.
  *
- * It MIRRORS `thesisPredicates.ts` :152–:156, which is UNARGUED(v): EVIDENCE mentions only — "a TRAJECTORY
- * mention is never in the set, there is no argument for a trajectory" (:149–:150).
+ * It MIRRORS `thesisPredicates.ts` :154–:158, which is UNARGUED(v): EVIDENCE and DOCUMENT mentions — "a TRAJECTORY
+ * mention is never in the set, there is no argument for a trajectory", and a DOCUMENT mention IS (document flows §6 :700,
+ * added at document step 33).
  *
  * IT IS THE `debateSessionId IS NULL` HALF, AND ONLY THAT HALF, WHICH IS SAID RATHER THAN GLOSSED. The
  * predicate's full test is `debateSessionId is null OR NOT ARGUED(m)`, and ARGUED is evidence A3 :1035 —
@@ -190,8 +191,8 @@ function isFilled(element: unknown): boolean {
  * using it would say the same number about four different versions, which is what the board's generator does
  * at `boards.py` :237.
  */
-function unarguedOf(mentions: readonly { kind: 'EVIDENCE' | 'TRAJECTORY'; debateSessionId: string | null }[]): number {
-  return mentions.filter((mention) => mention.kind === 'EVIDENCE' && mention.debateSessionId === null).length;
+function unarguedOf(mentions: readonly { kind: VersionMentionRow['kind']; debateSessionId: string | null }[]): number {
+  return mentions.filter((mention) => mention.kind !== 'TRAJECTORY' && mention.debateSessionId === null).length;
 }
 
 /** The platform's mark for a turn that carries one — drawn beside the row's line. */

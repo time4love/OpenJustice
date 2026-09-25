@@ -39,7 +39,7 @@ export const createThesisSchema = {
     .string()
     .describe(
       'The first version EXACTLY AS THE RESEARCHER APPROVED IT, Markdown, each citation an inline token: #ev_ and a ' +
-        "record's name from list_findings, or #tr_ and a trajectory id",
+        "record's name from list_findings, #tr_ and a trajectory id, or #doc_ and a document's commitment from list_documents",
     ),
   framingId: z.string().optional().describe('The framing whose CHOSEN claim this thesis argues — attached to it'),
 };

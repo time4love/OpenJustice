@@ -665,6 +665,22 @@ html, body {
   .tick-dot-flagged { background: var(--amber); }
   .tick-dot-neutral { background: var(--ink-muted); }
 
+  /* THE DOCUMENT TICK — board י4 (ui §17 :540 as ruled 2026-09-22): the glyph between the dot and the title's words,
+     and the board's NEUTRAL drawn as it draws it — a hollow ring ("מצוטט וטרם נטען"), not a filled dot. The pill reads
+     its direction from the title (`dir="auto"` on the element), so `white-space` stays the tick's own. */
+  .tick-glyph {
+    width: 11px;
+    height: 11px;
+    flex: none;
+    color: var(--ink-muted);
+  }
+  .tick-document .tick-dot-neutral {
+    width: 5px;
+    height: 5px;
+    background: var(--line);
+    border: 1px solid var(--ink-muted);
+  }
+
   .tick-line {
     display: flex;
     align-items: center;

@@ -1,5 +1,5 @@
 import { normaliseClaim } from '../lib/normalise';
-import { verdictInAny, type Verdict } from '../lib/verdict';
+import { verdict, verdictInAny, type Verdict } from '../lib/verdict';
 import type { AssessedRecord, FramingAssessment } from './framingAssessor';
 
 // ---------------------------------------------------------------------------
@@ -53,6 +53,26 @@ export interface AuditedAssessment {
 }
 
 /**
+ * A DOCUMENT as the fold reads it — CURRENT(d)'s computed text, or NULL where the content is its bytes (document flows
+ * §3 :359–:365). ADDED AT DOCUMENT STEP 33 (R81 QA, Entry 16's consequence; R82 Entry 2, S2): the debate's audit is the
+ * verdict rule's fourth caller (document A7 :1581) and its record may be a document. The FRAMING assessor is handed no
+ * document, so `AssessedRecord` — its input — is unchanged; only the fold's input widens.
+ */
+export interface AuditedDocument {
+  kind: 'DOCUMENT';
+  text: string | null;
+}
+
+/**
+ * What the ONE verdict rule may be asked over: a capture's text, a diff's chunks, or a document — the CONTENT alone, so
+ * the framing assessor's labelled records and the debate's assessed content both satisfy it without a conversion.
+ */
+export type AuditedRecord =
+  | Pick<Extract<AssessedRecord, { kind: 'CAPTURE' }>, 'kind' | 'text'>
+  | Pick<Extract<AssessedRecord, { kind: 'DIFF' }>, 'kind' | 'chunks'>
+  | AuditedDocument;
+
+/**
  * CONTENT_OF — what the ONE verdict rule searches for a record, and it is the
  * whole of the rule.
  *
@@ -74,16 +94,88 @@ export interface AuditedAssessment {
  * PRESENT — the record shows the page once said it and that it was taken away,
  * which for this corpus is usually the point.
  */
-function textsOf(record: AssessedRecord): string[] {
+function textsOf(record: Exclude<AuditedRecord, AuditedDocument>): string[] {
   return record.kind === 'CAPTURE' ? [record.text] : record.chunks.map((c) => c.text);
 }
 
 /**
  * The verdict rule over a record's current content — a CALL of `lib/verdict`'s fold over several texts, never a second
  * spelling of it (thesis step 22, L1). PRESENT iff any one text carries the phrase; an empty collection is ABSENT.
+ *
+ * A DOCUMENT is ONE text, or none: its null text is handed to `verdict` AS NULL, so a document whose content is its
+ * bytes is UNCHECKED through the one symbol and never ABSENT — `verdictInAny` over `[]` would say ABSENT, which is a
+ * reading of nothing reported as a search that found nothing.
  */
-function phraseIn(phrase: string, record: AssessedRecord): Verdict {
+export function phraseIn(phrase: string, record: AuditedRecord): Verdict {
+  if (record.kind === 'DOCUMENT') return verdict(phrase, record.text);
   return verdictInAny(phrase, textsOf(record));
+}
+
+/** Why an assertion with no phrase has no verdict — one wording for every audit that calls `auditAssertion`. */
+const EMPTY_PHRASE =
+  'The assessment attributes no phrase to this record — the field is empty — so there is ' +
+  'nothing to search for and no verdict was reached. An empty assertion is not a verified ' +
+  'one.';
+
+/** Why a document's assertion has no verdict — its content is its bytes (document flows §3 :359–:365). */
+const BYTES_CONTENT =
+  "The record's content is its bytes — no text was computed from them — so the phrase cannot be checked by the " +
+  'platform. What the bytes show is a reader\'s, never a verdict.';
+
+/** The three verdicts the audit adds beside an assertion. */
+export interface AssertionVerdicts {
+  quoteVerified: boolean;
+  phraseVerified: Verdict;
+  /** Why no verdict could be reached, beside UNCHECKED; null beside PRESENT and ABSENT. */
+  phraseVerifiedReason: string | null;
+}
+
+/**
+ * ONE ASSERTION, AUDITED — the guard and the two checks every assessor audit applies, spelled ONCE (R82 Entry 2, S4).
+ * The framing round and the debate each CALL this; neither re-spells the emptiness guard.
+ *
+ * `quoteVerified` — a whitespace-collapsed substring of ANY of `quoteSources` (T1 :256): the framing round's one
+ * proposal, or every paragraph that cites the debated record (evidence A4 :1121, "a span of the citing passage").
+ * `phraseVerified` — the ONE verdict rule over `record`'s current content; where the assertion names a record the call
+ * never supplied, `record` carries the reason instead, and the verdict is UNCHECKED with it.
+ */
+export function auditAssertion(
+  assertion: { researcherClaim: string; whatEvidenceShows: string },
+  quoteSources: readonly string[],
+  record: AuditedRecord | { unsupplied: string },
+): AssertionVerdicts {
+  // THE EMPTINESS GUARD, ON BOTH FIELDS AND ON THE NORMALISED FORM.
+  //
+  // Both assessors type these fields as `z.string()` with no minimum, and
+  // `''.includes('')` is true — so an assessor returning an empty string once
+  // parsed and was reported VERIFIED for an assertion that says nothing. That is
+  // the house's own shape: a vacuity guard written for one field and not its
+  // neighbour. NORMALISED, not `=== ''`, because a whitespace-only string is
+  // equally empty and would otherwise pass.
+  //
+  // AND IT IS NOT A REFUSAL. Nothing gates on an assertion's verdict (T1 :294–:304):
+  // the assertion is recorded with an honest verdict, never dropped.
+  //
+  // IT LIVES HERE AND NOT IN `lib/verdict.ts`, WHICH STAYS TOTAL. Asked whether
+  // a text contains the empty string, `verdict('', text)` answering PRESENT is
+  // correct; what is wrong is calling an empty assertion CHECKED. The meaning of
+  // an assertion belongs to the audit, so the guard does too — do not "fix" the
+  // pure symbol.
+  //
+  // NORMALISE is CALLED, from `lib/normalise`; a second `replace(/\s+/g, ' ')`
+  // here is a scan failure (thesis A7's `one-symbol`).
+  const claim = normaliseClaim(assertion.researcherClaim);
+  const phrase = normaliseClaim(assertion.whatEvidenceShows);
+
+  // An empty claim is not a verbatim span of the source; it is not a quotation at all.
+  const quoteVerified = claim !== '' && quoteSources.some((source) => normaliseClaim(source).includes(claim));
+
+  if (phrase === '') return { quoteVerified, phraseVerified: 'UNCHECKED', phraseVerifiedReason: EMPTY_PHRASE };
+  if ('unsupplied' in record) return { quoteVerified, phraseVerified: 'UNCHECKED', phraseVerifiedReason: record.unsupplied };
+  const found = phraseIn(assertion.whatEvidenceShows, record);
+  // UNCHECKED from the fold is reachable ONLY through a document whose text is null — a capture and a diff always
+  // have text to search — so the reason is the bytes'.
+  return { quoteVerified, phraseVerified: found, phraseVerifiedReason: found === 'UNCHECKED' ? BYTES_CONTENT : null };
 }
 
 export interface AuditInput {
@@ -109,73 +201,22 @@ export interface AuditInput {
 export function auditAssessment(input: AuditInput): AuditedAssessment {
   const supplied = new Map(input.records.map((r) => [r.label, r]));
 
-  // `quoteVerified` — a whitespace-collapsed substring of the proposal (T1 :256).
-  // NORMALISE is CALLED, from `lib/normalise`; a second `replace(/\s+/g, ' ')`
-  // here is a scan failure (thesis A7's `one-symbol`).
-  const proposal = normaliseClaim(input.proposedFraming);
-
+  // Every assertion through the ONE guard — `auditAssertion` above, which the debate's audit calls too. A
+  // contradiction naming a record the call never supplied is UNCHECKED WITH ITS REASON (the docblock above).
   const contradictions = input.assessment.contradictions.map((c): AuditedContradiction => {
-    const record = supplied.get(c.record);
-
-    // THE EMPTINESS GUARD, ON BOTH FIELDS AND ON THE NORMALISED FORM.
-    //
-    // `FramingAssessmentSchema` types both as `z.string()` with no minimum, and
-    // `''.includes('')` is true — so an assessor returning an empty string once
-    // parsed and was reported VERIFIED for an assertion that says nothing. That is
-    // the house's own shape: a vacuity guard written for one field and not its
-    // neighbour (`filled` below carries `named.length > 0`; these two carried
-    // nothing). NORMALISED, not `=== ''`, because a whitespace-only string is
-    // equally empty and would otherwise pass.
-    //
-    // AND IT IS NOT A REFUSAL. Nothing gates on a framing verdict (T1 :294–:304):
-    // the assertion is recorded with an honest verdict, never dropped.
-    //
-    // IT LIVES HERE AND NOT IN `lib/verdict.ts`, WHICH STAYS TOTAL. Asked whether
-    // a text contains the empty string, `verdict('', text)` answering PRESENT is
-    // correct; what is wrong is calling an empty assertion CHECKED. The meaning of
-    // an assertion belongs to the audit, so the guard does too — do not "fix" the
-    // pure symbol.
-    const claim = normaliseClaim(c.researcherClaim);
-    const phrase = normaliseClaim(c.whatEvidenceShows);
-
-    // An empty claim is not a verbatim span of the proposal; it is not a quotation
-    // at all.
-    const quoteVerified = claim !== '' && proposal.includes(claim);
-
-    if (phrase === '') {
-      return {
-        researcherClaim: c.researcherClaim,
-        quoteVerified,
-        whatEvidenceShows: c.whatEvidenceShows,
-        record: c.record,
-        phraseVerified: 'UNCHECKED',
-        phraseVerifiedReason:
-          'The assessment attributes no phrase to this record — the field is empty — so there is ' +
-          'nothing to search for and no verdict was reached. An empty assertion is not a verified ' +
-          'one.',
-      };
-    }
-
-    if (record === undefined) {
-      return {
-        researcherClaim: c.researcherClaim,
-        quoteVerified,
-        whatEvidenceShows: c.whatEvidenceShows,
-        record: c.record,
-        phraseVerified: 'UNCHECKED',
-        phraseVerifiedReason:
-          `The assessment names ${c.record}, which is not one of the records this call supplied, so ` +
-          'there is no content to check the phrase against. The assertion stands unverified rather ' +
-          'than unreported.',
-      };
-    }
+    const verdicts = auditAssertion(c, [input.proposedFraming], supplied.get(c.record) ?? {
+      unsupplied:
+        `The assessment names ${c.record}, which is not one of the records this call supplied, so ` +
+        'there is no content to check the phrase against. The assertion stands unverified rather ' +
+        'than unreported.',
+    });
     return {
       researcherClaim: c.researcherClaim,
-      quoteVerified,
+      quoteVerified: verdicts.quoteVerified,
       whatEvidenceShows: c.whatEvidenceShows,
       record: c.record,
-      phraseVerified: phraseIn(c.whatEvidenceShows, record),
-      phraseVerifiedReason: null,
+      phraseVerified: verdicts.phraseVerified,
+      phraseVerifiedReason: verdicts.phraseVerifiedReason,
     };
   });
 

@@ -15,7 +15,13 @@ import {
   type TimelineDiff,
 } from './corpusReads';
 import { currentVersionOf, intervening, type Current } from './evidencePredicates';
-import type { AssessedContent } from './promotionAssessor';
+import type { AssessedContent, DocumentReading } from './promotionAssessor';
+import { passagesCiting, type CitingVersion } from './debatePassage';
+import { documentsByCommitment, evidenceCurrentOf, type CitedDocument } from './documentCitation';
+import { readObject } from './documentBucket';
+import type { NamedRecord } from './evidenceReviews';
+import { DESCRIBE_TOO_LARGE_BYTES, familyOf, modelReadingOf } from '../lib/acceptedDocumentTypes';
+import { modelFileOf } from '../lib/documentModelPart';
 import {
   notACapture,
   refusal,
@@ -42,6 +48,7 @@ import {
 //   A4 says promotion re-checks "every refusal of open_debate … at this moment",
 //   and two implementations of "every refusal" is precisely the drift that
 //   sentence is written against. `promotionBlockers` calls this same function.
+//   A DOCUMENT has its own five, in the same function (document §6 :701–:704).
 //
 // EVERY CHECK GOES THROUGH THE STEP-12 PREDICATES AND NONE IS RE-DERIVED:
 // `currentVersionOf` answers AWAITING_DERIVATION and NOTHING_TO_PROMOTE,
@@ -104,19 +111,44 @@ export async function closeDebate(
 // THE RECORD, AS A TOOL NAMES IT (A1) — never a row id, never a date pair.
 // ---------------------------------------------------------------------------
 
-export type NamedRecord =
+/** A capture or a pair, by page and timestamps. */
+type CorpusRecordInput =
   | { url: string; capture: string }
   | { url: string; before: string; after: string };
 
-const isPair = (r: NamedRecord): r is { url: string; before: string; after: string } =>
+/**
+ * The record `open_debate` is HANDED — a capture, a pair, or a DOCUMENT by its commitment, `{ document: commitment }`
+ * (document A4 :1455, plan :247, §6 :701).
+ *
+ * THE INPUT, NOT THE ANSWER. A read answers a document as `{ commitment, title }` (evidence A4 :1123, :1144 as ruled,
+ * R81 QB — `evidenceReviews.NamedRecord`); the tool takes `{ document }`. Two types, never one: `debateInputOf` below is
+ * the one conversion, so an answer is never pasted back as an input the tool's own schema refuses.
+ */
+export type RecordInput = CorpusRecordInput | { document: string };
+
+const isPair = (r: CorpusRecordInput): r is { url: string; before: string; after: string } =>
   'before' in r;
 
-/** What both callers need once the seven checks pass — so neither re-loads it. */
-export interface RecordChecked {
+/**
+ * THE RECORD AS `open_debate` TAKES IT, from the record as a read ANSWERS it — they differ for a document only. MOVED
+ * HERE at document step 33 (R82 Entry 2, S5) from `thesisPredicates.ts`, where it built REVIEWS' command, because
+ * `promotionBlockers` now needs it too and this module owns the input type.
+ */
+export function debateInputOf(record: NamedRecord): RecordInput {
+  return 'commitment' in record ? { document: record.commitment } : record;
+}
+
+/** The head version's mention of the record, and its pin. */
+interface CitingMention {
+  id: string;
+  versionId: string;
+  contentVersionHash: string | null;
+}
+
+/** What every caller needs once the checks pass, whatever the record — so neither re-loads it. */
+interface CheckedBase {
   fileHash: RecordId;
-  kind: 'CAPTURE' | 'DIFF';
-  page: Page;
-  /** The record's key on the debate and on the Evidence row — one, matching kind. */
+  /** The record's key on the debate and on the Evidence row — one, matching kind; null for a document's. */
   snapshotId: string | null;
   diffId: string | null;
   /** CURRENT(record) — defined, because AWAITING_DERIVATION already refused. */
@@ -127,12 +159,30 @@ export interface RecordChecked {
    * `kind` the record does not have.
    */
   current: CurrentVersion;
+  mention: CitingMention;
+}
+
+/** A capture or a pair that passed the seven checks. */
+export interface CorpusRecordChecked extends CheckedBase {
+  kind: 'CAPTURE' | 'DIFF';
+  page: Page;
   chunks: StoredChunk[];
-  /** The head version's mention of this record, and its pin. */
-  mention: { id: string; versionId: string; contentVersionHash: string | null };
   captureName: string | null;
   pair: { before: string; after: string } | null;
 }
+
+/**
+ * A DOCUMENT that passed its five checks. `fileHash` IS the commitment (document A2 :1341; §6 :669) — the public name,
+ * never the DOC_ID — and `document` is the one loader's row, from which the assessor's material is read.
+ */
+export interface DocumentRecordChecked extends CheckedBase {
+  kind: 'DOCUMENT';
+  commitment: string;
+  title: string | null;
+  document: CitedDocument;
+}
+
+export type RecordChecked = CorpusRecordChecked | DocumentRecordChecked;
 
 /** What `currentVersionOf` returns over a stored content version. */
 export type CurrentVersion = Current<{
@@ -144,9 +194,39 @@ export type CurrentVersion = Current<{
 }>;
 
 export interface RecordCheckInput {
-  record: NamedRecord;
+  record: RecordInput;
   thesisId: string;
   headVersionId: string | null;
+}
+
+/** The head version's mention of `(kind, name)` — the queryable half of "the head cites it". */
+async function citingMention(
+  input: RecordCheckInput,
+  kind: 'EVIDENCE' | 'DOCUMENT',
+  name: string,
+): Promise<CitingMention | null> {
+  if (input.headVersionId === null) return null;
+  return prisma.thesisMention.findFirst({
+    where: { versionId: input.headVersionId, kind, name },
+    select: { id: true, versionId: true, contentVersionHash: true },
+  });
+}
+
+/**
+ * NOT_CITED — "the citation comes first, and the argument is made on it" (§4). ONE wording for both kinds of record,
+ * naming the token the text must carry: `#ev_…` for a capture or a pair, `#doc_…` for a document (thesis T2; F3).
+ */
+function notCited(input: RecordCheckInput, token: string, name: string): Refusal<'NOT_CITED'> {
+  return refusal(
+    'NOT_CITED',
+    input.headVersionId === null
+      ? `Thesis ${input.thesisId} has no version yet, so its head cites nothing. Write the version ` +
+          `that cites ${token}, then argue for it: the citation comes first and the argument ` +
+          'is made on it.'
+      : `The thesis's head version does not mention ${name}. Cite the record in the text first ` +
+          `(${token}) and argue on that citation — there is no promotion of a record no text ` +
+          'cites.',
+  );
 }
 
 /**
@@ -162,6 +242,9 @@ export async function recordChecks(
   input: RecordCheckInput,
 ): Promise<Refusal<RecordCode> | RecordChecked> {
   const { record } = input;
+  // A DOCUMENT NEVER REACHES THE CORPUS CHECKS BELOW: NOT_ACQUIRED, CONTRADICTED and NARROWED are refusals about
+  // captures and pairs, "a document has none of those states, and the tools never raise them for one" (§6 :723–:725).
+  if ('document' in record) return documentChecks(record.document, input);
 
   const page = await loadPage(record.url);
   if (page === null) return shared.notSurveyed(record.url);
@@ -232,25 +315,8 @@ export async function recordChecks(
   // Decided from the head version's MENTION, which is the queryable half; the
   // passage is read from the body afterwards, and a body that disagrees with the
   // mention is a malformed version rather than a refusal (services/debatePassage).
-  const mention =
-    input.headVersionId === null
-      ? null
-      : await prisma.thesisMention.findFirst({
-          where: { versionId: input.headVersionId, kind: 'EVIDENCE', name: fileHash },
-          select: { id: true, versionId: true, contentVersionHash: true },
-        });
-  if (mention === null) {
-    return refusal(
-      'NOT_CITED',
-      input.headVersionId === null
-        ? `Thesis ${input.thesisId} has no version yet, so its head cites nothing. Write the version ` +
-            `that cites #ev_${fileHash}, then argue for it: the citation comes first and the argument ` +
-            'is made on it.'
-        : `The thesis's head version does not mention ${fileHash}. Cite the record in the text first ` +
-            `(#ev_${fileHash}) and argue on that citation — there is no promotion of a record no text ` +
-            'cites.',
-    );
-  }
+  const mention = await citingMention(input, 'EVIDENCE', fileHash);
+  if (mention === null) return notCited(input, `#ev_${fileHash}`, fileHash);
 
   const current: CurrentVersion =
     diff === null
@@ -327,6 +393,76 @@ export async function recordChecks(
 }
 
 /**
+ * THE DOCUMENT'S FIVE CHECKS, in order — document §6 :701–:704, A4 :1455–:1457 (the sketch's (c), graded).
+ *
+ *   NOT_A_DOCUMENT      no document of that commitment (A4 :1398 — the word of the tools HANDED one, R81 Q1)
+ *   NOT_CITED           the head does not mention (DOCUMENT, commitment) — naming `#doc_…`
+ *   SHED                its content was taken back, naming cause and date (A4 :1400)
+ *   AWAITING_DERIVATION HELD, and no version under the current extractor (A3 :1368–:1371)
+ *   NOTHING_TO_PROMOTE  SEALED, and CURRENT(d).text is null — nothing a reader can check (A4 :1456, §3)
+ *
+ * CUSTODY(d) and CURRENT(d) are `documentCitation`'s, the ONE loader the version write pins through, so the debate and
+ * the citation cannot disagree about which version is current. It loads NO OPINION: a `DocumentOpinion` is never
+ * material for the assessor (§6 :706–:708), and the loader includes versions and the shed alone.
+ */
+async function documentChecks(
+  commitment: string,
+  input: RecordCheckInput,
+): Promise<Refusal<RecordCode> | DocumentRecordChecked> {
+  const cited = (await documentsByCommitment([commitment])).get(commitment);
+  if (cited === undefined) {
+    return refusal(
+      'NOT_A_DOCUMENT',
+      `No document is named ${commitment}. A document is argued for by its commitment; list_documents names every ` +
+        'document with its commitment.',
+    );
+  }
+
+  const mention = await citingMention(input, 'DOCUMENT', commitment);
+  if (mention === null) return notCited(input, `#doc_${commitment}`, commitment);
+
+  const { current, shed } = cited;
+  if ('shed' in current) {
+    // A LOUD GUARD for an unreachable world, as the version write's and verify_claim_text's: CURRENT(d) reads SHED
+    // only when a Shed row exists (`currentVersion`), so a shed CURRENT without one is a defective load.
+    if (shed === null) throw new Error(`openDebate: CURRENT of ${commitment} reads SHED and the document has no Shed row.`);
+    return refusal(
+      'SHED',
+      `The content of ${commitment} was taken back (${shed.cause}, ${shed.at.toISOString().slice(0, 10)}): there is ` +
+        'nothing left to argue from, and nothing to promote.',
+    );
+  }
+  if ('awaiting' in current) {
+    return refusal(
+      'AWAITING_DERIVATION',
+      `${commitment} has no content version under the current extractor: the derivation pass owes it one, and an ` +
+        'argument is made against a version. Open the debate again once it is derived.',
+    );
+  }
+  if (cited.custody === 'SEALED' && current.text === null) {
+    return refusal(
+      'NOTHING_TO_PROMOTE',
+      `${commitment} is sealed and its content is its bytes: no text was computed at receipt, and the platform no ` +
+        'longer holds the file, so there is nothing a reader can check an argument against. Ask the sender for a ' +
+        'held copy.',
+    );
+  }
+
+  return {
+    kind: 'DOCUMENT',
+    fileHash: commitment,
+    commitment,
+    title: cited.document.title,
+    document: cited,
+    snapshotId: null,
+    diffId: null,
+    contentVersionHash: current.contentVersionHash,
+    current: evidenceCurrentOf(current),
+    mention,
+  };
+}
+
+/**
  * What the assessor is handed about the record — the COMPUTED register only.
  *
  * Built here rather than inside `recordChecks` because `promote_from_debate`
@@ -334,6 +470,9 @@ export async function recordChecks(
  * work nobody reads.
  */
 export async function assessedContent(checked: RecordChecked): Promise<AssessedContent> {
+  if (checked.kind === 'DOCUMENT') {
+    return { kind: 'DOCUMENT', title: checked.title, reading: await documentReading(checked.document) };
+  }
   if (checked.kind === 'DIFF' && checked.pair !== null) {
     return {
       kind: 'DIFF',
@@ -359,6 +498,60 @@ export async function assessedContent(checked: RecordChecked): Promise<AssessedC
     );
   }
   return { kind: 'CAPTURE', capture: checked.captureName ?? '', text: snapshot.text };
+}
+
+/**
+ * A DOCUMENT'S CONTENT, AS THE ASSESSOR IS HANDED IT — document §6 :705–:708 and :739 (RULED 2026-09-25, R81 Q-3):
+ *
+ *   CURRENT(d)'s TEXT, where one derives — HELD or SEALED alike;
+ *   a HELD image or PDF with no text AS ITS FILE, the part `describe_document` hands, within the bound that part was
+ *     measured for (`DESCRIBE_TOO_LARGE_BYTES`, CALLED; A4 :1440);
+ *   and otherwise NOTHING BUT ITS TITLE — audio and video, which no model reads; a spreadsheet with no computed text; a
+ *     file above the describer's bound, which no model the platform measured reads either. The message says so in
+ *     one sentence and every assertion over it is UNCHECKED. NO NEW REFUSAL (§6 :739).
+ *
+ * A SEALED document with no text never reaches here: NOTHING_TO_PROMOTE refused it, and the platform holds no bytes.
+ */
+async function documentReading(cited: CitedDocument): Promise<DocumentReading> {
+  const { current, document } = cited;
+  if ('awaiting' in current || 'shed' in current) {
+    throw new Error(`openDebate: ${document.commitment} passed every check but has no CURRENT version.`);
+  }
+  if (current.text !== null) return { form: 'TEXT', text: current.text };
+
+  const family = familyOf(document.mimeType);
+  if (family === null) {
+    throw new Error(`openDebate: ${document.commitment} carries a type the door never accepts (${document.mimeType}).`);
+  }
+  if (modelReadingOf(family) !== 'FILE' || document.byteLength > DESCRIBE_TOO_LARGE_BYTES) return { form: 'UNREAD' };
+
+  // HELD by construction — a sealed document with null text was refused — so its bytes are in the bucket.
+  const bytes = document.bytes === null ? null : await readObject(document.bytes);
+  if (bytes === null) {
+    throw new Error(
+      `openDebate: ${document.commitment} is HELD and its bucket object is gone — a malformed row that ` +
+        'document-recomputable lists.',
+    );
+  }
+  return { form: 'FILE', file: modelFileOf(document.mimeType, bytes) };
+}
+
+/**
+ * WHAT ONE ROUND HANDS THE ASSESSOR, for either tool that runs one — the page (none for a document), the record's
+ * content and the passages of the head version that carry its token (`#ev_…` or `#doc_…`, matched byte for byte).
+ */
+export async function roundMaterial(
+  checked: RecordChecked,
+  version: CitingVersion,
+): Promise<{ url: string | null; content: AssessedContent; passages: string[] }> {
+  return {
+    url: checked.kind === 'DOCUMENT' ? null : checked.page.url,
+    content: await assessedContent(checked),
+    passages:
+      checked.kind === 'DOCUMENT'
+        ? passagesCiting(version, checked.commitment, 'DOCUMENT')
+        : passagesCiting(version, checked.fileHash, 'EVIDENCE'),
+  };
 }
 
 /** The open transaction's result: the session, and whether it already existed. */
@@ -397,6 +590,9 @@ export async function openOrRevise(
           recordFileHash: input.checked.fileHash,
           recordSnapshotId: input.checked.snapshotId,
           recordDiffId: input.checked.diffId,
+          // THE THIRD KEY (document A2 :1339–:1341): set for a document and only for one — the CHECK in step 28's
+          // migration holds exactly one of the three.
+          recordCommitment: input.checked.kind === 'DOCUMENT' ? input.checked.commitment : null,
           openKey: key,
           status: 'OPEN',
           hasSubstance: false,

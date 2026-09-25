@@ -84,15 +84,23 @@ export type EvidenceWriteCode =
   | 'NOT_A_RECORD'
   | 'NOT_PROMOTED'
   | 'NOTHING_TO_REVIEW'
-  | 'STALE_SEQUENCE';
+  | 'STALE_SEQUENCE'
+  // THE DOCUMENT'S TWO — document step 33 (plan :247; document A4 :1398, :1400, :1455). The debate is HANDED a
+  // commitment, so a commitment naming no document is NOT_A_DOCUMENT (:1398 — the word of the tools handed one, R81
+  // Q1), and a document whose content was taken back is SHED, naming its cause and date (:1400).
+  | 'NOT_A_DOCUMENT'
+  | 'SHED';
 
 /**
  * The seven checks a RECORD must pass to be argued or promoted (§4.1's rows
  * 5–13), as their own type: `recordChecks` produces exactly these and both
- * `open_debate` and `promotionBlockers` consume them.
+ * `open_debate` and `promotionBlockers` consume them — and, since document step
+ * 33, the DOCUMENT arm's two of its own (document §6 :701–:704).
  */
 export type RecordCode = Extract<
   EvidenceWriteCode,
+  | 'NOT_A_DOCUMENT'
+  | 'SHED'
   | 'NOT_SURVEYED'
   | 'NOT_A_CAPTURE'
   | 'NOT_ACQUIRED'

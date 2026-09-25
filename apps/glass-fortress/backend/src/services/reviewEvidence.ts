@@ -2,7 +2,8 @@ import { prisma } from '../lib/prisma';
 import { isUniqueViolation } from '../lib/uniqueViolation';
 import { WRITE_TRANSACTION } from '../walk/pageLog';
 import { resolveRecordByName } from './corpusReads';
-import { currentVersionOf, needsReview } from './evidencePredicates';
+import { currentVersionOf, needsReview, type Current } from './evidencePredicates';
+import { documentReviewNotBuilt, documentShedNotBuilt, documentsByCommitment, evidenceCurrentOf } from './documentCitation';
 import { refusal, type EvidenceWriteCode, type Refusal } from '../mcp/tools/evidenceRefusals';
 
 // ---------------------------------------------------------------------------
@@ -60,6 +61,7 @@ const RECORD_SELECT = {
   kind: true,
   status: true,
   affirmedContentVersionHash: true,
+  documentCommitment: true,
   snapshot: { select: { textHash: true, textExtractionVersion: true } },
   urlVersionDiff: {
     select: {
@@ -109,8 +111,11 @@ export async function reviewEvidence(
   //    with an evidence row is one indexed lookup, and only a name without one
   //    costs a pass over every record the corpus holds.
   if (row === null) {
-    const inCorpus = await resolveRecordByName(input.fileHash);
-    if (inCorpus === null) {
+    // A DOCUMENT is a corpus record too (document §4), named by its commitment: asked FIRST, one indexed read, before
+    // the pass over every capture and diff — and never answered "names nothing the corpus holds", which is false of it.
+    const isDocument = (await documentsByCommitment([input.fileHash])).has(input.fileHash);
+    const inCorpus = isDocument ? true : (await resolveRecordByName(input.fileHash)) !== null;
+    if (!inCorpus) {
       return refusal(
         'NOT_A_RECORD',
         `${input.fileHash} names nothing the corpus holds. A record's name is derived from the ` +
@@ -141,18 +146,19 @@ export async function reviewEvidence(
   }
 
   const record = recordContentOf(row);
-  const current = record === null ? undefined : currentVersionOf(record);
+  // A DOCUMENT row is judged over CURRENT(d), read through the one loader (document A3 :1372; evidence A4 :1470,
+  // "unchanged over kind DOCUMENT").
+  const current = record === null ? await documentCurrentOf(row.fileHash, row.documentCommitment) : currentVersionOf(record);
 
   // 5. AWAITING_DERIVATION — BOTH decisions, A4 :1161 listing it unscoped, and a
   //    DOCUMENT row refuses THE SAME CODE (one state, one word, on both
   //    surfaces). "Awaiting is not review: the human is not asked to judge a
   //    version that does not exist."
-  if (current === undefined) {
+  if (!current.defined && record === null) {
     return refusal(
       'AWAITING_DERIVATION',
-      `${input.fileHash} is a DOCUMENT record: its content is derived from bytes the platform ` +
-        'holds, and the class — its table, its extractor and its custody modes — is document ' +
-        'refactor step 28. There is no version to judge yet.',
+      `${input.fileHash} is a DOCUMENT with no content version under the current extractor: the derivation pass ` +
+        'owes it one. Review it once it is derived — a human is not asked to judge a version that does not exist.',
     );
   }
   if (!current.defined) {
@@ -168,6 +174,9 @@ export async function reviewEvidence(
   //    comparison spelled here. "WITHDRAW of a current record IS allowed" (§6,
   //    verbatim): a researcher may decide the record never supported the claim.
   const owed = needsReview(row, current);
+  // A DOCUMENT whose CURRENT(d) MOVED — RULED (A) (R82 Entry 8, document §3 :348): re-affirmed by a human, and that
+  // review is document step 34's. Either decision on one refuses LOUDLY until then, never with a false word.
+  if (record === null && owed.evaluable && owed.value) throw documentReviewNotBuilt(input.fileHash);
   if (input.decision === 'REAFFIRM' && owed.evaluable && !owed.value) {
     return refusal(
       'NOTHING_TO_REVIEW',
@@ -178,6 +187,22 @@ export async function reviewEvidence(
   }
 
   return commit(input, researcherId, row.affirmedContentVersionHash, current.contentVersionHash);
+}
+
+/**
+ * CURRENT(d) for a DOCUMENT row, in evidence's `Current` shape — through `documentCitation`, the one loader. A row naming
+ * no document is one Evidence_one_record_key and its foreign key forbid; a SHED one is step 35's. Both refuse loudly.
+ */
+async function documentCurrentOf(fileHash: string, commitment: string | null): Promise<Current<never>> {
+  const cited = commitment === null ? undefined : (await documentsByCommitment([commitment])).get(commitment);
+  if (cited === undefined) {
+    throw new Error(
+      `reviewEvidence: ${fileHash} is a DOCUMENT row naming no document — Evidence_one_record_key and its foreign key ` +
+        'to Document forbid it, so the row was written wrong.',
+    );
+  }
+  if ('shed' in cited.current) throw documentShedNotBuilt(cited.document.commitment);
+  return evidenceCurrentOf(cited.current);
 }
 
 /** The loaded row as CURRENT reads it, or null for a DOCUMENT record. */

@@ -29,7 +29,7 @@ import { useOpenRecord } from './PaneTabs';
 // record the current version no longer cites is `not-current`, which shows nothing about the record.
 // ---------------------------------------------------------------------------
 
-export type ChipKind = 'capture' | 'diff' | 'trajectory' | 'unresolved' | 'repinned' | 'not-current';
+export type ChipKind = 'capture' | 'diff' | 'trajectory' | 'document' | 'unresolved' | 'repinned' | 'not-current';
 
 export interface ChipProps {
   kind: ChipKind;
@@ -50,6 +50,18 @@ export function CitationChip({ kind, name, source, citation, locale }: ChipProps
   const t = useTranslations('theses');
   const openRecord = useOpenRecord();
   const face = tickFace(citation, locale);
+
+  // A DOCUMENT'S CHIP IS A STATEMENT, NOT A CONTROL — YET. Its press opens the document's record in the pane, and that
+  // sheet is document step 34's (board י4: "לחיצה פותחת את הרשומה בחלונית (שלב 34 — לא מצויר כאן)"; ד2·י's "not drawn").
+  // A button whose press opened nothing — or the transcript, `RightPane.tsx` :116's fallback — is the dead control
+  // this repository has ruled against (R59 · F3). So it is drawn as the board draws it and pressed by nothing.
+  if (kind === 'document' && citation?.kind === 'DOCUMENT') {
+    return (
+      <span data-chip={name} data-chip-kind={kind} data-chip-source={source} className="mx-0.5 inline-flex items-center">
+        <Tick {...face} />
+      </span>
+    );
+  }
 
   const label = ((): React.ReactNode => {
     if (kind === 'unresolved') return t('chip.unresolved');

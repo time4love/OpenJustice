@@ -251,7 +251,29 @@ export type TrajectoryCitation =
   | { kind: 'TRAJECTORY'; name: string; resolves: true; claimText: string; url: string; transitions: number; current: boolean }
   | { kind: 'TRAJECTORY'; name: string; resolves: false };
 
-export type Citation = EvidenceCitation | TrajectoryCitation;
+/**
+ * A DOCUMENT CITATION — thesis A4 :1476's DOCUMENT arm as RULED 2026-09-25 (the researcher, R81 QC): `{ kind: 'DOCUMENT',
+ * name, pin, argued, title, custody, verified, flag, overObjection }`, HEAD and PUBLISHED alike. `name` is the document's
+ * COMMITMENT — an attribute for the instruments and the COPY, never a text node (§4 :167, board ד2·י's note). `title` is
+ * the researcher's own (document A2 :1271), null only for a SEALED document step 32's door brings.
+ *
+ * `verified` IS REQUIRED: the working view's `get_thesis_context` completes the arm with VERIFIED(d) (`documentStanding`),
+ * and the PUBLIC body never carries a document before step 34 (check 18 refuses publishing a `#doc_` head, document plan
+ * :255) — so a public body that did would fail HERE, loudly, rather than draw a chip with no standing.
+ */
+export interface DocumentCitation {
+  kind: 'DOCUMENT';
+  name: string;
+  pin: string;
+  argued: boolean;
+  title: string | null;
+  custody: 'HELD' | 'SEALED';
+  verified: boolean;
+  flag: { flagged: boolean; reasons: string[] };
+  overObjection: boolean;
+}
+
+export type Citation = EvidenceCitation | TrajectoryCitation | DocumentCitation;
 
 export interface CallItem {
   whatIsNeeded: string;

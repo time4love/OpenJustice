@@ -26,10 +26,12 @@ export function VerifyDisclosure({ contentHash, citations }: { contentHash: stri
         {citations.map((citation) => (
           <div key={`${citation.kind}:${citation.name}`} className="space-y-1">
             <p className="flex flex-wrap items-center gap-2">
-              <span className="text-ink-muted">{citation.kind === 'EVIDENCE' ? t('recordName') : t('trajectoryId')}</span>
+              {/* A DOCUMENT is named by its COMMITMENT, which IS its record's name (document §6 :669, `fileHash =
+                  commitment`) — the VERIFY disclosure is where a name may be shown (§4). */}
+              <span className="text-ink-muted">{citation.kind === 'TRAJECTORY' ? t('trajectoryId') : t('recordName')}</span>
               <CopyableCode value={citation.name} label={t('copyValue')} showValue />
             </p>
-            {citation.kind === 'EVIDENCE' && citation.pin !== null ? (
+            {citation.kind !== 'TRAJECTORY' && citation.pin !== null ? (
               <p className="flex flex-wrap items-center gap-2">
                 <span className="text-ink-muted">{t('pin')}</span>
                 <CopyableCode value={citation.pin} label={t('copyValue')} showValue />

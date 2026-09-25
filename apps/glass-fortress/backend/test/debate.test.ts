@@ -17,6 +17,9 @@ import { Prisma } from '@prisma/client';
 
 const assess = jest.fn();
 jest.mock('../src/services/promotionAssessor', () => ({
+  // THE REST OF THE MODULE IS REAL (document step 33, declared): the writer records which model judged a round
+  // (`PROMOTION_ASSESSOR_MODEL`), and a double that dropped it would answer what the real module does not.
+  ...jest.requireActual<object>('../src/services/promotionAssessor'),
   PromotionAssessor: class {
     assess = assess;
   },
@@ -126,6 +129,8 @@ function corpus(): void {
     verdict: 'SUPPORTS',
     objection: '',
     assessment: 'הטיעון מעוגן בתוכן המחושב.',
+    // The schema REQUIRES it since document step 33 (R81 QA): the double answers what the parsed model output is.
+    assertions: [],
   });
 }
 
@@ -364,7 +369,7 @@ describe('open_debate — what it writes, and what it spends', () => {
     });
     assess.mockImplementation(() => {
       insideWhenAssessed = depth > 0;
-      return Promise.resolve({ hasSubstance: true, substanceGaps: [], verdict: 'SUPPORTS', objection: '', assessment: '' });
+      return Promise.resolve({ hasSubstance: true, substanceGaps: [], verdict: 'SUPPORTS', objection: '', assessment: '', assertions: [] });
     });
     await open();
     expect(insideWhenAssessed).toBe(false);
@@ -479,7 +484,7 @@ describe('the PASSAGE — the paragraph that cites, never the whole thesis', () 
       id: 'version-1',
       text: body(['an unrelated paragraph', `the ministry said so #ev_${DIFF_NAME}`]),
     };
-    expect(passagesCiting(version, DIFF_NAME)).toEqual([`the ministry said so #ev_${DIFF_NAME}`]);
+    expect(passagesCiting(version, DIFF_NAME, 'EVIDENCE')).toEqual([`the ministry said so #ev_${DIFF_NAME}`]);
   });
 
   it('CITED IN TWO PARAGRAPHS: both are handed over, in document order', () => {
@@ -489,7 +494,7 @@ describe('the PASSAGE — the paragraph that cites, never the whole thesis', () 
       id: 'version-1',
       text: body([`first #ev_${DIFF_NAME}`, 'unrelated', `second #ev_${DIFF_NAME}`]),
     };
-    expect(passagesCiting(version, DIFF_NAME)).toEqual([
+    expect(passagesCiting(version, DIFF_NAME, 'EVIDENCE')).toEqual([
       `first #ev_${DIFF_NAME}`,
       `second #ev_${DIFF_NAME}`,
     ]);
@@ -498,7 +503,7 @@ describe('the PASSAGE — the paragraph that cites, never the whole thesis', () 
   it('THROWS when the mention says CITED and no paragraph carries the token', () => {
     // Under the target the mentions are parsed FROM the text, so the two cannot
     // disagree; a disagreement is a malformed version, not an answerable state.
-    expect(() => passagesCiting({ id: 'version-1', text: body(['nothing here']) }, DIFF_NAME)).toThrow(
+    expect(() => passagesCiting({ id: 'version-1', text: body(['nothing here']) }, DIFF_NAME, 'EVIDENCE')).toThrow(
       'malformed version',
     );
   });
@@ -572,6 +577,14 @@ describe('promote_from_debate — one transaction, three rows, nothing on chain'
     expect(written.find((w) => w.model === 'thesisMention')?.data['debateSessionId']).toBe('session-1');
     expect(promoted['created']).toBe(true);
     expect(promoted['fileHash']).toBe(DIFF_NAME);
+  });
+
+  // DOCUMENT STEP 33 CHUNK 5, ADDED (declared): the Evidence row gained a third key, `documentCommitment`, set for a
+  // document and only for one — the CHECK `Evidence_one_record_key` holds "exactly one key, matching kind" in the
+  // database, and this holds the writer: a diff's row names its diff and NO document.
+  it('a diff’s Evidence row sets NO documentCommitment — exactly one record key, matching kind', async () => {
+    await promoteFromDebateHandler({ sessionId: 'session-1' });
+    expect(written.find((w) => w.model === 'evidence')?.data['documentCommitment']).toBeNull();
   });
 
   it('all of it in ONE transaction, under the shared window', async () => {

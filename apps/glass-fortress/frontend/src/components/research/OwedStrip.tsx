@@ -60,9 +60,20 @@ type OwedKind = 'FLAGGED' | 'STALE_TRAJECTORY' | 'UNARGUED' | 'CONTENT_MOVED';
 // strong character and the digits read correctly inside it. `bidi-isolated` holds it, and E3 — the same line
 // with the attribute removed — reddens that scan by name.
 
-/** The record as evidence A1 names it — by its page's dates, through the keys the record pages already use. */
+/**
+ * The record as evidence A1 names it — by its page's dates, through the keys the record pages already use — or a
+ * DOCUMENT by its TITLE, the researcher's own words (R81 QB), never its commitment (§4 :167). An untitled one (a SEALED
+ * document, step 32) reads '—', the tick's precedent for a record with nothing to name.
+ */
 function RecordName({ record, locale }: { record: NamedRecord; locale: string }) {
   const t = useTranslations('record');
+  if ('commitment' in record) {
+    return (
+      <p data-record-name data-record-kind="document" dir="auto" className="text-xs text-ink-muted">
+        {record.title ?? '—'}
+      </p>
+    );
+  }
   return (
     <p data-record-name dir="auto" className="text-xs text-ink-muted">
       {'capture' in record

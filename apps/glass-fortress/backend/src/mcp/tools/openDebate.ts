@@ -1,9 +1,8 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { getResearcherId } from '../../context/researcherContext';
-import { assessedContent, openOrRevise, recordChecks, type NamedRecord } from '../../services/openDebate';
+import { openOrRevise, recordChecks, roundMaterial, type RecordInput } from '../../services/openDebate';
 import { assessAndRecord } from '../../services/respondInDebate';
-import { passagesCiting } from '../../services/debatePassage';
 import { loadDebate, priorTurns, projectDebate, turnsOf, type DebateState } from '../../services/debateState';
 import { promotionBlockers } from '../../services/promoteFromDebate';
 import { answer, refusal, type EvidenceWriteCode, type Refusal } from './evidenceRefusals';
@@ -38,11 +37,17 @@ const pairRecord = z.strictObject({
   after: z.string().describe('The LATER capture of the pair, 14 digits'),
 });
 
+// A DOCUMENT, by its commitment — `{ document: commitment }` (document A4 :1455, plan :247, §6 :701). STRICT like the
+// other two: the ANSWER's `{ commitment, title }` (R81 QB) pasted back as an input matches no arm and is refused.
+const documentRecord = z.strictObject({
+  document: z.string().describe('The document, by its COMMITMENT — the #doc_ name the head version cites'),
+});
+
 export const openDebateSchema = {
   thesisId: z.string().describe('The thesis this record is argued FOR — promotion always names one'),
   record: z
-    .union([captureRecord, pairRecord])
-    .describe('The corpus record: { url, capture } or { url, before, after }. Never a row id'),
+    .union([captureRecord, pairRecord, documentRecord])
+    .describe('The record: { url, capture }, { url, before, after }, or a document { document: commitment }. Never a row id'),
   rationale: z
     .string()
     .describe('Why this record carries what the citing passage says — the argument, in your words'),
@@ -50,7 +55,7 @@ export const openDebateSchema = {
 
 export interface DebateInput {
   thesisId: string;
-  record: NamedRecord;
+  record: RecordInput;
   rationale: string;
 }
 
@@ -138,9 +143,7 @@ export async function openDebateHandler(input: DebateInput): Promise<string> {
     }
 
     await assessAndRecord(sessionId, {
-      url: checked.page.url,
-      content: await assessedContent(checked),
-      passages: passagesCiting(version, checked.fileHash),
+      ...(await roundMaterial(checked, version)),
       rationale: input.rationale,
       // The turns BEFORE this round — the rationale just written is passed as the
       // argument, not as a prior, so the assessor is never handed it twice.

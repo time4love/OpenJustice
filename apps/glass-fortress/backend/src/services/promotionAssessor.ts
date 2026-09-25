@@ -3,6 +3,7 @@ import { LLMFactory, resolveModelId } from '../factories/LLMFactory';
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 import { FORENSIC_PROMOTION_ASSESSMENT_PROMPT } from '../prompts/forensicPromotionAssessment';
 import type { ChunkSide } from '../lib/diffChunking';
+import { modelFilePart, type ModelFile } from '../lib/documentModelPart';
 
 // ---------------------------------------------------------------------------
 // THE DEBATE'S ASSESSOR — docs/gf-evidence-flows.md §4 and docs/gf-thesis-flows.md T3.
@@ -69,20 +70,55 @@ export const PromotionAssessmentSchema = z.object({
   assessment: z
     .string()
     .describe('Professional Hebrew reasoning for both judgements, kept on the record beside the evidence.'),
+  // THE ASSERTIONS — evidence A4 :1121 as RULED 2026-09-25 (the researcher, R81 QA): the assessor NAMES each assertion
+  // it makes, and the AUDIT (`debateAudit.ts`) adds `quoteVerified` and `phraseVerified` beside each, mechanically and
+  // with no model, as the framing round does (thesis T1 :256–:262). The model is never asked for a verdict on its own
+  // assertion: a schema that asked would let it grade itself, which is the defect the audit exists for.
+  assertions: z
+    .array(
+      z.object({
+        researcherClaim: z
+          .string()
+          .describe(
+            'A VERBATIM span of the citing passage — copied, never paraphrased, never shortened. ' +
+              'This is checked mechanically against the passage.',
+          ),
+        whatEvidenceShows: z
+          .string()
+          .describe(
+            "A phrase that appears IN THE RECORD'S COMPUTED CONTENT, copied verbatim. This is checked " +
+              'mechanically against that content and labelled PRESENT, ABSENT or UNCHECKED.',
+          ),
+      }),
+    )
+    .describe(
+      'Every claim this assessment makes about what the record says, each tied to the passage it bears on. ' +
+        'Empty array when the assessment makes none.',
+    ),
 });
 
 export type PromotionAssessment = z.infer<typeof PromotionAssessmentSchema>;
 
 assertSchemaCompatibility(PromotionAssessmentSchema, 'promotionAssessor');
 
+/**
+ * A DOCUMENT'S CURRENT CONTENT, as a model can be handed it — document flows §6 :705–:708 and :739 (RULED 2026-09-25,
+ * R81 Q-3). Its computed TEXT where one derives; a HELD image or PDF with no text AS ITS FILE, the part
+ * `describe_document` hands; and for bytes no model reads, NOTHING but the title — `UNREAD`, which the message says in
+ * one sentence. NEVER THE OPINION: a model's description of a letterhead is not material for judging whether the
+ * researcher's claims about the content can be checked (§6 :706–:708), so no arm here can carry one.
+ */
+export type DocumentReading = { form: 'TEXT'; text: string } | { form: 'FILE'; file: ModelFile } | { form: 'UNREAD' };
+
 /** The record's CURRENT COMPUTED content — and nothing else about it (§3's two registers). */
 export type AssessedContent =
   | { kind: 'CAPTURE'; capture: string; text: string }
-  | { kind: 'DIFF'; before: string; after: string; chunks: { side: ChunkSide; text: string }[] };
+  | { kind: 'DIFF'; before: string; after: string; chunks: { side: ChunkSide; text: string }[] }
+  | { kind: 'DOCUMENT'; title: string | null; reading: DocumentReading };
 
 export interface PromotionAssessmentInput {
-  /** The page, by the exact URL it was surveyed under (A1). */
-  url: string;
+  /** The page, by the exact URL it was surveyed under (A1) — null for a document, which has no page. */
+  url: string | null;
   /** What the record's current version computes to — never its classification. */
   content: AssessedContent;
   /**
@@ -101,13 +137,35 @@ export interface PromotionAssessmentInput {
   priorTurns: string[];
 }
 
+/**
+ * The agent type the factory resolves — ONE spelling for the chat model and for the recorded model id, so the two can
+ * never name different agents. `FORENSIC_PROMOTION_PROVIDER` would choose its provider.
+ */
+export const PROMOTION_ASSESSOR_AGENT = 'FORENSIC_PROMOTION';
+
 /** Which model judged it — recorded beside the assessment, as every model output is. */
-export const PROMOTION_ASSESSOR_MODEL = (): string => resolveModelId('FORENSIC_PROMOTION');
+export const PROMOTION_ASSESSOR_MODEL = (): string => resolveModelId(PROMOTION_ASSESSOR_AGENT);
+
+/** A document's name on the record line — the researcher's title, verbatim, or the word saying there is none. */
+function documentLabel(title: string | null): string {
+  return title === null ? 'מסמך ללא כותרת' : `מסמך „${title}”`;
+}
 
 /** The computed content, as the assessor reads it — Hebrew labels, no opinion. */
 function contentBlock(content: AssessedContent): string {
   if (content.kind === 'CAPTURE') {
     return `רשומה: צילום ${content.capture}\n\n--- הטקסט המחושב של הצילום ---\n${content.text}`;
+  }
+  if (content.kind === 'DOCUMENT') {
+    const record = `רשומה: ${documentLabel(content.title)}`;
+    switch (content.reading.form) {
+      case 'TEXT':
+        return `${record}\n\n--- הטקסט המחושב של המסמך ---\n${content.reading.text}`;
+      case 'FILE':
+        return `${record}\n\nלמסמך אין טקסט מחושב: הקובץ עצמו מצורף להודעה זו, וזה תוכנו.`;
+      case 'UNREAD':
+        return `${record}\n\nתוכן המסמך הוא קובץ שאף מודל אינו קורא, ולכן לא הועבר אליך דבר מלבד שמו.`;
+    }
   }
   const removed = content.chunks.filter((c) => c.side === 'REMOVED').map((c) => c.text);
   const added = content.chunks.filter((c) => c.side === 'ADDED').map((c) => c.text);
@@ -124,7 +182,7 @@ export class PromotionAssessor {
   private readonly chain: { invoke(input: unknown): Promise<unknown> };
 
   constructor() {
-    const model = LLMFactory.getChatModel('FORENSIC_PROMOTION', { temperature: 0 });
+    const model = LLMFactory.getChatModel(PROMOTION_ASSESSOR_AGENT, { temperature: 0 });
     this.chain = model.withStructuredOutput(PromotionAssessmentSchema, {
       name: 'promotion_assessment',
     }) as { invoke(input: unknown): Promise<unknown> };
@@ -144,12 +202,16 @@ export class PromotionAssessor {
         ? `--- תגובת החוקר הנוכחית (העריכו את הטיעון המצטבר, לא את התגובה לבדה) ---\n${input.rationale}`
         : `--- טיעון החוקר ---\n${input.rationale}`;
 
+    const page = input.url === null ? '' : `דף: ${input.url}\n\n`;
+    const text = `${priors}${page}${contentBlock(input.content)}\n\n${passages}\n\n${argument}`;
+    // A HELD document with no computed text travels AS ITS FILE, beside the text — the part `describe_document` hands
+    // (§6 :739 as ruled), built by the one builder. Every other record is the one string it always was.
+    const file =
+      input.content.kind === 'DOCUMENT' && input.content.reading.form === 'FILE' ? input.content.reading.file : null;
+
     const raw = await this.chain.invoke([
       { role: 'system', content: FORENSIC_PROMOTION_ASSESSMENT_PROMPT },
-      {
-        role: 'user',
-        content: `${priors}דף: ${input.url}\n\n${contentBlock(input.content)}\n\n${passages}\n\n${argument}`,
-      },
+      { role: 'user', content: file === null ? text : [{ type: 'text', text }, modelFilePart(file)] },
     ]);
 
     // PARSED, NEVER TRUSTED RAW — zod for every model output (CLAUDE.md).

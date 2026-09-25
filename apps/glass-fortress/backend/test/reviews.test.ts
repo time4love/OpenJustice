@@ -23,6 +23,7 @@ import { listEvidenceReviews } from '../src/services/evidenceReviews';
 import { listEvidenceReviewsHandler } from '../src/mcp/tools/listEvidenceReviews';
 import { db, resetDouble, store, written, type Row } from './helpers/evidenceDouble';
 import { AFTER, BEFORE, BETWEEN, CAPTURE_NAME, CHUNKS, DIFF_NAME, PAGE, URL } from './helpers/corpusFixture';
+import { COMMITMENT, HELD_BEFORE, TITLE, documentRow, versionRow } from './document/citationWorld';
 
 // ---------------------------------------------------------------------------
 // EVIDENCE STEP 14 — REVIEW. docs/gf-evidence-flows.md §6 (Flow E3), §7, §9 and
@@ -566,18 +567,25 @@ describe('list_evidence_reviews — what is NOT owed, and what cannot be judged'
     expect(String(list.notEvaluable.at(0)?.detail)).toContain('scan_captures');
   });
 
-  it('a DOCUMENT row is reported under THE SAME reason word, with detail naming step 28', async () => {
+  // AMENDED AT DOCUMENT STEP 33 CHUNK 5 (declared; R82 Entry 6's MEDIUM). The world this case stood on — a DOCUMENT row
+  // with no `documentCommitment` and no Document — is FORBIDDEN (the CHECK `Evidence_one_record_key` and the foreign key
+  // to Document), so the FIXTURE was wrong, and the words it held ("step 28 … no version to judge yet") are false since
+  // step 28. The reachable world: a promoted document whose CURRENT(d) awaits derivation.
+  it('a DOCUMENT row whose CURRENT(d) awaits derivation is reported under THE SAME reason word, naming the document', async () => {
     // LOW 6: one state, one word, on both surfaces. A second code for the same
     // state is the "one state, two codes" defect step 13 removed.
+    store.documents = [documentRow()];
+    store.documentContentVersions = [versionRow(HELD_BEFORE, { derivedUnder: ['v0-an-older-extractor'] })];
     store.evidenceRows = [
-      { fileHash: '0xcommitment', kind: 'DOCUMENT', status: 'PROMOTED', affirmedContentVersionHash: 'x', snapshot: null, urlVersionDiff: null },
+      { fileHash: COMMITMENT, kind: 'DOCUMENT', documentCommitment: COMMITMENT, status: 'PROMOTED', affirmedContentVersionHash: HELD_BEFORE, snapshot: null, urlVersionDiff: null },
     ];
 
     const list = await listEvidenceReviews();
     expect(list.notEvaluable).toHaveLength(1);
     expect(list.notEvaluable.at(0)?.reason).toBe('AWAITING_DERIVATION');
-    expect(list.notEvaluable.at(0)?.record).toBeNull();
-    expect(String(list.notEvaluable.at(0)?.detail)).toContain('step 28');
+    expect(list.notEvaluable.at(0)?.record).toEqual({ commitment: COMMITMENT, title: TITLE });
+    expect(String(list.notEvaluable.at(0)?.detail)).toContain('the derivation pass owes it one');
+    expect(String(list.notEvaluable.at(0)?.detail)).not.toContain('step 28');
   });
 
   it('a MISSING AFFIRMED VERSION is its own reason word, and names the record', async () => {

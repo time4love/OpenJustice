@@ -46,10 +46,11 @@ const SUBJECTS = [
   'mcp/tools/listEvidenceReviews.ts',
   'services/evidenceChecks.ts',
   'services/auditTheses.ts',
-  // DOCUMENT STEP 33. `debateAudit.ts` joins this list in chunk 4, which creates it — the floor below would fail on a
-  // subject that does not exist yet, which is the point of it.
+  // DOCUMENT STEP 33. `debateAudit.ts` joined at chunk 4, which created it — the floor below fails on a subject that
+  // does not exist, which is the point of it.
   'services/documentCitation.ts',
   'services/verifyDocumentPhrase.ts',
+  'services/debateAudit.ts',
 ] as const;
 
 /** A module that reads or writes the registry. Reached from a subject by any chain of imports, the scan fails. */
@@ -155,7 +156,7 @@ function offenders(tree: Tree, subjects: readonly string[]): string[] {
 describe('no research act reaches the chain, through ANY chain of imports (evidence §5; document A7 :1603–:1604)', () => {
   it('finds every subject on disk — the floor: a renamed module cannot pass by vanishing', () => {
     expect(SUBJECTS.filter((subject) => onDisk(subject) === undefined)).toEqual([]);
-    expect(SUBJECTS.length).toBeGreaterThanOrEqual(14);
+    expect(SUBJECTS.length).toBeGreaterThanOrEqual(15);
   });
 
   it('no subject reaches Web3Service or anchorSnapshots', () => {

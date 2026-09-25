@@ -94,10 +94,16 @@ export interface ContentVersionProvenance {
  * Awaiting is not review: the human is not asked to judge a version that does
  * not exist." A caller holding `null` can forget which of the two it means; a
  * caller holding this has to read the discriminant to reach anything.
+ *
+ * THE DOCUMENT ARM, BY ADDITION AT DOCUMENT STEP 33: CURRENT(d) is `documentPredicates.currentVersion`'s, and a
+ * debated document's is handed here in this shape so that STALE_PIN and NEEDS_REVIEW are these predicates, CALLED —
+ * "everything else on the row … is evidence's, and applies to a document without a second spelling" (document §6
+ * :675–:677). Nothing here derives it.
  */
 export type Current<V extends ContentVersionProvenance> =
   | { defined: true; kind: 'CAPTURE'; contentVersionHash: string }
   | { defined: true; kind: 'DIFF'; contentVersionHash: string; version: V }
+  | { defined: true; kind: 'DOCUMENT'; contentVersionHash: string }
   | { defined: false; reason: 'AWAITING_DERIVATION' };
 
 /** A record as CURRENT reads it: a capture's text, or a pair and its versions. */

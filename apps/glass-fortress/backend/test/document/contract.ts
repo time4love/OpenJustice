@@ -144,7 +144,7 @@ export const MODULES = {
       anchored: fn(31),
       verifiedDocument: fn(31),
       equalsCapture: fn(30),
-      answered: fn(32),
+      answered: fn(33),
       arrived: fn(32),
       opened: fn(34),
       publicDocument: fn(34),

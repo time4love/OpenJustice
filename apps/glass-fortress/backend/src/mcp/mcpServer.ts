@@ -736,10 +736,11 @@ export function createMcpServer(): McpServer {
     {
       description:
         'ARGUE FOR A CORPUS RECORD, FOR ONE THESIS. Give the thesis, the record — a page and one ' +
-        '14-digit capture, or a page and the PAIR of captures a change spans, never a row id — and ' +
+        '14-digit capture, a page and the PAIR of captures a change spans, or a DOCUMENT as ' +
+        '{ document: <commitment> }, never a row id — and ' +
         'your rationale: what the record shows, why it carries the passage that cites it, and what ' +
         "would prove it wrong. THE CITATION COMES FIRST: the thesis's head version must already " +
-        'mention the record (#ev_<fileHash>), or this refuses NOT_CITED — there is no promotion of a ' +
+        'mention the record (#ev_<fileHash>, or #doc_<commitment> for a document), or this refuses NOT_CITED — there is no promotion of a ' +
         'record no text cites. A PAID ASSESSOR then judges two separate things: SUBSTANCE, whether ' +
         'the argument can be checked at all, which is a hard gate; and MERIT, whether it agrees, ' +
         'which is ADVISORY — you may promote over its objection and the dissent is recorded beside ' +
@@ -749,8 +750,10 @@ export function createMcpServer(): McpServer {
         'author), NOT_SURVEYED, NOT_A_CAPTURE, NOT_ACQUIRED (naming the work-list outcome), ' +
         'NO_SUCH_DIFF, NOT_CITED, AWAITING_DERIVATION (naming the pair — the walk owes a version), ' +
         'CONTRADICTED (carrying the chunks the documents refute), NOTHING_TO_PROMOTE and NARROWED ' +
-        '(naming the captures that now fall between the pair). Returns the debate as turns, the same ' +
-        'shape get_debate answers.',
+        '(naming the captures that now fall between the pair). For a document: NOT_A_DOCUMENT, SHED (naming its ' +
+        'cause and date), and NOTHING_TO_PROMOTE for a sealed document with no computed text; the assessor is ' +
+        'handed its computed text, or a held file with none, and never a model\'s description of it. Returns ' +
+        'the debate as turns, the same shape get_debate answers.',
       inputSchema: openDebateSchema,
     },
     async (input) => ({
@@ -988,13 +991,15 @@ export function createMcpServer(): McpServer {
         'The claim must be the framing\'s CHOSEN claim CHARACTER FOR CHARACTER — restate it exactly, ' +
         'never tidied — and the provision the thesis asserts is set once, here. The text is the version ' +
         'the researcher approved, stored verbatim; each citation is a token inside it: #ev_ followed by ' +
-        'a record\'s name exactly as list_findings returns it, or #tr_ followed by a trajectory id. The ' +
+        'a record\'s name exactly as list_findings returns it, #tr_ followed by a trajectory id, or #doc_ ' +
+        'followed by a document\'s commitment exactly as list_documents returns it. The ' +
         'platform COMPUTES every citation\'s pin — the content version the researcher stands behind — ' +
         'and nothing you send can set one. Unargued citations are legal in a draft and come back in ' +
         '`unargued`. Refuses NO_RESEARCHER, NO_FRAMING, NO_PROVISION_SHAPE, EMPTY, NOT_A_RECORD (a name the ' +
-        'corpus does not hold, or a #doc_ token — documents are not citable yet), NOT_ACQUIRED, ' +
-        'AWAITING_DERIVATION (naming the diff), UNKNOWN_TRAJECTORY_ID, CLAIM_MISMATCH, FRAMING_ATTACHED ' +
-        'and STALE_PIN.',
+        'corpus does not hold, or a #doc_ commitment no document holds), NOT_ACQUIRED, AWAITING_DERIVATION ' +
+        '(naming the diff, or the document with no version under the current extractor), SHED (a document ' +
+        'whose content was taken back, naming the cause and date), UNKNOWN_TRAJECTORY_ID, CLAIM_MISMATCH, ' +
+        'FRAMING_ATTACHED and STALE_PIN.',
       inputSchema: createThesisSchema,
     },
     async (input) => ({
@@ -1007,14 +1012,16 @@ export function createMcpServer(): McpServer {
     {
       description:
         'WRITE THE NEXT VERSION OF YOUR THESIS, against the head you read. Free; writes one version. ' +
-        'The version is ONE transaction: the text verbatim, its hash, a citation per #ev_ or #tr_ token, ' +
+        'The version is ONE transaction: the text verbatim, its hash, a citation per #ev_, #tr_ or #doc_ token, ' +
         'each pin computed by the platform, and the head moved. An argument made for a citation CARRIES ' +
         'to the new version only while the record and its pin are unchanged; otherwise the citation ' +
         'comes back in `unargued`. Nothing is ever edited: a version that disagrees with the head is a ' +
         'new version after it. STALE_HEAD means another write landed first — read get_thesis_context and ' +
         'write again. STALE_PIN means a review re-affirmed a cited record mid-write — write again and it ' +
-        're-pins. Refuses NO_RESEARCHER, NO_THESIS, NOT_AUTHOR, STALE_HEAD, NOT_A_RECORD, NOT_ACQUIRED, ' +
-        'AWAITING_DERIVATION, UNKNOWN_TRAJECTORY_ID, EMPTY and STALE_PIN.',
+        're-pins. Refuses NO_RESEARCHER, NO_THESIS, NOT_AUTHOR, STALE_HEAD, NOT_A_RECORD (a name the corpus does ' +
+        'not hold, or a #doc_ commitment no document holds), NOT_ACQUIRED, AWAITING_DERIVATION (for a #doc_ token, ' +
+        'the document has no version under the current extractor), SHED (a document whose content was taken back), ' +
+        'UNKNOWN_TRAJECTORY_ID, EMPTY and STALE_PIN.',
       inputSchema: addThesisVersionSchema,
     },
     async (input) => ({

@@ -2169,6 +2169,7 @@
     },
     "thesis": {
       "owedHere": "מה חייבים על התזה הזו",
+      "yours": "התזה שלך",
       "copyId": "מזהה התזה לשיחה חדשה",
       "openTranscript": "{count, plural, one {תמליל · תור אחד} other {תמליל · # תורות}}",
       "jumpToStart": "לקפוץ להתחלה"

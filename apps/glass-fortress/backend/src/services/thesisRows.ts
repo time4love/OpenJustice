@@ -85,6 +85,8 @@ const DEBATE_SELECT = {
   recordSnapshotId: true,
   recordDiffId: true,
   recordSnapshot: { select: { waybackTimestamp: true, trackedUrl: { select: { url: true } } } },
+  // A DOCUMENT'S KEY AND TITLE — its DEBATE_OPENED names the record `{ commitment, title }` (R81 QB).
+  recordDocument: { select: { commitment: true, title: true } },
   recordDiff: {
     select: {
       trackedUrl: { select: { url: true } },

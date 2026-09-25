@@ -1,5 +1,6 @@
 import type {
   AnalysisState,
+  AuditedAssertion,
   ArticleRule,
   ArticleRules,
   AssessorVerdict,
@@ -153,12 +154,17 @@ function voice(value: unknown, at: string): Voice {
  */
 function namedRecord(value: unknown, at: string): NamedRecord {
   const row = object(value, at);
+  // A DOCUMENT (R81 QB): told apart by its `commitment`, as the other two are by `capture` — and its `title` PRESENT,
+  // possibly null. Never read as a page with no URL.
+  if (row.commitment !== undefined) {
+    return { commitment: text(row.commitment, `${at}.commitment`), title: maybeText(row.title, `${at}.title`) };
+  }
   const url = text(row.url, `${at}.url`);
   if (row.capture !== undefined) return { url, capture: text(row.capture, `${at}.capture`) };
   if (row.before !== undefined || row.after !== undefined) {
     return { url, before: text(row.before, `${at}.before`), after: text(row.after, `${at}.after`) };
   }
-  return fail(at, 'a capture, or a before and an after', value);
+  return fail(at, 'a capture, a before and an after, or a commitment', value);
 }
 
 const maybeRecord = (value: unknown, at: string): NamedRecord | null => (present(value, at) === null ? null : namedRecord(value, at));
@@ -287,11 +293,30 @@ function versionMentionRow(value: unknown, at: string): VersionMentionRow {
   const row = object(value, at);
   return {
     versionId: text(row.versionId, `${at}.versionId`),
-    kind: oneOf(row.kind, ['EVIDENCE', 'TRAJECTORY'] as const, `${at}.kind`),
+    kind: oneOf(row.kind, ['EVIDENCE', 'TRAJECTORY', 'DOCUMENT'] as const, `${at}.kind`),
     name: text(row.name, `${at}.name`),
     contentVersionHash: maybeText(row.contentVersionHash, `${at}.contentVersionHash`),
     debateSessionId: maybeText(row.debateSessionId, `${at}.debateSessionId`),
   };
+}
+
+/**
+ * THE DEBATE'S AUDITED ASSERTIONS (R81 QA; thesis A4 :1476 as conformed) — every field narrowed, the verdict a CLOSED
+ * union and its reason PRESENT (null beside PRESENT/ABSENT). The key is REQUIRED on the wire — `null` for a row written
+ * before the ruling — so an ABSENT key is a drift, and never read as an assessor that named nothing.
+ */
+function auditedAssertions(value: unknown, at: string): AuditedAssertion[] {
+  return list(value, at).map((one, index) => {
+    const where = `${at}[${String(index)}]`;
+    const row = object(one, where);
+    return {
+      researcherClaim: text(row.researcherClaim, `${where}.researcherClaim`),
+      quoteVerified: flag(row.quoteVerified, `${where}.quoteVerified`),
+      whatEvidenceShows: text(row.whatEvidenceShows, `${where}.whatEvidenceShows`),
+      phraseVerified: oneOf(row.phraseVerified, ['PRESENT', 'ABSENT', 'UNCHECKED'] as const, `${where}.phraseVerified`),
+      phraseVerifiedReason: maybeText(row.phraseVerifiedReason, `${where}.phraseVerifiedReason`),
+    };
+  });
 }
 
 const names = (value: unknown, at: string): string[] => list(value, at).map((one, index) => text(one, `${at}[${String(index)}]`));
@@ -408,6 +433,7 @@ function turn(value: unknown, at: string): Turn {
           verdict: verdict(body.verdict, `${where}.verdict`),
           objection: body.objection,
           assessment: body.assessment,
+          assertions: present(body.assertions, `${where}.assertions`) === null ? null : auditedAssertions(body.assertions, `${where}.assertions`),
         },
       };
     case 'DEBATE_CLOSED':

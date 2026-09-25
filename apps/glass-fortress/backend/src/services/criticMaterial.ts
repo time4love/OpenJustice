@@ -256,7 +256,7 @@ export async function draftMaterial(
   gap: { gapId: string; description: string; readsAs: string },
 ): Promise<DraftInput> {
   const records = (await labelledRecords(head)).map(
-    (record): DraftRecord => ({ ...record, passages: passagesCiting({ id: head.version.id, text: head.version.text }, record.name) }),
+    (record): DraftRecord => ({ ...record, passages: passagesCiting({ id: head.version.id, text: head.version.text }, record.name, 'EVIDENCE') }),
   );
   return { claim: head.version.claim, provision, gap, records };
 }

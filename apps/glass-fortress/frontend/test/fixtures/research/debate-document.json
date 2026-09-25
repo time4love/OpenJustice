@@ -1,0 +1,104 @@
+{
+  "sessionId": "session-doc",
+  "thesisId": "thesis-doc",
+  "fileHash": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+  "record": {
+    "commitment": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+    "title": "חוזר המנכ״ל"
+  },
+  "status": "OPEN",
+  "hasSubstance": false,
+  "verdict": null,
+  "canPromote": false,
+  "blockedBy": [
+    "NO_SUBSTANCE"
+  ],
+  "promotedOverObjection": false,
+  "evidenceFileHash": null,
+  "turns": [
+    {
+      "kind": "DEBATE_OPENED",
+      "id": "session-doc",
+      "at": "2026-09-25T09:00:00.000Z",
+      "thread": {
+        "step": "DEBATE",
+        "id": "session-doc"
+      },
+      "by": {
+        "voice": "RESEARCHER",
+        "handle": "חוקר_א",
+        "mine": true
+      },
+      "line": "חוזר המנכ״ל",
+      "body": {
+        "sessionId": "session-doc",
+        "record": {
+          "commitment": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+          "title": "חוזר המנכ״ל"
+        },
+        "pin": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+      }
+    },
+    {
+      "kind": "RATIONALE",
+      "at": "2026-09-25T09:32:15.429Z",
+      "thread": {
+        "step": "DEBATE",
+        "id": "session-doc"
+      },
+      "by": {
+        "voice": "RESEARCHER",
+        "handle": "חוקר_א",
+        "mine": true
+      },
+      "line": null,
+      "body": {
+        "text": "החוזר מורה לשמור את ערוץ הדיווח פתוח, והפסקה המצטטת אומרת זאת במפורש."
+      },
+      "id": "event-rationale"
+    },
+    {
+      "kind": "ASSESSMENT",
+      "at": "2026-09-25T09:32:15.429Z",
+      "thread": {
+        "step": "DEBATE",
+        "id": "session-doc"
+      },
+      "by": {
+        "voice": "MODEL",
+        "model": "gemini:gemini-flash-latest",
+        "promptVersion": "v2-document-record-and-assertions",
+        "spentBy": {
+          "handle": "חוקר_א",
+          "mine": true
+        }
+      },
+      "line": null,
+      "body": {
+        "hasSubstance": true,
+        "substanceGaps": [],
+        "verdict": "SUPPORTS",
+        "objection": "",
+        "assessment": "הטיעון מעוגן בטקסט המחושב של החוזר.",
+        "assertions": [
+          {
+            "researcherClaim": "החוזר מורה לשמור את ערוץ הדיווח פתוח",
+            "quoteVerified": true,
+            "whatEvidenceShows": "ערוץ הדיווח פתוח",
+            "phraseVerified": "PRESENT",
+            "phraseVerifiedReason": null
+          },
+          {
+            "researcherClaim": "החוזר אוסר על דיווח",
+            "quoteVerified": false,
+            "whatEvidenceShows": "הערוץ ייסגר מיד",
+            "phraseVerified": "ABSENT",
+            "phraseVerifiedReason": null
+          }
+        ],
+        "malformed": false
+      },
+      "id": "event-assessment"
+    }
+  ]
+}

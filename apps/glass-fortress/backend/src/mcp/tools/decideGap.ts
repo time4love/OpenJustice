@@ -124,7 +124,8 @@ export async function decideGapHandler(input: DecideGapInput): Promise<string> {
           'NOT_CITED',
           `${input.citedName === undefined || input.citedName === '' ? 'CITED names no record' : `The head version does not cite ${input.citedName}`}. ` +
             'A gap is CITED when the corpus answers it in the text: cite the record in a version first (#ev_ and its ' +
-            'name), then decide the gap CITED naming it — the pin is the citation\'s, never the decision\'s.',
+            'name, or #doc_ and a document\'s commitment), then decide the gap CITED naming it — the pin is the ' +
+            'citation\'s, never the decision\'s.',
         );
       }
     }

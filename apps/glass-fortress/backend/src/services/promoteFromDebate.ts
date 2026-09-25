@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { WRITE_TRANSACTION } from '../walk/pageLog';
 import { citationCurrent } from './evidencePredicates';
-import { closeDebate, recordChecks, type RecordChecked } from './openDebate';
+import { closeDebate, debateInputOf, recordChecks, type RecordChecked } from './openDebate';
 import type { LoadedDebate } from './debateState';
 import type { BlockerCode, RecordCode, Refusal } from '../mcp/tools/evidenceRefusals';
 
@@ -11,6 +11,10 @@ import type { BlockerCode, RecordCode, Refusal } from '../mcp/tools/evidenceRefu
 // "REFUSES unless: the session is OPEN · the latest argument cleared SUBSTANCE ·
 // a DISPUTES verdict has been answered at least once … nothing here can refuse
 // on the merits — promotedOverObjection is recorded instead."
+//
+// A DOCUMENT IS PROMOTED THE SAME WAY (document §6 :712–:716, plan :250–:252): created iff none for its commitment,
+// `affirmed` = CURRENT(d)'s hash, else JOINED — and NO CHAIN WRITE: "the document was committed at receipt (§4), and
+// promotion anchors nothing, as evidence §5 rules".
 //
 // ONE TRANSACTION, and NOTHING ON CHAIN. §5: "No research act writes to the
 // chain. The walk is the only chain writer, it runs in the deployment, and the
@@ -46,7 +50,7 @@ export async function promotionBlockers(debate: LoadedDebate): Promise<Promotion
 
   if (debate.record === null) {
     throw new Error(
-      `promoteFromDebate: session ${debate.id} names neither a capture nor a pair the corpus holds. ` +
+      `promoteFromDebate: session ${debate.id} names no capture, pair or document the platform holds. ` +
         'A debate is opened on a record; this is a malformed row, not an answerable state.',
     );
   }
@@ -62,9 +66,10 @@ export async function promotionBlockers(debate: LoadedDebate): Promise<Promotion
   }
 
   // EVERY refusal of open_debate, re-checked at THIS moment — the record may have
-  // moved since the argument was made (A4).
+  // moved since the argument was made (A4). Handed the INPUT form the tool takes:
+  // a document's answer `{ commitment, title }` is never fed back as an input.
   const checks = await recordChecks({
-    record: debate.record,
+    record: debateInputOf(debate.record),
     thesisId: debate.thesisId,
     headVersionId: debate.thesis.headVersionId,
   });
@@ -119,6 +124,10 @@ export async function promote(
           kind: checked.kind,
           snapshotId: checked.snapshotId,
           urlVersionDiffId: checked.diffId,
+          // THE THIRD KEY (document §6 :712–:716; plan :250–:251): the first Evidence row of kind DOCUMENT names its
+          // document by the commitment, which is also its `fileHash` (§6 :669). Exactly one key is set, matching
+          // kind — the CHECK `Evidence_one_record_key` holds it, and `snapshotId`/`diffId` are null for a document.
+          documentCommitment: checked.kind === 'DOCUMENT' ? checked.commitment : null,
           // STATED, never defaulted. The column has no default and A2 says why:
           // "both values are live claims about a human's standing decision, so a
           // default would let a forgetful write assert one".

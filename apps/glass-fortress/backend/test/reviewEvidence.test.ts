@@ -16,6 +16,7 @@ import { requireFields, reviewEvidence } from '../src/services/reviewEvidence';
 import { reviewEvidenceHandler } from '../src/mcp/tools/reviewEvidence';
 import { db, resetDouble, store, windows, written, writtenViaTx, type Row } from './helpers/evidenceDouble';
 import { AFTER, BEFORE, CAPTURE_NAME, DIFF_NAME } from './helpers/corpusFixture';
+import { COMMITMENT, HELD_BEFORE, documentRow, versionRow } from './document/citationWorld';
 
 // ---------------------------------------------------------------------------
 // `review_evidence` — evidence step 14, docs/gf-evidence-flows.md §6 (Flow E3),
@@ -185,11 +186,17 @@ describe('review_evidence — the refusals, in the contract’s order', () => {
     expect(codeOf(refused)).toBe('AWAITING_DERIVATION');
   });
 
-  it('a DOCUMENT row refuses THE SAME CODE — one state, one word, on both surfaces', async () => {
-    store.evidence = { fileHash: '0xcommitment', kind: 'DOCUMENT', status: 'PROMOTED', affirmedContentVersionHash: 'x', snapshot: null, urlVersionDiff: null };
-    const refused = await review({ fileHash: '0xcommitment' });
+  // AMENDED AT DOCUMENT STEP 33 CHUNK 5 (declared; R82 Entry 6's MEDIUM): the old world — a DOCUMENT row naming no
+  // document — is forbidden by `Evidence_one_record_key` and its foreign key; its words ("step 28") are false since step
+  // 28. The reachable world: a promoted document whose CURRENT(d) awaits derivation.
+  it('a DOCUMENT row whose CURRENT(d) awaits derivation refuses THE SAME CODE — one state, one word, on both surfaces', async () => {
+    store.documents = [documentRow()];
+    store.documentContentVersions = [versionRow(HELD_BEFORE, { derivedUnder: ['v0-an-older-extractor'] })];
+    store.evidence = { fileHash: COMMITMENT, kind: 'DOCUMENT', documentCommitment: COMMITMENT, status: 'PROMOTED', affirmedContentVersionHash: HELD_BEFORE, snapshot: null, urlVersionDiff: null };
+    const refused = await review({ fileHash: COMMITMENT });
     expect(codeOf(refused)).toBe('AWAITING_DERIVATION');
-    expect(errorOf(refused)).toContain('step 28');
+    expect(errorOf(refused)).toContain('is a DOCUMENT with no content version under the current extractor');
+    expect(errorOf(refused)).not.toContain('step 28');
   });
 
   it('NOTHING_TO_REVIEW on REAFFIRM when affirmed IS current — through the PREDICATE', async () => {

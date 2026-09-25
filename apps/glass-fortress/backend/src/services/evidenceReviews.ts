@@ -24,6 +24,13 @@ import {
   type ContentUnit,
   type Moved,
 } from './evidencePredicates';
+import {
+  documentReviewNotBuilt,
+  documentShedNotBuilt,
+  documentsByCommitment,
+  evidenceCurrentOf,
+  type CitedDocument,
+} from './documentCitation';
 
 // ---------------------------------------------------------------------------
 // FLOW E3's LIST — docs/gf-evidence-flows.md §6, §7 and A4.
@@ -212,6 +219,8 @@ interface RecordRow {
   kind: string;
   affirmedContentVersionHash: string;
   status: string;
+  /** A DOCUMENT row's key (document §6 :666–:668), null for a capture's or a diff's. */
+  documentCommitment: string | null;
   snapshot: LoadedCapture | null;
   urlVersionDiff: {
     id: string;
@@ -229,6 +238,7 @@ const ROW_SELECT = {
   kind: true,
   status: true,
   affirmedContentVersionHash: true,
+  documentCommitment: true,
   snapshot: { select: CAPTURE_SELECT },
   urlVersionDiff: {
     select: {
@@ -264,9 +274,12 @@ export async function listEvidenceReviews(): Promise<ReviewsList> {
   const reviews: ReviewEntry[] = [];
   const notEvaluable: NotEvaluable[] = [];
   const pages = new PageCache();
+  // THE PROMOTED DOCUMENTS, loaded ONCE through the one loader — CURRENT(d) is `documentCitation`'s, as the debate
+  // and the citation read it.
+  const documents = await documentsByCommitment(rows.flatMap((row) => documentKeyOf(row)));
 
   for (const row of rows) {
-    const owed = await evaluate(row, pages);
+    const owed = await evaluate(row, pages, documents);
     if (owed === null) continue;
     if ('reason' in owed) notEvaluable.push(owed);
     else reviews.push(owed);
@@ -297,25 +310,57 @@ class PageCache {
   }
 }
 
+/** A DOCUMENT row's key — the commitment — or nothing for a capture's or a diff's row. */
+function documentKeyOf(row: RecordRow): string[] {
+  return row.snapshot === null && row.urlVersionDiff === null && row.documentCommitment !== null ? [row.documentCommitment] : [];
+}
+
+/**
+ * A PROMOTED DOCUMENT, judged over CURRENT(d) — document A3 :1372 (NEEDS_REVIEW over CURRENT(d)); evidence A4 :1146 as
+ * ruled (R81 QB: `record` is `{ commitment, title }`).
+ *
+ *   affirmed = CURRENT(d)   → owed NOTHING, in neither list
+ *   CURRENT(d) awaits       → notEvaluable AWAITING_DERIVATION, named — "a human is not asked to judge a version that
+ *                              does not exist" (A3 :1029), the capture's and diff's word for the same state
+ *   CURRENT(d) moved        → the LOUD guard (R82 Entry 8, §3 :348): the re-affirmation is step 34's
+ */
+function documentOwed(row: RecordRow, documents: ReadonlyMap<string, CitedDocument>): NotEvaluable | null {
+  const cited = row.documentCommitment === null ? undefined : documents.get(row.documentCommitment);
+  if (cited === undefined) {
+    throw new Error(
+      `evidenceReviews: ${row.fileHash} is a DOCUMENT row naming no document — Evidence_one_record_key and its ` +
+        'foreign key to Document forbid it, so the row was written wrong.',
+    );
+  }
+  const { document, current } = cited;
+  if ('shed' in current) throw documentShedNotBuilt(document.commitment);
+  const owed = needsReview(row, evidenceCurrentOf(current));
+  if (!owed.evaluable) {
+    return {
+      fileHash: row.fileHash,
+      record: { commitment: document.commitment, title: document.title },
+      reason: 'AWAITING_DERIVATION',
+      detail:
+        `The document ${document.title === null ? document.commitment : `„${document.title}”`} has no content version ` +
+        'under the current extractor: the derivation pass owes it one, and a human is not asked to judge a version ' +
+        'that does not exist.',
+    };
+  }
+  if (!owed.value) return null;
+  throw documentReviewNotBuilt(document.commitment);
+}
+
 /** One row: the entry it owes, the reason it cannot be judged, or nothing at all. */
-async function evaluate(row: RecordRow, pages: PageCache): Promise<ReviewEntry | NotEvaluable | null> {
+async function evaluate(
+  row: RecordRow,
+  pages: PageCache,
+  documents: ReadonlyMap<string, CitedDocument>,
+): Promise<ReviewEntry | NotEvaluable | null> {
   const capture = row.snapshot;
   const diff = row.urlVersionDiff;
 
-  // A DOCUMENT row: one state, one word, on both surfaces (§3a). It cannot be
-  // created by anything in this tree — there is no `Document` table until
-  // document step 28 — and the code still may not step over one in silence.
-  if (capture === null && diff === null) {
-    return {
-      fileHash: row.fileHash,
-      record: null,
-      reason: 'AWAITING_DERIVATION',
-      detail:
-        'This record is a DOCUMENT: its content is derived from bytes the platform holds, and the ' +
-        'class — its table, its extractor and its custody modes — is document refactor step 28. ' +
-        'There is no version to judge yet.',
-    };
-  }
+  // A DOCUMENT row: judged over CURRENT(d), on both surfaces (§3a) — never stepped over in silence.
+  if (capture === null && diff === null) return documentOwed(row, documents);
 
   const record: CorpusRecordName =
     diff === null
@@ -434,10 +479,8 @@ interface MovedMaterial {
 export async function movedFrom(row: RecordRow, fromHash: string): Promise<MovedMaterial | null> {
   if (row.urlVersionDiff !== null) return movedFromDiff(row.urlVersionDiff, fromHash);
   if (row.snapshot !== null) return movedFromCapture(requireCapture(row.snapshot), fromHash);
-  throw new Error(
-    `evidenceReviews: ${row.fileHash} is a DOCUMENT row — its content is document refactor step 28's, and no stored ` +
-      'version of it can be read beside CURRENT yet.',
-  );
+  // A DOCUMENT row: what moved from a pin to CURRENT(d) is the review step 34 builds (R82 Entry 8, §3 :348).
+  throw documentReviewNotBuilt(row.fileHash);
 }
 
 async function movedFromCapture(capture: LoadedCapture, fromHash: string): Promise<MovedMaterial | null> {
