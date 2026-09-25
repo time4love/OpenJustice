@@ -60,7 +60,17 @@ export type Voice = ({ voice: 'RESEARCHER' } & Researcher) | ({ voice: 'MODEL' }
  * already holds it for the public surfaces. What the gated reads add is the `url`, because a reviewer reading
  * an owed entry has no page in hand.
  */
-export type NamedRecord = { url: string } & RecordNames;
+export type NamedRecord = ({ url: string } & RecordNames) | DocumentRecord;
+
+/**
+ * A DOCUMENT, as a record is ANSWERED — `{ commitment, title }`, ONE shape wherever a record is answered (evidence A4
+ * :1123, :1144, :1146 as ruled 2026-09-25, R81 QB; thesis A4 :1476's DEBATE_OPENED). The commitment is the record's
+ * NAME and never a text node (§4 :167); the page draws the TITLE, the researcher's own. Null only for a SEALED document.
+ */
+export interface DocumentRecord {
+  commitment: string;
+  title: string | null;
+}
 
 /** The four state words of ui §11 :398–:399, as ONE union — the same one `list_theses` and the working view answer. */
 export type ThesisState =
@@ -206,7 +216,8 @@ export interface RoundChosenBody {
  */
 export interface VersionMentionRow {
   versionId: string;
-  kind: 'EVIDENCE' | 'TRAJECTORY';
+  /** DOCUMENT since document step 33 — a `#doc_` token is a mention of that kind (thesis A4 :1452, plan :243). */
+  kind: 'EVIDENCE' | 'TRAJECTORY' | 'DOCUMENT';
   name: string;
   contentVersionHash: string | null;
   debateSessionId: string | null;
@@ -247,6 +258,22 @@ export interface AssessmentBody {
   verdict: AssessorVerdict | null;
   objection: unknown;
   assessment: unknown;
+  /**
+   * The assertions the debate's assessor NAMED, each with the audit's verdicts beside it (thesis A4 :1476 as ruled, R81
+   * QA, and conformed R82: the reason beside UNCHECKED). NULL on a row written before the ruling — and on a malformed
+   * row — NEVER `[]`, which is a real answer: an assessor that named none.
+   */
+  assertions: AuditedAssertion[] | null;
+}
+
+/** One audited assertion — the model's two fields and the audit's three, in the appendix's order. */
+export interface AuditedAssertion {
+  researcherClaim: string;
+  quoteVerified: boolean;
+  whatEvidenceShows: string;
+  phraseVerified: 'PRESENT' | 'ABSENT' | 'UNCHECKED';
+  /** Why no verdict could be reached, beside UNCHECKED; null beside PRESENT and ABSENT (document flows §3 :363). */
+  phraseVerifiedReason: string | null;
 }
 
 export interface DebateClosedBody {

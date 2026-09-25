@@ -28,7 +28,7 @@ export const addThesisVersionSchema = {
     .string()
     .describe(
       'The version text EXACTLY AS THE RESEARCHER APPROVED IT, Markdown, each citation an inline token: #ev_ and a ' +
-        "record's name from list_findings, or #tr_ and a trajectory id. Stored verbatim and hashed as given",
+        "record's name from list_findings, #tr_ and a trajectory id, or #doc_ and a document's commitment from list_documents. Stored verbatim and hashed as given",
     ),
   claim: z
     .string()

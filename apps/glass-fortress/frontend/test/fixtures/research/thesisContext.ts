@@ -166,7 +166,7 @@ export const fullTranscript: Turn[] = [
     thread: { step: 'DEBATE', id: 'debate-1' },
     by: { voice: 'MODEL', ...UNRECORDED },
     line: null,
-    body: { malformed: false, hasSubstance: true, substanceGaps: [], verdict: 'DISPUTES', objection: 'ההסתמכות רחבה מן הקטע', assessment: 'הטיעון נטען כראוי' },
+    body: { malformed: false, hasSubstance: true, substanceGaps: [], verdict: 'DISPUTES', objection: 'ההסתמכות רחבה מן הקטע', assessment: 'הטיעון נטען כראוי', assertions: null },
   },
   {
     kind: 'RESPONSE',
@@ -202,7 +202,7 @@ export const fullTranscript: Turn[] = [
     thread: { step: 'DEBATE', id: 'debate-2' },
     by: { voice: 'MODEL', ...UNRECORDED },
     line: null,
-    body: { malformed: true, hasSubstance: null, substanceGaps: null, verdict: null, objection: null, assessment: null },
+    body: { malformed: true, hasSubstance: null, substanceGaps: null, verdict: null, objection: null, assessment: null, assertions: null },
   },
   {
     kind: 'DEBATE_CLOSED',

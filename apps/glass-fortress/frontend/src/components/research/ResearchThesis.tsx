@@ -85,9 +85,18 @@ function ContextBlock({ context, locale }: { context: ThesisContext; locale: str
         </h1>
       )}
       <ProvisionName provision={thesis.provision} />
-      <p className="text-xs text-ink-muted">
+      {/* THE BYLINE — RULED 2026-09-25 (the researcher, R82 Entry 20): „<handle> · התזה שלך” on the author's own thesis.
+          It borrowed the scope switch's „שלי” (`research.scope.mine`), and beside a handle that read as "my <handle>".
+          Its own key, `research.thesis.yours`; the scope switch keeps „שלי”. The separator is the markup's, the handle a
+          <bdi> with no key — a name is data, never copy. */}
+      <p data-byline className="text-xs text-ink-muted">
         <bdi>{thesis.by.handle}</bdi>
-        {thesis.by.mine ? <span data-mine className="ms-2">{t('scope.mine')}</span> : null}
+        {thesis.by.mine ? (
+          <span data-mine>
+            {' · '}
+            {t('thesis.yours')}
+          </span>
+        ) : null}
       </p>
       <ThesisState state={thesis.state} locale={locale} />
       {/* THE THESIS ID HAS TWO HOMES AND THIS IS ONE OF THEM (§4 :167–:176): the URL, and a COPY labelled by what

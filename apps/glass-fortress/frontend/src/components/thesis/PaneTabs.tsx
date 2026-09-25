@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { DeclareTabs, usePaneLayer, usePaneSelection, type PaneTab } from '@/components/shell/RightPane';
 import { domainOf, formatCaptureDate } from '@/lib/format';
-import type { Citation } from '@/types/thesis';
+import type { Citation, EvidenceCitation, TrajectoryCitation } from '@/types/thesis';
 import { EvidenceRecordPane, TrajectoryRecordPane } from './RecordPane';
 
 // ---------------------------------------------------------------------------
@@ -27,7 +27,14 @@ import { EvidenceRecordPane, TrajectoryRecordPane } from './RecordPane';
 export const recordTabId = (citation: Citation): string => `record:${citation.kind}:${citation.name}`;
 export const CALL_TAB_ID = 'call';
 
-function labelOf(citation: Citation, locale: string): string {
+/**
+ * THE CITATIONS THAT OPEN A RECORD TAB — every kind but a DOCUMENT, whose record in the pane is the document sheet of
+ * step 34 (ui §18 :583–:584; board ד2·י's "not drawn"). Its chip is a statement until then (`CitationChip`), so a
+ * tab here would be a pane nothing opens and that shows nothing the design has drawn.
+ */
+const opensARecordTab = (citation: Citation): citation is EvidenceCitation | TrajectoryCitation => citation.kind !== 'DOCUMENT';
+
+function labelOf(citation: EvidenceCitation | TrajectoryCitation, locale: string): string {
   if (citation.kind === 'TRAJECTORY') {
     return citation.resolves ? citation.claimText.split(/\s+/).slice(0, 4).join(' ') : '—';
   }
@@ -66,7 +73,7 @@ export interface PaneTabsProps {
  * same output, now calling what it used to inline. The declared size is in the chunk's report.
  */
 export function recordTabs({ citations, pages, locale }: Omit<PaneTabsProps, 'call'>): PaneTab[] {
-  return citations.map((citation) => ({
+  return citations.filter(opensARecordTab).map((citation) => ({
     id: recordTabId(citation),
     label: labelOf(citation, locale),
     content:

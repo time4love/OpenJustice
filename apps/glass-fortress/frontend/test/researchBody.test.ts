@@ -116,7 +116,7 @@ describe('research-body — the transcript', () => {
     VERSION: ['citationsVsParent', 'claim', 'contentHash', 'mentions', 'parentVersionId', 'text'],
     DEBATE_OPENED: ['pin', 'record', 'sessionId'],
     RATIONALE: ['text'],
-    ASSESSMENT: ['assessment', 'hasSubstance', 'malformed', 'objection', 'substanceGaps', 'verdict'],
+    ASSESSMENT: ['assertions', 'assessment', 'hasSubstance', 'malformed', 'objection', 'substanceGaps', 'verdict'],
     RESPONSE: ['text'],
     DEBATE_CLOSED: ['evidenceFileHash', 'outcome', 'overObjection'],
     ANALYSIS: ['analysisId', 'current', 'inputFingerprint', 'opinion'],
@@ -508,7 +508,8 @@ describe('research-body — every closed union is CLOSED, and says which one was
     },
     {
       what: 'a mention`s kind',
-      run: () => parseThesisContext(overTheWire(withInstead(thesisContextFull, ['head', 'mentions', '0', 'kind'], 'DOCUMENT'))),
+      // A WORD OUTSIDE THE UNION — and `DOCUMENT` is no longer one: it joined at document step 33 (thesis A4 :1476, R81 QC).
+      run: () => parseThesisContext(overTheWire(withInstead(thesisContextFull, ['head', 'mentions', '0', 'kind'], 'EXHIBIT'))),
       path: /head\.mentions\[0\]\.kind/,
     },
     {

@@ -16,6 +16,7 @@ import {
   type RecordContent,
 } from './evidencePredicates';
 import { namedRecordOf } from './debateState';
+import { debateInputOf } from './openDebate';
 import type { MentionRow, ThesisRows } from './thesisRows';
 import {
   analysisTurns,
@@ -491,15 +492,6 @@ export function reviewCommand(kind: ReviewKind, thesisId: string, headVersionId:
     case 'UNARGUED':
       return `open_debate thesisId=${thesisId} record=${record === null ? '…' : JSON.stringify(debateInputOf(record))} rationale=…`;
   }
-}
-
-/**
- * THE RECORD AS `open_debate` TAKES IT, from the record as a read ANSWERS it — they differ for a document only: the
- * answer is `{ commitment, title }` (QB), the input `{ document: commitment }` (document flows A4 :1455, §6 :701). A
- * command that pasted the answer back would be refused by the tool's own schema.
- */
-function debateInputOf(record: NamedRecord): { url: string; capture: string } | { url: string; before: string; after: string } | { document: string } {
-  return 'commitment' in record ? { document: record.commitment } : record;
 }
 
 /**

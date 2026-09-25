@@ -1,5 +1,6 @@
 import { LLMFactory, resolveModelId } from '../factories/LLMFactory';
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
+import { modelFilePart, type ModelFile } from '../lib/documentModelPart';
 import { DOCUMENT_DESCRIPTION_PROMPT, DOCUMENT_DESCRIPTION_PROMPT_VERSION } from '../prompts/documentDescription';
 import { documentReadingAnswer, documentReadingBody, type DocumentOpinion } from './documentContentVersions';
 
@@ -54,7 +55,7 @@ const CUT = { finishReason: 'MAX_TOKENS', stop_reason: 'max_tokens' } as const;
  * (prompt v3) — OR the computed text itself.
  */
 export type DescriberInput =
-  | { title: string; file: { mimeType: string; base64: string }; computedText: boolean }
+  | { title: string; file: ModelFile; computedText: boolean }
   | { title: string; text: string };
 
 /**
@@ -81,7 +82,8 @@ export async function describe(input: DescriberInput): Promise<DescriberAnswer> 
     'file' in input
       ? [
           { type: 'text', text: heading },
-          { type: 'file', source_type: 'base64', mime_type: input.file.mimeType, data: input.file.base64 },
+          // THE ONE PART BUILDER, shared with the debate's assessor (§6 :739 as ruled, R81 Q-3).
+          modelFilePart(input.file),
         ]
       : `${heading}\n\n--- הטקסט המחושב ---\n${input.text}\n--- סוף הטקסט ---`;
 

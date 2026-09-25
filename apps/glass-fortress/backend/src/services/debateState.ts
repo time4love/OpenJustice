@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma';
-import type { NamedRecord } from './openDebate';
+import type { NamedRecord } from './evidenceReviews';
 import type { BlockerCode } from '../mcp/tools/evidenceRefusals';
 import { handlesOf } from './publishedThesis';
 import { debateTurns, orderTurns, voicesOf, type Turn } from './thesisTranscript';
@@ -44,11 +44,15 @@ export interface LoadedDebate {
   evidenceFileHash: string | null;
   recordSnapshotId: string | null;
   recordDiffId: string | null;
+  /** The document's commitment, for a debate on a document (document A2 :1339–:1341); null otherwise. */
+  recordCommitment: string | null;
   /**
    * The record as A1 names it, rebuilt from the session's own key — so
    * `promote_from_debate` re-runs the SAME checks `open_debate` ran without the
    * caller naming the record again. Null only for a session whose key resolves to
-   * nothing, which is a malformed row the checks then refuse on.
+   * nothing, which is a malformed row the checks then refuse on. The ANSWER's
+   * form (R81 QB): a document is `{ commitment, title }`, turned back into the
+   * input by `openDebate.debateInputOf`.
    */
   record: NamedRecord | null;
   /** The thesis's author and head — what NOT_AUTHOR and NOT_CITED are decided from. */
@@ -94,7 +98,9 @@ export async function loadDebate(sessionId: string): Promise<LoadedDebate | null
       evidenceId: true,
       recordSnapshotId: true,
       recordDiffId: true,
+      recordCommitment: true,
       recordSnapshot: { select: { waybackTimestamp: true, trackedUrl: { select: { url: true } } } },
+      recordDocument: { select: { commitment: true, title: true } },
       recordDiff: {
         select: {
           trackedUrl: { select: { url: true } },
@@ -126,6 +132,8 @@ export async function loadDebate(sessionId: string): Promise<LoadedDebate | null
     evidenceFileHash: row.evidence?.fileHash ?? null,
     recordSnapshotId: row.recordSnapshotId,
     recordDiffId: row.recordDiffId,
+    // `?? null`: a store-seeded session in the evidence double (which answers whatever the select) predates the key.
+    recordCommitment: row.recordCommitment ?? null,
     record: namedRecordOf(row),
     thesis: row.thesis,
     researcherId: row.researcherId,
@@ -145,11 +153,17 @@ export async function loadDebate(sessionId: string): Promise<LoadedDebate | null
 }
 
 /**
- * The record this debate argues for, by page and timestamps — never by a row id (A1).
+ * The record this debate argues for, by page and timestamps — never by a row id (A1) — or, for a document, by its
+ * commitment and title: `{ commitment, title }`, ONE shape wherever a record is answered (evidence A4 :1123, :1144 as
+ * ruled 2026-09-25, R81 QB).
  *
  * EXPORTED 2026-09-20 (R66): the transcript builds a DEBATE_OPENED turn for every debate of a thesis, and it
  * names the record the same way this loader does. A second spelling of "the record as A1 names it" is exactly
  * the drift this module was written to stop.
+ *
+ * `recordDocument` IS OPTIONAL IN THIS PARAMETER, and only here: both loaders select it, but the evidence double
+ * answers a seeded session whatever the select (`test/helpers/evidenceDouble.ts` `defaultSessionLookup`), and the
+ * seeds written before document step 33 carry no such key. The capture and pair arms are asked first, unchanged.
  */
 export function namedRecordOf(row: {
   recordSnapshot: { waybackTimestamp: string | null; trackedUrl: { url: string } } | null;
@@ -158,6 +172,7 @@ export function namedRecordOf(row: {
     beforeSnapshot: { waybackTimestamp: string | null };
     afterSnapshot: { waybackTimestamp: string | null };
   } | null;
+  recordDocument?: { commitment: string; title: string | null } | null;
 }): NamedRecord | null {
   const capture = row.recordSnapshot?.waybackTimestamp;
   if (row.recordSnapshot !== null && capture != null) {
@@ -167,6 +182,9 @@ export function namedRecordOf(row: {
   const after = row.recordDiff?.afterSnapshot.waybackTimestamp;
   if (row.recordDiff !== null && before != null && after != null) {
     return { url: row.recordDiff.trackedUrl.url, before, after };
+  }
+  if (row.recordDocument != null) {
+    return { commitment: row.recordDocument.commitment, title: row.recordDocument.title };
   }
   return null;
 }

@@ -28,6 +28,28 @@ export interface TickFace {
   tone: TickTone;
   /** A date, an interval and a domain read left-to-right inside Hebrew; a claim's words do not. */
   ltr: boolean;
+  /**
+   * A DOCUMENT's tick wears the document glyph before its words (board י4, ui §17 :540 as ruled 2026-09-22) and reads
+   * its `dir` FROM THE TITLE — "הצ׳יפ קורא dir מהשם" (the board's own note) — so a Hebrew title lays the pill out
+   * right-to-left and an English one left-to-right.
+   */
+  document?: true;
+}
+
+/** How many of a document's title words the tick carries — board י4 draws four („מערך הנתונים המשלים למאמר"). */
+const DOCUMENT_TITLE_WORDS = 4;
+
+/**
+ * THE TITLE'S FIRST WORDS — tokens that carry a letter or a digit. A punctuation-only token (— – - · ,) is not a word: it
+ * is SKIPPED, never counted, so the chip never ends on a dangling mark (R82 Entry 19, at the page: „קוד נירנברג (1947) —"
+ * was the fourth whitespace token's em dash; SUPPRESSED, overrulable at the page).
+ */
+function firstWordsOf(title: string): string {
+  return title
+    .split(/\s+/)
+    .filter((token) => /[\p{L}\p{N}]/u.test(token))
+    .slice(0, DOCUMENT_TITLE_WORDS)
+    .join(' ');
 }
 
 /**
@@ -42,6 +64,18 @@ export function tickFace(citation: Citation | undefined, locale: string): TickFa
       label: citation.claimText.split(/\s+/).slice(0, 5).join(' '),
       tone: citation.current ? 'verified' : 'flagged',
       ltr: false,
+    };
+  }
+  if (citation.kind === 'DOCUMENT') {
+    // THE TITLE'S FIRST WORDS, never the commitment (§4 :167; ui §17 :540 as ruled). An untitled document — a SEALED
+    // one step 32's door brings — is '—', the trajectory's precedent above for a tick with nothing to name.
+    return {
+      label: citation.title === null ? '—' : firstWordsOf(citation.title),
+      // ONE DOT, THE SAME RULE AS A RECORD'S (board י4: "מצוטט וטרם נטען · מאומת · מסומן"): flagged first, then
+      // VERIFIED(d) as the body computed it, and no colour otherwise.
+      tone: citation.flag.flagged ? 'flagged' : citation.verified ? 'verified' : 'neutral',
+      ltr: false,
+      document: true,
     };
   }
   const { record } = citation;
@@ -70,13 +104,33 @@ export function domainOfCitation(citation: Citation): string | null {
  * until the tick line needed the same answer, and a second copy of a three-branch ternary is how two
  * regions of one page come to disagree about what a record is.
  */
-export function evidenceChipKind(citation: Citation | undefined): 'capture' | 'diff' | 'unresolved' {
+export function evidenceChipKind(citation: Citation | undefined): 'capture' | 'diff' | 'document' | 'unresolved' {
   if (citation === undefined) return 'unresolved';
+  if (citation.kind === 'DOCUMENT') return 'document';
   return citation.kind === 'EVIDENCE' && citation.record.capture === undefined ? 'diff' : 'capture';
 }
 
+/** Board י4's document glyph — the page with its corner turned, drawn in the board's own path. */
+function DocumentGlyph() {
+  return (
+    <svg data-tick-glyph="document" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="tick-glyph" aria-hidden="true">
+      <path d="M4 2h5l3 3v9H4z" />
+      <path d="M9 2v3h3" />
+    </svg>
+  );
+}
+
 /** The mark itself. Presentational: it computes nothing and decides nothing. */
-export function Tick({ label, tone, ltr }: TickFace) {
+export function Tick({ label, tone, ltr, document }: TickFace) {
+  if (document === true) {
+    return (
+      <span data-tick data-tick-tone={tone} data-tick-kind="document" dir="auto" className="tick tick-document">
+        <span className={`tick-dot tick-dot-${tone}`} aria-hidden="true" />
+        <DocumentGlyph />
+        <bdi dir="auto">{label}</bdi>
+      </span>
+    );
+  }
   return (
     <span data-tick data-tick-tone={tone} className="tick">
       <span className={`tick-dot tick-dot-${tone}`} aria-hidden="true" />

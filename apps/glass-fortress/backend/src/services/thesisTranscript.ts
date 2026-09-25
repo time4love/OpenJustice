@@ -1,5 +1,6 @@
 import type { MentionType, Prisma } from '@prisma/client';
 import { handleOf } from './publishedThesis';
+import type { NamedRecord } from './evidenceReviews';
 
 // ---------------------------------------------------------------------------
 // THE TRANSCRIPT — docs/gf-thesis-flows.md §9 :974 and A4 :1476, RULED 2026-09-20 (the researcher, R66
@@ -24,9 +25,9 @@ import { handleOf } from './publishedThesis';
 // shows from `body` through its own frozen strings (ui §11 :431), which is what keeps user-visible copy inside
 // the freeze and out of a server that has no catalogue.
 //
-// THE MODEL'S NAME MAY BE NULL, AND THAT IS SAID RATHER THAN HIDDEN (A2 :1317). A debate assessment records
-// neither model nor prompt version today (`respondInDebate.ts` :65–:73) — a debt for the WRITER, not for this
-// read — so `M.model` and `M.promptVersion` are `string | null` and the page says the absence.
+// THE MODEL'S NAME MAY BE NULL, AND THAT IS SAID RATHER THAN HIDDEN (A2 :1317). A debate assessment written
+// before document step 33 records neither model nor prompt version — the WRITER's debt, paid since (R82 Entry 2)
+// — so `M.model` and `M.promptVersion` are `string | null` and the page says the absence on those rows.
 // ---------------------------------------------------------------------------
 
 /** A researcher on the wire: a handle and whether the caller is looking at their own act. NEVER an id (§4 :167). */
@@ -77,9 +78,6 @@ export const TURN_KINDS = [
 
 export type TurnKind = (typeof TURN_KINDS)[number];
 
-/** The record as evidence A1 names it — by page and timestamps, never by a row id. */
-export type NamedRecord = { url: string; capture: string } | { url: string; before: string; after: string };
-
 /**
  * THE BODIES, ONE PER KIND, EXACTLY AS A4 :1476 SPELLS THEM (M1/M2, 2026-09-20).
  *
@@ -122,6 +120,7 @@ export interface VersionBody {
 }
 export interface DebateOpenedBody {
   sessionId: string;
+  /** The record as a read answers it — `evidenceReviews.NamedRecord`, ONE shape, a document's `{ commitment, title }` (QB). */
   record: NamedRecord | null;
   pin: string | null;
 }
@@ -134,6 +133,12 @@ export type AssessmentBody = Malformed & {
   verdict: unknown;
   objection: unknown;
   assessment: unknown;
+  /**
+   * The assertions the assessor named, each with the audit's verdicts beside it (R81 QA; thesis A4 :1476 as conformed,
+   * R82). NULL on a row written before the ruling — never `[]`, which would read as an assessor that checked and found
+   * nothing — and on a malformed row, which records nothing readable.
+   */
+  assertions: unknown;
 };
 export interface DebateClosedBody {
   outcome: 'PROMOTED' | 'ABANDONED';
@@ -453,9 +458,14 @@ function firstLineOf(text: string): string {
   return text.split('\n')[0] ?? '';
 }
 
-/** The record's name as one datum: the page and its dates, exactly the values A1 holds. */
+/**
+ * The record's name as one datum: the page and its dates, exactly the values A1 holds — or, for a document, its TITLE,
+ * verbatim (thesis A4 :1476 as ruled 2026-09-25, R81 QB: "for a document the title is this turn's `line`"). A sealed
+ * document without a title (step 32's door) has no datum to show, and its line is null.
+ */
 function recordLine(record: NamedRecord | null): string | null {
   if (record === null) return null;
+  if ('commitment' in record) return record.title;
   return 'capture' in record ? `${record.url} ${record.capture}` : `${record.url} ${record.before}–${record.after}`;
 }
 
@@ -656,10 +666,13 @@ export function debateTurns(debate: DebateRow, voices: Voices): BuiltTurn[] {
           id: event.id,
           at: event.createdAt,
           thread,
-          // THE DEBT, SAID: `respond_in_debate` records neither the model nor the prompt version on this
-          // event (`respondInDebate.ts` :65–:73). A2 :1317 asks for both; until the WRITER records them this
-          // read answers null rather than inventing a name, and the page says the absence.
-          by: { voice: 'MODEL', ...voices.model(null, null, debate.researcherId) },
+          // THE MODEL AND THE PROMPT, read from the event as ROUND_ASSESSED reads them from its content. The
+          // writer records both since document step 33 (A2 :1317's debt, paid — R82 Entry 2); a row written
+          // before carries neither, and this read answers null rather than inventing a name.
+          by: {
+            voice: 'MODEL',
+            ...voices.model(stringAt(parsed, 'model'), stringAt(parsed, 'promptVersion'), debate.researcherId),
+          },
           line: null,
           body: {
             hasSubstance: parsed?.hasSubstance ?? null,
@@ -667,6 +680,8 @@ export function debateTurns(debate: DebateRow, voices: Voices): BuiltTurn[] {
             verdict: parsed?.verdict ?? null,
             objection: parsed?.objection ?? null,
             assessment: parsed?.assessment ?? null,
+            // ABSENT → null, never `[]` (R81 QA): an older row has no key, and an empty list is a real answer.
+            assertions: parsed?.assertions ?? null,
             malformed: parsed === null,
           },
         },

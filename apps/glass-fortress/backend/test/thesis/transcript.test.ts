@@ -218,9 +218,9 @@ describe('THE TRANSCRIPT, kind by kind — A4 :1476, every body pinned by its KE
 
   it('ASSESSMENT — a NON-JSON event is malformed: true with every field null, never a body that looks like an assessment nobody wrote', async () => {
     const turn = only(await transcript(), 'ASSESSMENT');
-    expect(keysOf(turn.body)).toEqual(['assessment', 'hasSubstance', 'malformed', 'objection', 'substanceGaps', 'verdict']);
-    expect(turn.body).toEqual({ hasSubstance: null, substanceGaps: null, verdict: null, objection: null, assessment: null, malformed: true });
-    // AND THE DEBT, SAID: `respond_in_debate` records neither model nor prompt version (A2 :1317).
+    expect(keysOf(turn.body)).toEqual(['assertions', 'assessment', 'hasSubstance', 'malformed', 'objection', 'substanceGaps', 'verdict']);
+    expect(turn.body).toEqual({ hasSubstance: null, substanceGaps: null, verdict: null, objection: null, assessment: null, assertions: null, malformed: true });
+    // AND NOTHING READABLE: a non-JSON row names neither model nor prompt version (A2 :1317), so the voice says null.
     expect(turn.by.voice === 'MODEL' ? [turn.by.model, turn.by.promptVersion] : null).toEqual([null, null]);
   });
 

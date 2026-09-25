@@ -76,16 +76,22 @@ describe('the working view — the context block', () => {
     expect(state?.textContent).toBe('מפורסם — גרסה אחת מאחור');
   });
 
+  // AMENDED 2026-09-25 (declared; RULED by the researcher, R82 Entry 20): the mark reads „<handle> · התזה שלך”, its own
+  // key — the scope switch's „שלי” beside a handle read as "my <handle>".
   it('WV-5 `mine` IS MARKED ON THE AUTHOR`S OWN THESIS, and a colleague`s carries no mark', async () => {
     const own = await renderResearchThesis(LOCALE);
-    expect(own.querySelector('[data-mine]')?.textContent).toBe('שלי');
+    const byline = own.querySelector('[data-byline]');
+    expect(byline?.textContent).toBe(`${thesisContextOwed.thesis.by.handle} · התזה שלך`);
+    expect(byline?.querySelector('bdi')?.textContent).toBe(thesisContextOwed.thesis.by.handle);
+    expect(byline?.textContent).not.toContain('שלי');
 
     const colleague = await renderResearchThesis(LOCALE, { context: thesisContextColleague });
     // THE FLOOR: the colleague's body really says `mine: false` — without it this case is satisfied by a
     // fixture that carries no author at all.
     expect(thesisContextColleague.thesis.by.mine).toBe(false);
     expect(colleague.querySelector('[data-mine]')).toBeNull();
-    expect(colleague.textContent).toContain('handle-b');
+    // The handle ALONE — no separator, no mark.
+    expect(colleague.querySelector('[data-byline]')?.textContent).toBe('handle-b');
   });
 
   it('WV-6 THE THESIS ID HAS TWO HOMES: the URL and the COPY — and is in no text node', async () => {

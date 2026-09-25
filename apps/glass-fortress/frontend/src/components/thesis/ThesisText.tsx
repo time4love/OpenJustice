@@ -24,6 +24,9 @@ export interface ThesisTextProps {
 
 function chipKind(piece: TokenPiece, citation: Citation | undefined, pins: readonly CitationRef[] | undefined): ChipKind {
   if (piece.token === 'TRAJECTORY') return citation === undefined ? 'unresolved' : 'trajectory';
+  // A `#doc_` token the body resolves is the document's chip (board י4); one it does not is a statement, as any
+  // unresolved token is — never its commitment printed as text (§4 :167).
+  if (piece.token === 'DOCUMENT') return citation === undefined ? 'unresolved' : 'document';
   if (citation === undefined) return pins === undefined ? 'unresolved' : 'not-current';
   const pin = pins?.find((ref) => ref.kind === piece.token && ref.name === piece.name)?.pin;
   if (pins !== undefined && citation.kind === 'EVIDENCE' && pin !== citation.pin) return 'repinned';
@@ -35,9 +38,10 @@ export function ThesisText({ text, citations, pins, pages, locale }: ThesisTextP
     <div data-thesis-text className="md-prose">
       {markdownToReact(text, {
         chip: (piece, key) => {
-          // A `#doc_` token is RESERVED: the renderer knows the kind and draws nothing until the document plan's
-          // step 34 (§18 :580–:581) — printing its commitment would be an id shown as text (§4 :167).
-          if (piece.token === 'DOCUMENT') return null;
+          // A `#doc_` token is a CHIP since document step 33 (ui §17 :540 as ruled 2026-09-22, board י4): the glyph,
+          // the title's first words and one dot. It was RESERVED — drawn as nothing — while no body could carry a
+          // DOCUMENT citation; the working view serves one now (thesis A4 :1476, R81 QC), and a token drawn as nothing
+          // is a sentence the researcher wrote with a hole in it.
           const citation = citationFor(piece, citations);
           return (
             <CitationChip

@@ -146,7 +146,7 @@ function Published({ thesis, locale, copyLabel, headings }: { thesis: PublishedT
         <History
           thesisId={thesis.thesisId}
           history={thesis.history}
-          current={{ versionId: thesis.version.versionId, text: thesis.version.text, citations: thesis.citations.map((citation) => ({ kind: citation.kind, name: citation.name, pin: citation.kind === 'EVIDENCE' ? citation.pin : null })) }}
+          current={{ versionId: thesis.version.versionId, text: thesis.version.text, citations: thesis.citations.map((citation) => ({ kind: citation.kind, name: citation.name, pin: citation.kind === 'TRAJECTORY' ? null : citation.pin })) }}
           author={thesis.version.author}
           locale={locale}
         />

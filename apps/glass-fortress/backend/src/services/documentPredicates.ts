@@ -1,4 +1,4 @@
-import type { Document, DocumentContentVersion, Shed } from '@prisma/client';
+import type { Arrival, Document, DocumentContentVersion, Shed } from '@prisma/client';
 import { commitment, docId } from '../lib/documentIdentity';
 import { verdict as verdictOverText, type Verdict } from '../lib/verdict';
 import type { Evaluated } from './evidencePredicates';
@@ -277,4 +277,18 @@ export function equalsCapture(
 /** A SHA-256 digest's 64 lowercase hex digits, whichever display it arrived in. */
 export function digestOf(hash: string): string {
   return (hash.startsWith('0x') || hash.startsWith('0X') ? hash.slice(2) : hash).toLowerCase();
+}
+
+/**
+ * ANSWERED(a) — A3 :1375: "∃ document of arrival a cited by HEAD(a.thesis) or PUBLISHED(a.thesis)". DERIVED FROM THE
+ * MENTIONS AND NEVER STORED (§5 :606–:607): a gap decided CITED on a commitment answers the arrival by the citation that
+ * already exists, and no column or flag records it (§6 :717–:719).
+ *
+ * PURE: `cited` is the commitments the DOCUMENT mentions of HEAD(a.thesis) and PUBLISHED(a.thesis) name, read by the
+ * caller; `documents` the arrival's own commitments. An arrival with NO THESIS — the researcher's door, A2 :1280–:1284 —
+ * has no HEAD to be cited by, so it is never ANSWERED. An arrival of NO documents answers nothing.
+ */
+export function answered(arrival: Pick<Arrival, 'thesisId'>, cited: readonly string[], documents: readonly string[]): boolean {
+  if (arrival.thesisId === null) return false;
+  return documents.some((commitment) => cited.includes(commitment));
 }

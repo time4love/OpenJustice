@@ -388,7 +388,7 @@ export const debateRead: DebateRead = {
       thread: { step: 'DEBATE', id: 'debate-1' },
       by: { voice: 'MODEL', model: null, promptVersion: null, spentBy: { handle: AUTHOR, mine: true } },
       line: null,
-      body: { malformed: false, hasSubstance: true, substanceGaps: [], verdict: 'DISPUTES', objection: 'ההסתמכות רחבה', assessment: 'נטען כראוי' },
+      body: { malformed: false, hasSubstance: true, substanceGaps: [], verdict: 'DISPUTES', objection: 'ההסתמכות רחבה', assessment: 'נטען כראוי', assertions: null },
     },
     {
       kind: 'RESPONSE',

@@ -2,6 +2,7 @@ import type { ChunkSide } from '@/types/record';
 import type {
   Citation,
   CitationRef,
+  DocumentCitation,
   HistoryEntry,
   PublishedThesis,
   PublishedVersion,
@@ -81,7 +82,8 @@ export function citation(value: unknown, at: string): Citation {
       current: flag(row.current, `${at}.current`),
     };
   }
-  if (kind !== 'EVIDENCE') return fail(`${at}.kind`, "'EVIDENCE' or 'TRAJECTORY'", kind);
+  if (kind === 'DOCUMENT') return documentCitation(row, at);
+  if (kind !== 'EVIDENCE') return fail(`${at}.kind`, "'EVIDENCE', 'TRAJECTORY' or 'DOCUMENT'", kind);
   const record = object(row.record, `${at}.record`);
   const content = object(row.content, `${at}.content`);
   const verified = object(row.verified, `${at}.verified`);
@@ -122,11 +124,39 @@ export function citation(value: unknown, at: string): Citation {
               };
             }),
           },
-    flag: {
-      flagged: flag(flagged.flagged, `${at}.flag.flagged`),
-      reasons: list(flagged.reasons, `${at}.flag.reasons`).map((reason, index) => text(reason, `${at}.flag.reasons[${String(index)}]`)),
-    },
+    flag: flagOf(flagged, `${at}.flag`),
     argued: flag(row.argued, `${at}.argued`),
+    overObjection: flag(row.overObjection, `${at}.overObjection`),
+  };
+}
+
+/** A flag's reasons as the body carries them — the SAME narrowing for every citation kind that has one. */
+function flagOf(value: unknown, at: string): { flagged: boolean; reasons: string[] } {
+  const flagged = object(value, at);
+  return {
+    flagged: flag(flagged.flagged, `${at}.flagged`),
+    reasons: list(flagged.reasons, `${at}.reasons`).map((reason, index) => text(reason, `${at}.reasons[${String(index)}]`)),
+  };
+}
+
+/**
+ * THE DOCUMENT ARM (thesis A4 :1476 as ruled, R81 QC) — every field narrowed, none defaulted. `custody` is the closed
+ * pair the resolver serves (a SHED document is refused before it reaches the wire, `publishedThesis.ts`), and `title` is
+ * PRESENT and possibly null: a missing key is a drift, never an untitled document.
+ */
+function documentCitation(row: Record<string, unknown>, at: string): DocumentCitation {
+  const custody = text(row.custody, `${at}.custody`);
+  if (custody !== 'HELD' && custody !== 'SEALED') return fail(`${at}.custody`, "'HELD' or 'SEALED'", custody);
+  if (row.title === undefined) return fail(`${at}.title`, 'to be present — `null` is an answer, absent is not', row.title);
+  return {
+    kind: 'DOCUMENT',
+    name: text(row.name, `${at}.name`),
+    pin: text(row.pin, `${at}.pin`),
+    argued: flag(row.argued, `${at}.argued`),
+    title: maybeText(row.title, `${at}.title`),
+    custody,
+    verified: flag(row.verified, `${at}.verified`),
+    flag: flagOf(row.flag, `${at}.flag`),
     overObjection: flag(row.overObjection, `${at}.overObjection`),
   };
 }

@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { DESCRIBE_TOO_LARGE_BYTES, familyOf, modelReadingOf } from '../lib/acceptedDocumentTypes';
+import { modelFileOf } from '../lib/documentModelPart';
 import { CURRENT_EXTRACTOR } from '../lib/documentExtractor';
 import { prisma } from '../lib/prisma';
 import { WRITE_TRANSACTION } from '../walk/pageLog';
@@ -86,7 +87,7 @@ export async function describeDocument(
     if (bytes === null) {
       throw new Error(`describe_document: ${commitment} is HELD and its bucket object is gone — a malformed row that document-recomputable lists`);
     }
-    opinion = await describe({ title, file: { mimeType: document.mimeType, base64: Buffer.from(bytes).toString('base64') }, computedText: current.text !== null });
+    opinion = await describe({ title, file: modelFileOf(document.mimeType, bytes), computedText: current.text !== null });
   } else {
     opinion = await describe({ title, text: current.text ?? '' });
   }

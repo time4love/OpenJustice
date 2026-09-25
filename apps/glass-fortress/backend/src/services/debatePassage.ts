@@ -22,8 +22,12 @@ export interface CitingVersion {
 /** Markdown's paragraph boundary: one or more blank lines. */
 const PARAGRAPH_BREAK = /\n[ \t]*\n/;
 
+/** The token a text carries for a cited record, by kind — `#ev_<fileHash>` or `#doc_<commitment>` (thesis T2). */
+const PREFIX = { EVIDENCE: '#ev_', DOCUMENT: '#doc_' } as const;
+
 /**
- * The paragraphs of `version` that cite `fileHash`, in document order.
+ * The paragraphs of `version` that cite `name`, in document order — a corpus record by its fileHash, or, since document
+ * step 33, a DOCUMENT by its commitment (§6 :705, "the PASSAGE (T3)").
  *
  * ALL OF THEM, NOT THE FIRST. A thesis that cites one record in two places says
  * two things with it, and the assessor is asked whether the record supports what
@@ -39,8 +43,12 @@ const PARAGRAPH_BREAK = /\n[ \t]*\n/;
  * filter — a passage quietly replaced by the whole text is a subject reported as
  * something it is not.
  */
-export function passagesCiting(version: CitingVersion, fileHash: string): string[] {
-  const token = `#ev_${fileHash}`;
+export function passagesCiting(
+  version: CitingVersion,
+  name: string,
+  kind: keyof typeof PREFIX,
+): string[] {
+  const token = `${PREFIX[kind]}${name}`;
 
   const passages = version.text
     .split(PARAGRAPH_BREAK)
@@ -49,7 +57,7 @@ export function passagesCiting(version: CitingVersion, fileHash: string): string
 
   if (passages.length === 0) {
     throw new Error(
-      `debatePassage: version ${version.id} is recorded as citing ${fileHash}, but no paragraph of ` +
+      `debatePassage: version ${version.id} is recorded as citing ${name}, but no paragraph of ` +
         `its text carries ${token}. A version's mentions are parsed from its text, so the two cannot ` +
         'disagree; this is a malformed version, not a state the debate can answer.',
     );
