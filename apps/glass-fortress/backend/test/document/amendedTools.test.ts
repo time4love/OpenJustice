@@ -1,9 +1,19 @@
+jest.mock('../../src/lib/prisma', () => ({
+  prisma: (require('../helpers/evidenceDouble') as typeof import('../helpers/evidenceDouble')).db,
+}));
+jest.mock('../../src/context/researcherContext', () => (require('../thesis/tools') as typeof import('../thesis/tools')).researcherContextDouble);
+jest.mock('../../src/factories/LLMFactory', () => (require('../thesis/tools') as typeof import('../thesis/tools')).llmFactoryTripwire);
+
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SRC } from '../walk/scan';
 import { built } from './built';
 import { NEVER_RAISED_FOR_A_DOCUMENT } from './contract';
 import { modelBody, schemaText } from './schema';
+import { resetDouble, store } from '../helpers/evidenceDouble';
+import { AUTHOR } from '../thesis/fixtures';
+import { ON_THE_FIXTURE, call, resetTools, seedThesis, textCiting } from '../thesis/tools';
+import { COMMITMENT, HELD_BEFORE, HELD_NOW, OTHER_COMMITMENT, documentRow, seedHeld, seedPromoted, versionRow } from './citationWorld';
 
 // ---------------------------------------------------------------------------
 // A4 :1452-:1470 — THE AMENDED TOOLS, BY THEIR ADDED ARMS ONLY.
@@ -30,14 +40,46 @@ async function sourceOf(path: string): Promise<string> {
 }
 
 describe('A4 :1452-:1453 — add_thesis_version parses #doc_ into a kind DOCUMENT mention', () => {
-  it('the pin is from `affirmed` where an Evidence row exists, else CURRENT(d) (§6 :695-:697)', async () => {
-    const source = await sourceOf('services/addThesisVersion.ts');
-    expect(source).toMatch(/DOCUMENT/);
+  // BEHAVIOURAL SINCE DOCUMENT STEP 33 (R81, Entry 15): the tool is CALLED over the evidence double, where these two
+  // cases once read a source file that does not exist (`services/addThesisVersion.ts`; the write is
+  // `mcp/tools/addThesisVersion.ts` over `services/thesisVersionWrite.ts`). Titles kept; the refusal set is Q1's.
+  const next = ON_THE_FIXTURE.add_thesis_version;
+  const AFFIRMED = `0x${'e1'.repeat(32)}`;
+  const write = async (token: string) =>
+    JSON.parse(await call('add_thesis_version', { ...next, text: textCiting(token) }, AUTHOR)) as {
+      code?: string;
+      mentions?: { kind: string; name: string; pin: string | null }[];
+    };
+
+  beforeEach(() => {
+    resetDouble();
+    resetTools();
+    seedThesis();
   });
 
-  it('refuses NOT_A_DOCUMENT, AWAITING_DERIVATION and SHED — T2’s own refusals, ONE SPELLING EACH', async () => {
-    const source = await sourceOf('services/addThesisVersion.ts');
-    for (const code of ['NOT_A_DOCUMENT', 'AWAITING_DERIVATION', 'SHED']) expect(source).toContain(code);
+  it('the pin is from `affirmed` where an Evidence row exists, else CURRENT(d) (§6 :695-:697)', async () => {
+    seedHeld();
+    const unpromoted = await write(`#doc_${COMMITMENT}`);
+    seedThesis();
+    seedPromoted(AFFIRMED);
+    const promoted = await write(`#doc_${COMMITMENT}`);
+    expect([unpromoted.mentions, promoted.mentions]).toEqual([
+      [{ kind: 'DOCUMENT', name: COMMITMENT, pin: HELD_NOW, argued: false }],
+      [{ kind: 'DOCUMENT', name: COMMITMENT, pin: AFFIRMED, argued: false }],
+    ]);
+  });
+
+  // DECLARED (R81 Q1, Entry 3): the first code was NOT_A_DOCUMENT; a `#doc_` naming no document is NOT_A_RECORD, T2's
+  // one word for a token naming nothing (document A4 :1453, plan :245, as conformed 2026-09-24). Title and list amended.
+  it('refuses NOT_A_RECORD, AWAITING_DERIVATION and SHED — T2’s own refusals, ONE SPELLING EACH', async () => {
+    seedHeld();
+    const unknown = await write(`#doc_${OTHER_COMMITMENT}`);
+    store.documentContentVersions = [versionRow(HELD_BEFORE, { derivedUnder: ['v0-an-older-extractor'] })];
+    const awaiting = await write(`#doc_${COMMITMENT}`);
+    store.documents = [documentRow({ bytes: null })];
+    store.sheds = [{ commitment: COMMITMENT, cause: 'SENDER', researcherId: null, reason: null, at: new Date(Date.UTC(2026, 8, 21)) }];
+    const shed = await write(`#doc_${COMMITMENT}`);
+    expect([unknown.code, awaiting.code, shed.code]).toEqual(['NOT_A_RECORD', 'AWAITING_DERIVATION', 'SHED']);
   });
 });
 

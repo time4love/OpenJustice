@@ -7,10 +7,12 @@ import { publicationState, thesisState, type ThesisState } from '../../lib/thesi
 import {
   citationsFrom,
   requireCitations,
+  type DocumentCitationBase,
   type EvidenceCitation,
   type ResolvedCitations,
   type TrajectoryCitation,
 } from '../../services/publishedThesis';
+import { verifiedOf } from '../../services/documentStanding';
 import { loadThesisRows, versionOf, type ThesisRows } from '../../services/thesisRows';
 import { voicesOf, type ModelVoice, type Researcher, type Turn, type Voices } from '../../services/thesisTranscript';
 import { answer, refusal, type Refusal } from './thesisRefusals';
@@ -68,7 +70,12 @@ export interface GetThesisContextInput {
  * `citationsByVersion` decides `resolves` by whether the one resolver returned the pass at all, and `current`
  * from its currency — and stops there.
  */
-type ResolvedMention = EvidenceCitation | (TrajectoryCitation & { pin: null; argued: false });
+type ResolvedMention =
+  | EvidenceCitation
+  | (TrajectoryCitation & { pin: null; argued: false })
+  // THE DOCUMENT ARM (A4 :1476 as ruled 2026-09-25, R81 QC) — the resolver's arm with VERIFIED(d) added HERE, by the
+  // one module that asks the chain (`documentStanding`), because the resolver is imported by a research act.
+  | (DocumentCitationBase & { verified: boolean });
 
 interface VersionView {
   versionId: string;
@@ -193,8 +200,11 @@ export async function thesisContextOf(input: GetThesisContextInput): Promise<The
     rows.mentions,
     [thesis.headVersionId, thesis.publishedVersionId].filter((id): id is string => id !== null),
   );
-  const head = thesis.headVersionId === null ? null : versionView(rows, thesis.headVersionId, voices, cited);
-  const published = thesis.publishedVersionId === null ? null : versionView(rows, thesis.publishedVersionId, voices, cited);
+  // VERIFIED(d) FOR EVERY CITED DOCUMENT OF BOTH VERSIONS, ONCE — the chain and the bucket asked here and nowhere else.
+  const verified = await verifiedOf(cited.documents);
+  const head = thesis.headVersionId === null ? null : versionView(rows, thesis.headVersionId, voices, cited, verified);
+  const published =
+    thesis.publishedVersionId === null ? null : versionView(rows, thesis.publishedVersionId, voices, cited, verified);
 
   const analysed = head === null ? null : analysisOf(rows, head.view.versionId, voices, cited);
   const analysis = analysed?.state ?? ({ state: 'NONE' } as const);
@@ -332,15 +342,24 @@ function versionView(
   versionId: string,
   voices: Voices,
   cited: ResolvedCitations,
+  verified: ReadonlyMap<string, boolean>,
 ): { view: VersionView; cited: Parameters<typeof unargued>[1] } {
   const version = versionOf(rows, versionId);
   if (version === null) {
     throw new Error(`get_thesis_context: thesis ${rows.thesis.id} points at version ${versionId}, which does not exist.`);
   }
   const resolved = requireCitations(cited, versionId);
-  const mentions = resolved.citations.map((citation): ResolvedMention =>
-    citation.kind === 'TRAJECTORY' ? { ...citation, pin: null, argued: false } : citation,
-  );
+  const mentions = resolved.citations.map((citation): ResolvedMention => {
+    if (citation.kind === 'TRAJECTORY') return { ...citation, pin: null, argued: false };
+    if (citation.kind === 'DOCUMENT') {
+      const isVerified = verified.get(citation.name);
+      if (isVerified === undefined) {
+        throw new Error(`get_thesis_context: no VERIFIED for #doc_${citation.name} — it was computed for every cited document.`);
+      }
+      return { ...citation, verified: isVerified };
+    }
+    return citation;
+  });
 
   return {
     view: {

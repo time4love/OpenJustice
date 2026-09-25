@@ -242,7 +242,7 @@ paid-read count one per document.
 
 By addition at thesis step 20's parser: `#doc_<COMMITMENT>` becomes a mention of kind DOCUMENT
 with name = commitment, the pin from `affirmed` where an Evidence row exists and otherwise
-CURRENT(d)'s hash — the receipt version for a sealed document; T2's refusals `NOT_A_DOCUMENT`,
+CURRENT(d)'s hash — the receipt version for a sealed document; T2's refusals `NOT_A_RECORD` (**CONFORMED 2026-09-24 to flows §6 :698, the researcher, R81 Q1**),
 `AWAITING_DERIVATION` and `SHED`, one spelling each. By addition at evidence step 13's debate:
 `open_debate` with `{ document: commitment }` and `DebateSession.recordCommitment`; `NOT_CITED`;
 `NOTHING_TO_PROMOTE` on a sealed document whose content is its bytes; the assessor handed the
@@ -252,7 +252,7 @@ of kind DOCUMENT — the first row of the kind — with `fileHash = commitment`,
 CURRENT(d)`'s hash, and NO chain write; `decide_gap CITED` accepting a commitment the head
 mentions; ANSWERED derived. `NOT_ACQUIRED`, `CONTRADICTED` and `NARROWED` never raised for a
 document — asserted by the suite, never assumed. The thesis and evidence suites green and
-unedited.
+unedited. **RULED 2026-09-25 (the researcher, R81 Q-2): check 18 `DOCUMENT_OPENING_DECIDED` is BUILT HERE, so `publish_thesis` refuses a head citing `#doc_` until step 34 builds `decide_opening`; the public read never meets a published document mention before step 34.**
 
 *Verified by:* the §6 contract green; evidence A7's no-research-act-reaches-the-chain scan green
 with `promote_from_debate` run over a document, and its citation-pins-only-`affirmed` test run
@@ -266,7 +266,7 @@ arrival ANSWERED and ARRIVED empty.
 ### 34 · Publication — the openings, the two checks, what the public reads
 
 `decide_opening` with `NOT_CITED`, `NOT_HELD`, `CANNOT_NARROW` and `STALE_SEQUENCE`; OPENED(d)
-and PUBLIC(d) derived, never stored. By addition at thesis step 23's gate: checks 18
+and PUBLIC(d) derived, never stored. By addition at thesis step 23's gate: checks 18 (**built at step 33, R81 Q-2, :255**)
 `DOCUMENT_OPENING_DECIDED` and 19 `DOCUMENT_QUOTES_PRESENT` over A3's predicates, each naming
 the mentions it examined and reporting zero examined on a version with no `#doc_` token rather
 than passing silently; `CITES_EVIDENCE` counting a DOCUMENT mention; `EVIDENCE_VERIFIED`,

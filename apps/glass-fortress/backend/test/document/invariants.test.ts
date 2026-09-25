@@ -1,9 +1,19 @@
+jest.mock('../../src/lib/prisma', () => ({
+  prisma: (require('../helpers/evidenceDouble') as typeof import('../helpers/evidenceDouble')).db,
+}));
+jest.mock('../../src/context/researcherContext', () => (require('../thesis/tools') as typeof import('../thesis/tools')).researcherContextDouble);
+jest.mock('../../src/factories/LLMFactory', () => (require('../thesis/tools') as typeof import('../thesis/tools')).llmFactoryTripwire);
+
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SRC } from '../walk/scan';
 import { built } from './built';
 import { NO_SENDER_IDENTITY_COLUMNS, NO_SENDER_IDENTITY_MODELS } from './contract';
 import { modelBody, schemaText } from './schema';
+import { resetDouble } from '../helpers/evidenceDouble';
+import { AUTHOR } from '../thesis/fixtures';
+import { ON_THE_FIXTURE, call, resetTools, seedThesis, textCiting } from '../thesis/tools';
+import { COMMITMENT, HELD_NOW, seedHeld, seedPromoted } from './citationWorld';
 
 // ---------------------------------------------------------------------------
 // THE FOURTEEN INVARIANTS, NAMED INDIVIDUALLY: A7's closing list (:1595-:1608), SIX, and
@@ -94,9 +104,20 @@ describe('A7 invariant 5 — NOTHING DELETES a Document, Arrival, version or dec
 });
 
 describe('A7 invariant 6 — a citation pins ONLY `affirmed`', () => {
+  // BEHAVIOURAL SINCE DOCUMENT STEP 33 (R81, Entry 15), where it once read a source file that does not exist: evidence
+  // A7's test run over a DOCUMENT — the version write pins `affirmed` and never CURRENT(d), even after CURRENT moved.
   it('evidence A7’s test, run over a document (A7 :1608)', async () => {
-    const source = await sourceOf('services/addThesisVersion.ts');
-    expect(source).toMatch(/affirmed/i);
+    resetDouble();
+    resetTools();
+    seedThesis();
+    seedHeld();
+    const affirmed = `0x${'e1'.repeat(32)}`;
+    seedPromoted(affirmed);
+    const out = JSON.parse(
+      await call('add_thesis_version', { ...ON_THE_FIXTURE.add_thesis_version, text: textCiting(`#doc_${COMMITMENT}`) }, AUTHOR),
+    ) as { mentions?: { pin: string }[] };
+    // CURRENT(d) is HELD_NOW and it is NOT what the citation pins.
+    expect([out.mentions?.map((m) => m.pin), HELD_NOW === affirmed]).toEqual([[affirmed], false]);
   });
 });
 

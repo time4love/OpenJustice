@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { verifyClaimText } from '../../services/archiveVerification';
+import { documentRefusal } from '../../services/documentRefusals';
+import { verifyDocumentPhrase } from '../../services/verifyDocumentPhrase';
 
 // ---------------------------------------------------------------------------
 // verify_claim_text
@@ -22,19 +24,33 @@ import { verifyClaimText } from '../../services/archiveVerification';
 //                              when the capture is not held
 //
 // Reports, never blocks.
+//
+// THE DOCUMENT ARM — document flows A4 :1470 (RULED 2026-09-23, in scope 2026-09-24, R81 Q3): `{ commitment, phrase }`
+// asks the ONE verdict rule over CURRENT(d)'s computed text (`services/verifyDocumentPhrase`). EXACTLY ONE TARGET — a
+// capture (`url` and `capture`) or a document (`commitment`) — else NEITHER, decided from the INPUT before any row is
+// read (thesis A4 :1521's spelling). The capture arm's behaviour and answer are unchanged. Gated at the route with the
+// rest of this tool (`mcpRoutes.ts`), as read_document is; no new tool, so the surface stays at 50.
 // ---------------------------------------------------------------------------
 
 export const verifyClaimTextSchema = {
-  url: z.string().url().describe('The tracked URL the phrase is claimed to have appeared on'),
+  url: z.string().url().optional().describe('A CAPTURE: the tracked URL the phrase is claimed to have appeared on (with `capture`)'),
   capture: z
     .string()
     .regex(
       /^(\d{14}|\d{4}-\d{2}-\d{2})$/,
       'Pass a Wayback timestamp (YYYYMMDDHHMMSS) or a date (YYYY-MM-DD)',
     )
+    .optional()
     .describe(
-      'Which capture to check: an exact Wayback timestamp (YYYYMMDDHHMMSS), or a date (YYYY-MM-DD) ' +
-        'which is resolved to every capture taken that day',
+      'A CAPTURE: which one to check (with `url`) — an exact Wayback timestamp (YYYYMMDDHHMMSS), or a date ' +
+        '(YYYY-MM-DD) which is resolved to every capture taken that day',
+    ),
+  commitment: z
+    .string()
+    .optional()
+    .describe(
+      "A DOCUMENT, instead of a capture: its commitment, as list_documents returns it — the phrase is checked against " +
+        "the document's current computed text. Give a capture OR a commitment, never both",
     ),
   phrase: z
     .string()
@@ -46,11 +62,34 @@ export const verifyClaimTextSchema = {
 };
 
 export async function verifyClaimTextHandler(input: {
-  url: string;
-  capture: string;
+  url?: string;
+  capture?: string;
+  commitment?: string;
   phrase: string;
 }): Promise<string> {
-  const result = await verifyClaimText(input);
+  // EXACTLY ONE TARGET, from the input alone — nothing is read before this is decided (A4 :1470). A capture is its page
+  // AND its capture; a document its commitment. Both named, or neither whole, is NEITHER.
+  const namesCapture = input.url !== undefined || input.capture !== undefined;
+  if (namesCapture && input.commitment !== undefined) {
+    return JSON.stringify(
+      documentRefusal('NEITHER', 'This call names both a capture (url, capture) and a document (commitment). Check one target per call.'),
+    );
+  }
+  if (input.commitment !== undefined) {
+    return JSON.stringify(await verifyDocumentPhrase(input.commitment, input.phrase));
+  }
+  if (input.url === undefined || input.capture === undefined) {
+    return JSON.stringify(
+      documentRefusal(
+        'NEITHER',
+        namesCapture
+          ? 'A capture is named by BOTH its page (url) and its capture (a timestamp or a date); this call gives only one.'
+          : 'This call names no target: give a capture (url and capture) or a document (commitment).',
+      ),
+    );
+  }
+
+  const result = await verifyClaimText({ url: input.url, capture: input.capture, phrase: input.phrase });
 
   if (result.status !== 'OK') return JSON.stringify(result);
 

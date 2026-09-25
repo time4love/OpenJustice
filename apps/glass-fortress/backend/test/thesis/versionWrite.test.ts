@@ -294,9 +294,6 @@ describe('add_thesis_version — A4 :1468–:1474 (thesis step 20)', () => {
       ['#ev_0x followed by 63 hex', `#ev_0x${'a'.repeat(63)}`],
       ['#ev_0x followed by a non-hex character', `#ev_0xg${'a'.repeat(63)}`],
       ['#ev_ followed by nothing', '#ev_'],
-      // THE RESEARCHER'S RULING, R47 round 2 (§6-R2): `#doc_` is RECOGNISED before document plan step 33
-      // adds the kind — refused, never passed over as text. Not malformed; the shape's label says what it is.
-      ['#doc_ followed by a commitment, before document step 33', `#doc_0x${'ab'.repeat(32)}`],
     ] as const) {
       it(`a malformed token — ${shape} — refuses NOT_A_RECORD, never a plain string (A1 :1245)`, async () => {
         seedThesis();
@@ -304,6 +301,15 @@ describe('add_thesis_version — A4 :1468–:1474 (thesis step 20)', () => {
         expectRefusal('add_thesis_version', out, 'NOT_A_RECORD');
       });
     }
+
+    // DOCUMENT STEP 33 (R81 Q1, declared — the title only): a WELL-FORMED `#doc_` whose commitment no document holds is
+    // not a malformed token. This suite's world holds no document, so it names nothing: T2's one word, NOT_A_RECORD.
+    it('a #doc_ naming no document — a well-formed commitment no document holds — refuses NOT_A_RECORD (document A4 :1453)', async () => {
+      const token = `#doc_0x${'ab'.repeat(32)}`;
+      seedThesis();
+      const out = await call('add_thesis_version', { ...next, text: textCiting(token) }, AUTHOR);
+      expectRefusal('add_thesis_version', out, 'NOT_A_RECORD');
+    });
 
     it("pins an Evidence row's `affirmed` — the only value allowed (T2 :408–:411)", async () => {
       seedThesis();

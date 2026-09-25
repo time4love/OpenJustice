@@ -43,6 +43,9 @@ export type ThesisToolCode =
   | 'NOT_A_RECORD'
   | 'NOT_ACQUIRED'
   | 'AWAITING_DERIVATION'
+  // DOCUMENT PLAN STEP 33 (document flows A4 :1452–:1453, as conformed 2026-09-24): a `#doc_` citation of a document
+  // whose content was taken back — never AWAITING, because nothing is owed (A3 :1371). The version write's arm.
+  | 'SHED'
   | 'UNKNOWN_TRAJECTORY_ID'
   | 'NOT_ASSESSED'
   | 'PROVISION_MISMATCH'

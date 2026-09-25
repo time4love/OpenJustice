@@ -119,9 +119,13 @@ describe('the version stores the claim VERBATIM (T2 :451–:453)', () => {
   });
 });
 
-describe('#doc_ before document plan step 33 (R47 §6-R2, §9-17)', () => {
-  it('refuses NOT_A_RECORD with an error that names document plan step 33', async () => {
-    const out = await resolveCitations(textCiting(`#doc_0x${'ab'.repeat(32)}`));
-    expect(out).toEqual({ code: 'NOT_A_RECORD', error: expect.stringContaining('step 33') as unknown });
+// AMENDED AT DOCUMENT STEP 33, DECLARED (plan :243 turns this arm into a citation; R81 Q1 keeps its code): the case held
+// the world BEFORE step 33, where every `#doc_` was refused naming the step. Since step 33 a `#doc_` is a DOCUMENT citation,
+// and one naming no document still refuses NOT_A_RECORD — T2's one word — now naming the token it could not resolve.
+describe('#doc_ naming no document (document plan step 33 :245; R81 Q1)', () => {
+  it('refuses NOT_A_RECORD with an error that names the token', async () => {
+    const token = `#doc_0x${'ab'.repeat(32)}`;
+    const out = await resolveCitations(textCiting(token));
+    expect(out).toEqual({ code: 'NOT_A_RECORD', error: expect.stringContaining(token) as unknown });
   });
 });
