@@ -145,6 +145,6 @@ citation made in that exercise is re-pinned when the extractor moves.
 
 ## 6. Issues
 
-Filed from this record: the ambiguity of which quoted span belongs to which document (ruling 4). Its two shapes are two
-`#doc_` tokens in one paragraph, and a quotation of something that is not the document standing beside a `#doc_` token.
-Also filed: the quote object (ruling 5).
+Filed from this record: #590, the ambiguity of which quoted span belongs to which document (ruling 4). Its two shapes are
+two `#doc_` tokens in one paragraph, and a quotation of something that is not the document standing beside a `#doc_` token.
+Also filed: #591, the quote object (ruling 5).
