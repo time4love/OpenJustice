@@ -203,15 +203,31 @@ const PDF_LINES = [
   'throughout the period 3 September 2026 to 30 September 2026.',
 ] as const;
 
+/** A PDF string literal's body — `(`, `)` and `\\` escaped. */
+function pdfString(text: string): string {
+  return text.replace(/([()\\])/g, '\\$1');
+}
+
 function pdfWithTextLayer(): Buffer {
-  const stream = [
-    'BT',
-    '/F1 12 Tf',
-    '72 720 Td',
-    '16 TL',
-    ...PDF_LINES.map((line) => `(${line.replace(/([()\\])/g, '\\$1')}) Tj T*`),
-    'ET',
-  ].join('\n');
+  return pdfOf(
+    [
+      'BT',
+      '/F1 12 Tf',
+      '72 720 Td',
+      '16 TL',
+      ...PDF_LINES.map((line) => `(${pdfString(line)}) Tj T*`),
+      'ET',
+    ].join('\n'),
+  );
+}
+
+/**
+ * A one-page PDF around a content stream — Helvetica as `/F1`, US Letter, no `/CreationDate`.
+ *
+ * Shared by both text-layer PDFs, so the committed `pdf-text-layer.pdf` is byte-for-byte what it was before the second
+ * one existed (`test/documentGuards.test.ts` regenerates it and refuses a changed byte).
+ */
+function pdfOf(stream: string): Buffer {
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
@@ -231,6 +247,71 @@ function pdfWithTextLayer(): Buffer {
   const trailer = `trailer\n<< /Size ${String(objects.length + 1)} /Root 1 0 R >>\nstartxref\n${String(xrefAt)}\n%%EOF\n`;
   return Buffer.from(body + xref + trailer, 'latin1');
 }
+
+// ---------------------------------------------------------------------------
+// 1b · THE SAME KIND, A SECOND FIXTURE — ONE WORD DRAWN AS TWO RUNS. Ruling 7 of
+// `docs/gf-document-hebrew-text-layer-2026-09-24.md` §5 (:138–:141), CLOSED 2026-09-25.
+//
+// WHY IT EXISTS. The fixture above draws one run per line, so it reads the same under any join: a regression to
+// joining every pdf.js item with a space would pass every case (§2b :76–:78). This one draws each line as TWO runs,
+// each in its OWN marked-content sequence — `/Span BMC … EMC` makes pdf.js close an item at the boundary, which is how
+// the producer of MK 05/2023 came to have its words split (§2 :50–:55) — with the gap between the runs placed by a `TJ`
+// offset, so no width table is needed:
+//
+//   line 1   „Adv” | „erse …”      gap 0          one word          — the split the ruling names
+//   line 2   „minis” | „try …”     gap 0.04 em    one word          — below the 0.047 ceiling of split pieces (§2b :70)
+//   line 3   „-” | „the …”         gap 0.08 em    a space           — above the 0.077 floor of bullet dots (§2b :79)
+//
+// A SECOND FIXTURE OF KIND PDF_TEXT_LAYER, NOT A FIFTH KIND, AND NOT IN `FIXTURES`: plan step 29 (:157) rules FOUR kinds,
+// and `FIXTURES` is pinned at four ENTRIES by `test/documentGuards.test.ts` and the contract case
+// `test/document/content.test.ts` :130, while `extractor-coverage` prints its entries as kinds. It is not committed
+// either: `test/documentPdfProcess.test.ts` writes these bytes to a temporary file for the compiled reader to read.
+// Latin, for the reason the first fixture gives above — and the defect is not Hebrew-specific (§2 :54).
+// ---------------------------------------------------------------------------
+
+/**
+ * Each line as its two runs, the gap before the second in font sizes, and what the line READS — written out rather
+ * than computed, because a ground truth derived from the threshold would agree with any threshold.
+ */
+const SPLIT_RUN_LINES: readonly { first: string; second: string; gapEm: number; reads: string }[] = [
+  { first: 'Adv', second: 'erse events were reported', gapEm: 0, reads: 'Adverse events were reported' },
+  { first: 'to the minis', second: 'try within days', gapEm: 0.04, reads: 'to the ministry within days' },
+  { first: '-', second: 'the channel stayed open', gapEm: 0.08, reads: '- the channel stayed open' },
+];
+
+function pdfWithSplitRuns(): Buffer {
+  // A `TJ` number n moves the next glyph by -n/1000 of the font size, so a gap of g font sizes is n = -1000g.
+  const run = (text: string, gapEm: number): string =>
+    `/Span BMC [${gapEm === 0 ? '' : `${String(-Math.round(gapEm * 1000))} `}(${pdfString(text)})] TJ EMC`;
+  return pdfOf(
+    [
+      'BT',
+      '/F1 12 Tf',
+      '72 720 Td',
+      '16 TL',
+      ...SPLIT_RUN_LINES.map((line) => `${run(line.first, 0)} ${run(line.second, line.gapEm)} T*`),
+      'ET',
+    ].join('\n'),
+  );
+}
+
+/**
+ * The split-run fixture — kind PDF_TEXT_LAYER, outside the four-kind set (see its section above).
+ *
+ * Its ground truth is what a reader that joins by geometry returns: the first two lines' words WHOLE, the bullet spaced.
+ * Today's-join form of the same bytes — „Adv erse” — is asserted by the process test, so the fixture is proven to HOLD
+ * the defect rather than assumed to.
+ */
+export const SPLIT_RUN_FIXTURE: Fixture = {
+  kind: 'PDF_TEXT_LAYER',
+  file: 'pdf-split-runs.pdf',
+  mimeType: 'application/pdf',
+  groundTruth: SPLIT_RUN_LINES.map((line) => line.reads).join('\n'),
+  proves:
+    'a word drawn as two runs reads WHOLE and a bullet gap reads as a space — the geometry join of ruling 3, which a ' +
+    'join putting a space between every item fails',
+  bytes: pdfWithSplitRuns,
+};
 
 // ---------------------------------------------------------------------------
 // 2 · A SCAN — HEBREW, RASTERISED FROM A FONT ENCODED HERE.

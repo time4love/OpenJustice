@@ -44,6 +44,21 @@ import type { CellValue, Workbook } from 'exceljs';
 export type ExtractorVersion = string & { readonly __extractorVersion: unique symbol };
 
 /**
+ * THE PDF JOIN'S THRESHOLD, in FONT SIZES — RULED 2026-09-25 by the researcher.
+ *
+ * `joinPdfText` puts a space between two runs on one line only where the gap between them exceeds this many font
+ * sizes. The value was read off the MEASURED VALLEY of `docs/gf-document-hebrew-text-layer-2026-09-24.md` §2b (:69–:81),
+ * over MK 05/2023: pieces of one word split into two runs sit at or below 0.047, table-of-contents leaders from 0.059,
+ * list-bullet dots from 0.077, gaps between words from about 0.20. §2b bounds it to the band 0.05–0.07, and this value is
+ * the one point in the band measured on all four of its counts (the three quotes PRESENT, no bullet glued). Within the
+ * band only table-of-contents leaders move with the value.
+ *
+ * SPELLED ONCE: `CURRENT_EXTRACTOR` is built from it, and `test/documentPdfJoin.test.ts` scans this file for any second
+ * spelling of the value.
+ */
+export const PDF_JOIN_GAP_EM = 0.06;
+
+/**
  * THE EXTRACTOR, RULED 2026-09-23 — `docs/gf-extractor-ruling-2026-09-23.md`.
  *
  * The researcher's two rulings: **SHIP `ocr-none`** — no OCR engine enters v1 — and a
@@ -52,12 +67,18 @@ export type ExtractorVersion = string & { readonly __extractorVersion: unique sy
  * EVERY STAGE NAMES ITS ENGINE AND ITS BUILD, and that is ruling §6.6 :198-:206 in terms,
  * in `TEXT_EXTRACTION_VERSION`'s grammar (dash-joined, no `+`):
  *
- *   v1              this layer's first extractor
+ *   v2              this layer's second extractor: `v1` joined every PDF text item with a
+ *                   space, and that join was RULED A DEFECT on 2026-09-25 — it split words
+ *                   a producer drew as two runs (the Hebrew text-layer doc, §5 ruling 3)
  *   pdfjs6.3.289    the PDF text-layer reader, EXACT-pinned — the version is part of the
  *                   provenance because a reader's output is the reader's
  *   streamorder     `getTextContent()` items joined in CONTENT-STREAM ORDER, with no
  *                   bidi-reordering heuristic: "it is a second reading of the bytes and
  *                   it moves when tuned" (the ruling, §6.5)
+ *   gapjoin<N>em    the JOIN POLICY and its THRESHOLD: a space between two runs on one
+ *                   line only where the gap exceeds `PDF_JOIN_GAP_EM` font sizes, a new
+ *                   line where the baseline moves or pdf.js marks one (`joinPdfText`).
+ *                   Built from the constant below, so the number is spelled once
  *   ocr-none        NO OCR STAGE. A scan derives no computed text; its content IS the
  *                   bytes and a quoted span from it is UNCHECKED, with the reason
  *   exceljs4.4.0    the spreadsheet PARSER, EXACT-pinned, for the same reason the PDF
@@ -85,10 +106,11 @@ export type ExtractorVersion = string & { readonly __extractorVersion: unique sy
  *
  * MOVING IT IS ONE EDIT AND THE PASS RE-DERIVES. Adding an OCR stage later moves this
  * string; `forensics:rederive-documents` then re-derives HELD documents, and only those
- * whose text actually changes gain a version (§3 :316-:317).
+ * whose text actually changes gain a version (§3 :316-:317). Moving it to `v2` is exactly
+ * that: from the deploy until the pass runs, every HELD document reads AWAITING_DERIVATION.
  */
 export const CURRENT_EXTRACTOR: ExtractorVersion =
-  'v1-pdfjs6.3.289-streamorder-ocr-none-exceljs4.4.0-xlsxcells-csvraw-nfc' as ExtractorVersion;
+  `v2-pdfjs6.3.289-streamorder-gapjoin${String(PDF_JOIN_GAP_EM)}em-ocr-none-exceljs4.4.0-xlsxcells-csvraw-nfc` as ExtractorVersion;
 
 // ---------------------------------------------------------------------------
 // WHAT READS THE BYTES — §3 :277-:286, the four kinds as amended 2026-09-23.
@@ -163,12 +185,88 @@ export interface Extraction {
 type Reader = (bytes: Uint8Array, type: string) => Promise<string | null>;
 
 /**
+ * One pdf.js text item, by the four fields the join reads — pdf.js 6.3.289's `TextItem` satisfies it structurally.
+ *
+ * `transform` is `[a, b, c, d, x, y]`: the run starts at (`x`, `y`) on its baseline, and `hypot(c, d)` is its font size
+ * on the page. `width` is the run's advance. `hasEOL` is pdf.js's own end-of-line mark: set on the run before a break,
+ * or carried by an EMPTY run pdf.js pushes when no run is open (`appendEOL`).
+ */
+export interface PdfTextRun {
+  str: string;
+  transform: number[];
+  width: number;
+  hasEOL: boolean;
+}
+
+/** A run's place on the page — a LOUD guard, because a run that is not six numbers is not a pdf.js text item. */
+function geometryOf(run: PdfTextRun): { left: number; right: number; baseline: number; fontSize: number } {
+  const [c, d, x, y] = [run.transform.at(2), run.transform.at(3), run.transform.at(4), run.transform.at(5)];
+  if (run.transform.length !== 6 || c === undefined || d === undefined || x === undefined || y === undefined) {
+    throw new Error(`joinPdfText: a text run's transform is not six numbers (${JSON.stringify(run.transform)}).`);
+  }
+  return { left: x, right: x + run.width, baseline: y, fontSize: Math.hypot(c, d) };
+}
+
+/**
+ * THE GEOMETRY JOIN — one page's runs, in CONTENT-STREAM ORDER, into text. Ruling 3 of
+ * `docs/gf-document-hebrew-text-layer-2026-09-24.md` §5 (:126–:129), within §2b's bounds (:57–:88).
+ *
+ * IT DECIDES ONLY THE SEPARATOR BETWEEN TWO RUNS. A run's own characters are emitted as pdf.js returned them, never
+ * edited and never reordered: a trailing space before a line break is kept, and a Latin run a producer wrote in visual
+ * order stays where the content stream put it — the residual the extractor ruling accepted without a reordering
+ * heuristic (`docs/gf-extractor-ruling-2026-09-23.md` §6.5 :184–:189; §2b :82–:85).
+ *
+ *   a NEW LINE   where the baseline moves (`y` differs — strict, no tolerance), or where pdf.js marks an end of line.
+ *                Both: on MK 05/2023 the mark alone misses real line breaks (pdf.js's test is a strict `> height`),
+ *                and a missed break would be measured as a horizontal gap and could glue two lines' words together.
+ *   a SPACE      between two runs on one line when the gap between their boxes exceeds `PDF_JOIN_GAP_EM` font sizes,
+ *                and neither side already carries whitespace — so a separator is never doubled.
+ *   nothing      otherwise: a word its producer drew as two runs reads as one word.
+ *
+ * THE GAP IS THE DISTANCE BETWEEN THE TWO BOXES ALONG THE BASELINE, whichever way the line advances —
+ * `max(b.left − a.right, a.left − b.right)` — so a right-to-left run drawn leftward is measured from its right edge
+ * with no direction guess, and it is NEGATIVE when the boxes overlap (a visual-order run), which never spaces. The font
+ * size is the LATER run's vertical scale, `hypot(c, d)`, as pdf.js computes a run's height. The comparison is written
+ * `gap > PDF_JOIN_GAP_EM * fontSize`: the same inequality as gap ÷ size for any positive size, and a degenerate
+ * zero-size run spaces exactly when the gap is positive rather than dividing by zero.
+ */
+export function joinPdfText(runs: readonly PdfTextRun[]): string {
+  let text = '';
+  let previous: PdfTextRun | null = null;
+  let marked = false;
+  for (const run of runs) {
+    if (run.str === '') {
+      // An empty run carries nothing but, possibly, pdf.js's end-of-line mark for the pair around it.
+      if (run.hasEOL && previous !== null) marked = true;
+      continue;
+    }
+    if (previous !== null) {
+      const before = geometryOf(previous);
+      const after = geometryOf(run);
+      if (marked || after.baseline !== before.baseline) {
+        text += '\n';
+      } else {
+        const gap = Math.max(after.left - before.right, before.left - after.right);
+        const whitespaceAlready = /\s$/u.test(text) || /^\s/u.test(run.str);
+        if (gap > PDF_JOIN_GAP_EM * after.fontSize && !whitespaceAlready) text += ' ';
+      }
+    }
+    text += run.str;
+    previous = run;
+    marked = run.hasEOL;
+  }
+  return text;
+}
+
+/**
  * THE PDF TEXT LAYER — `pdfjs-dist`, items in CONTENT-STREAM ORDER.
  *
  * A born-digital PDF and a scanned one wear the same extension: the first carries a text
  * layer and is read here, the second is an image in a PDF wrapper and, under `ocr-none`,
  * returns nothing — which this reader reports as READ_NOTHING rather than as an error,
  * because "a scan is bytes-only" is an outcome the design accepts.
+ *
+ * A PAGE'S RUNS ARE JOINED BY GEOMETRY (`joinPdfText` above), pages by a line break.
  *
  * NO BIDI HEURISTIC, DELIBERATELY. A producer that wrote Hebrew in VISUAL order comes back
  * word-reversed, and a true quote against such a PDF then reads ABSENT — visibly. The
@@ -197,11 +295,13 @@ type Reader = (bytes: Uint8Array, type: string) => Promise<string | null>;
 //                                              -> "A dynamic import callback was invoked
 //                                                 without --experimental-vm-modules"
 //
-// The last one DOES work with `NODE_OPTIONS=--experimental-vm-modules` (measured: the
-// fixture reads — 1 page, 3 text items). That is a change to `npm test` and to CI affecting
-// all five projects, plus a lint-hostile construct in this file, and it is the researcher's
-// call rather than this seat's. Until then the PDF arm is measured by `extractor-coverage`,
-// which runs under plain Node, and the suites SAY SO rather than implying coverage.
+// The last one works with `NODE_OPTIONS=--experimental-vm-modules`, and it was measured
+// BREAKING the gating run: every `test/extraction` suite then fails to load on Node 22, and
+// 93 cases stop running. So the researcher ruled (2026-09-23) that the PDF arm is held by a
+// PROCESS-LEVEL test instead — `test/documentPdfProcess.test.ts` runs this module COMPILED
+// in a child `node`, with a vacuity guard against a stale `dist/`. The join itself,
+// `joinPdfText`, imports nothing from pdfjs, so jest tests it directly
+// (`test/documentPdfJoin.test.ts`).
 // ---------------------------------------------------------------------------
 
 const readPdfTextLayer: Reader = async (bytes) => {
@@ -222,7 +322,7 @@ const readPdfTextLayer: Reader = async (bytes) => {
     for (let number = 1; number <= document.numPages; number += 1) {
       const page = await document.getPage(number);
       const content = await page.getTextContent();
-      pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '));
+      pages.push(joinPdfText(content.items.filter((item) => 'str' in item)));
     }
     return pages.join('\n');
   } finally {
