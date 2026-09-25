@@ -31,6 +31,11 @@ export interface LoadedHead {
   /** Every EVIDENCE citation, resolved to the record the corpus holds for its name. */
   records: { name: string; record: ResolvedRecord }[];
   trajectoryIds: string[];
+  /**
+   * Every DOCUMENT citation's commitment, in mention order — document step 33, additive. Not fingerprinted (the critic's
+   * material is the corpus, target §9.2); it rides the head so check 18 names its subjects without a second mention read.
+   */
+  documentNames: string[];
   decisions: ThesisGapDecision[];
   list: GapEntry[];
 }
@@ -87,6 +92,7 @@ export function headFrom(rows: ThesisRows, headVersionId: string, records: Reado
     version,
     records: resolvedRecords,
     trajectoryIds: mentions.filter((m) => m.kind === 'TRAJECTORY').map((m) => m.name),
+    documentNames: mentions.filter((m) => m.kind === 'DOCUMENT').map((m) => m.name),
     decisions: rows.decisions,
     list: gapList(rows.decisions, rows.thesis.id, mentions.map((m) => m.name)),
   };

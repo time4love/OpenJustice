@@ -222,6 +222,15 @@ export const store = {
   workListRows: [] as Row[],
   rules: [] as Row[],
   ruleMatches: [] as Row[],
+  /**
+   * THE DOCUMENT LAYER'S ROWS — document step 33, additive (R81 Q1; the sketch's [R1-4]). A `#doc_` citation resolves
+   * through `documentCitation.documentsByCommitment`, and check 18 reads the openings in force. Empty by default, so a
+   * suite that seeds none is answered `[]` — a `#doc_` naming no document, exactly as a database holding none answers.
+   */
+  documents: [] as Row[],
+  documentContentVersions: [] as Row[],
+  sheds: [] as Row[],
+  documentOpeningDecisions: [] as Row[],
 };
 
 type ThesisRowsKey =
@@ -1179,6 +1188,37 @@ export const db = {
       ),
     ),
   },
+  // DOCUMENT STEP 33, additive: reads only — no writer of these tables is on a thesis or evidence path. `where` through
+  // `whereTests` (equality and `in`; anything else REJECTS, by name); a document's `include` of its versions and its shed
+  // is answered from the rows seeded beside it.
+  document: {
+    findMany: jest.fn(
+      ask('document', 'findMany', (args?: { where?: Row; include?: { versions?: boolean; shed?: boolean } }) => {
+        const tests = whereTests('document', args?.where);
+        if (!Array.isArray(tests)) return Promise.reject(tests);
+        return Promise.resolve(
+          store.documents
+            .filter((row) => tests.every((test) => test(row)))
+            .map((row) => ({
+              ...row,
+              ...(args?.include?.versions === true
+                ? { versions: store.documentContentVersions.filter((v) => v['commitment'] === row['commitment']) }
+                : {}),
+              ...(args?.include?.shed === true ? { shed: store.sheds.find((s) => s['commitment'] === row['commitment']) ?? null } : {}),
+            })),
+        );
+      }),
+    ),
+  },
+  documentOpeningDecision: {
+    findMany: jest.fn(
+      ask('documentOpeningDecision', 'findMany', (args?: { where?: Row }) => {
+        const tests = whereTests('documentOpeningDecision', args?.where);
+        if (!Array.isArray(tests)) return Promise.reject(tests);
+        return Promise.resolve(store.documentOpeningDecisions.filter((row) => tests.every((test) => test(row))));
+      }),
+    ),
+  },
   $transaction: jest.fn(defaultTransaction),
 };
 
@@ -1231,6 +1271,10 @@ export function resetDouble(): void {
   store.workListRows = [];
   store.rules = [];
   store.ruleMatches = [];
+  store.documents = [];
+  store.documentContentVersions = [];
+  store.sheds = [];
+  store.documentOpeningDecisions = [];
   db.debateSession.findUnique.mockImplementation(defaultSessionLookup);
   db.$transaction.mockImplementation(defaultTransaction);
   db.trackedUrl.findUnique.mockImplementation(defaultPageLookup);

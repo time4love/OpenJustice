@@ -141,6 +141,9 @@ export const WRITE_TOOLS = new Set([
   // which is unbounded per-call work against a free third-party service. An
   // anonymous caller could walk a decade of captures through them, which is the
   // same exposure that gated get_research_agenda and check_on_chain_status.
+  // `verify_claim_text`'s DOCUMENT arm (document step 33, document flows A4 :1470) asks no archive, and is gated
+  // for a second reason, read_document's (THE RESEARCHER'S DOOR, below): a researcher's documents, unopened, are working state a
+  // public read never reveals — a phrase checked against one would disclose its text a phrase at a time.
   'verify_claim_text',
   'audit_thesis_claims',
   // THE DEBATE — evidence step 13, docs/gf-evidence-flows.md §4 and A4.

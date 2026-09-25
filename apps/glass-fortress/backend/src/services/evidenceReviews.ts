@@ -60,7 +60,21 @@ import {
 /** The record as A1 names it — never a row id, never a date pair. */
 export type NamedRecord =
   | { url: string; capture: string }
-  | { url: string; before: string; after: string };
+  | { url: string; before: string; after: string }
+  | DocumentRecord;
+
+/**
+ * A DOCUMENT, as a record is answered — `{ commitment, title }`, ONE shape wherever a record is answered (evidence A4
+ * :1123, :1144, :1146 as ruled 2026-09-25, R81 QB; the title is document A2 :1271's). `title` is null only for a
+ * SEALED document, which step 32's door brings: the CHECK `Document_title_required_when_held` requires it on a held one.
+ */
+export interface DocumentRecord {
+  commitment: string;
+  title: string | null;
+}
+
+/** A capture's or a pair's record — what this module's CONTENT_MOVED path names; a document has no captures to move. */
+type CorpusRecordName = Exclude<NamedRecord, DocumentRecord>;
 
 /**
  * Every route that moved CURRENT off what a human affirmed — a UNION, not a
@@ -303,7 +317,7 @@ async function evaluate(row: RecordRow, pages: PageCache): Promise<ReviewEntry |
     };
   }
 
-  const record: NamedRecord =
+  const record: CorpusRecordName =
     diff === null
       ? { url: requireCapture(capture).trackedUrl.url, capture: nameOf(capture) }
       : { url: diff.trackedUrl.url, before: nameOf(diff.beforeSnapshot), after: nameOf(diff.afterSnapshot) };
@@ -371,7 +385,7 @@ function requireCapture(capture: LoadedCapture | null): NamedCapture {
 /** The capture's name, through the one guard. */
 const nameOf = (capture: LoadedCapture | null): string => requireCapture(capture).waybackTimestamp;
 
-function pairOf(record: NamedRecord): string {
+function pairOf(record: CorpusRecordName): string {
   return 'before' in record ? `${record.before} → ${record.after}` : record.capture;
 }
 
@@ -499,7 +513,7 @@ function requireMoved(material: MovedMaterial, fileHash: string): { current: Non
 
 async function entryForCapture(
   row: RecordRow,
-  record: NamedRecord,
+  record: CorpusRecordName,
   capture: LoadedCapture,
 ): Promise<ReviewEntry | NotEvaluable> {
   const material = await movedFrom(row, row.affirmedContentVersionHash);
@@ -664,7 +678,7 @@ async function movedFromDiff(diff: NonNullable<RecordRow['urlVersionDiff']>, fro
 
 async function entryForDiff(
   row: RecordRow,
-  record: NamedRecord,
+  record: CorpusRecordName,
   diff: NonNullable<RecordRow['urlVersionDiff']>,
   pages: PageCache,
 ): Promise<ReviewEntry | NotEvaluable> {
@@ -877,7 +891,7 @@ async function citationsOf(fileHash: string): Promise<Citation[]> {
  */
 async function narrowingFor(
   diff: NonNullable<RecordRow['urlVersionDiff']>,
-  record: NamedRecord,
+  record: CorpusRecordName,
   wideUnits: ContentUnit[],
   pages: PageCache,
 ): Promise<NarrowingMaterial | null> {

@@ -4,6 +4,7 @@ import { provisionTitleOf } from '../lib/provisions';
 import type { ChunkSide } from '../lib/diffChunking';
 import { chunksOf, heldTextKey, heldTextsFor, pairName, recordsByName, type ResolvedRecord } from './corpusReads';
 import { argued, EVER_PUBLISHED, flaggedFor, verifiedFor, type FlagReport, type VerifiedReport } from './evidencePredicates';
+import { documentsByCommitment, type CitedDocument } from './documentCitation';
 import type { PublicationMaterial } from './publicationAssessor';
 import { decisionsAtPublication, gapList, theCall, theRequests, trajectoryCurrent, type CitedMention } from './thesisPredicates';
 import { resolveTrajectoryCitations, type TrajectoryCurrency } from './trajectoryCitation';
@@ -175,6 +176,27 @@ export interface EvidenceCitation {
   overObjection: boolean;
 }
 
+/**
+ * A DOCUMENT citation, resolved — thesis A4 :1476's DOCUMENT arm (R81 QC) WITHOUT `verified`.
+ *
+ * `verified` is VERIFIED(d) = RECOMPUTABLE(d) AND ANCHORED(d) (document A6 :1529), and ANCHORED(d) is a CHAIN READ
+ * (A3 :1366). This module is imported by `debateState.ts`, a research act (`handlesOf`), so a chain read here would reach
+ * the debate through a chain of imports (`test/researchActsReachNoChain.test.ts`). The gated read completes the arm
+ * through `documentStanding.verifiedOf`, the one module that asks the chain, which no research act imports.
+ * `custody` is HELD or SEALED only: a SHED document cannot be cited (the version write refuses SHED) — a cited one that
+ * was shed after is FLAGGED's SHED arm, step 35's, and this resolver refuses it LOUDLY until then.
+ */
+export interface DocumentCitationBase {
+  kind: 'DOCUMENT';
+  name: string;
+  pin: string;
+  argued: boolean;
+  title: string | null;
+  custody: 'HELD' | 'SEALED';
+  flag: { flagged: boolean; reasons: readonly string[] };
+  overObjection: boolean;
+}
+
 export type TrajectoryCitation =
   | { kind: 'TRAJECTORY'; name: string; resolves: true; claimText: string; url: string; transitions: number; current: boolean }
   | { kind: 'TRAJECTORY'; name: string; resolves: false };
@@ -286,7 +308,7 @@ async function citationRefsOf(versionId: string): Promise<CitationRef[]> {
 
 /** One version's RESOLVED citations, and the rows UNARGUED reads — both off the one read of its mentions. */
 export interface VersionCitations {
-  citations: (EvidenceCitation | TrajectoryCitation)[];
+  citations: (EvidenceCitation | TrajectoryCitation | DocumentCitationBase)[];
   /**
    * The same mentions as `thesisPredicates.CitedMention`, for UNARGUED(v).
    *
@@ -316,9 +338,9 @@ export interface CitationMention {
    * enumeration `anchoredCaptureHash.ts` :64-:67 describes — "a compiler's list is complete
    * and a grep's is not".
    *
-   * THIS READER HANDLES TWO OF THE THREE AND REFUSES THE THIRD BY NAME, below. A `#doc_`
-   * mention has no writer until step 33 and no resolver until step 34, so the refusal is
-   * unreachable today and becomes reachable the moment step 33 lands without step 34.
+   * ALL THREE ARE RESOLVED SINCE DOCUMENT STEP 33, which writes the first `#doc_` mention:
+   * the DOCUMENT arm below answers the working view (thesis A4 :1476, R81 QC), and the PUBLIC
+   * page refuses it by name (`publicCitations`) until step 34 builds what the public reads.
    */
   kind: MentionType;
   name: string;
@@ -337,6 +359,12 @@ export interface ResolvedCitations {
    * which evidence A3 :1060–:1063 permits sharing; every predicate over it is still CALLED (A3 :1413–:1414).
    */
   records: Map<string, ResolvedRecord>;
+  /**
+   * Every DOCUMENT commitment asked for that names a document — the ONE document read this resolver made. REVIEWS
+   * names an unargued document from it (R81 QB), and the gated read computes VERIFIED(d) over it, so neither reads
+   * the rows again.
+   */
+  documents: Map<string, CitedDocument>;
   /**
    * Every cited page of every version asked for, DEDUPLICATED BY URL — thesis A4 :1476's union.
    *
@@ -421,7 +449,7 @@ export async function citationsFrom(
   const byVersion = new Map<string, VersionCitations>(wanted.map((id) => [id, { citations: [], cited: [] }]));
   // url → trackedUrlId, one entry per cited page.
   const pages = new Map<string, string>();
-  if (wanted.length === 0) return { byVersion, records: new Map(), pages: [], flags: new Map(), trajectories: new Map() };
+  if (wanted.length === 0) return { byVersion, records: new Map(), documents: new Map(), pages: [], flags: new Map(), trajectories: new Map() };
 
   const asked = new Set(wanted);
   const mentions = allMentions.filter((m) => asked.has(m.versionId));
@@ -438,13 +466,16 @@ export async function citationsFrom(
   // resolver silently. Step 28 made the difference real; the explicit arm below names it.
   const evidenceMentions = mentions.filter((m) => m.kind === 'EVIDENCE');
   const names = evidenceMentions.map((m) => m.name);
-  // SIBLINGS, NOT A SEQUENCE. None of the three reads the others' answer — they are three plurals over the
-  // same name set — and awaited in turn they cost the SUM of their round trips. Only `heldTextsFor` depends on
-  // one of them (it needs each record's capture id), so it alone waits.
-  const [records, reports, flags] = await Promise.all([
+  const documentMentions = mentions.filter((m) => m.kind === 'DOCUMENT');
+  // SIBLINGS, NOT A SEQUENCE. None of the four reads the others' answer — they are plurals over the same name
+  // sets — and awaited in turn they cost the SUM of their round trips. Only `heldTextsFor` depends on one of them
+  // (it needs each record's capture id), so it alone waits. FLAGGED(m) is asked for DOCUMENT mentions too: it is
+  // evidence A3's predicate over the Evidence row (document A3 :1382), CALLED, never a second spelling here.
+  const [records, reports, flags, documents] = await Promise.all([
     recordsByName(names),
     verifiedFor(names),
-    flaggedFor(evidenceMentions.map((m) => m.id)),
+    flaggedFor([...evidenceMentions, ...documentMentions].map((m) => m.id)),
+    documentsByCommitment(documentMentions.map((m) => m.name)),
   ]);
   const held = await heldTextsFor(
     evidenceMentions.flatMap((mention) => {
@@ -474,16 +505,8 @@ export async function citationsFrom(
       continue;
     }
     if (mention.kind === 'DOCUMENT') {
-      // A LOUD GUARD, and it is the `requireSnapshotIdentity` pattern again. A `#doc_`
-      // mention resolves to §7 :848-:860's block, which `resolve_record` answers at
-      // DOCUMENT STEP 34; until then nothing here can say what it cites. Unreachable
-      // today — step 33 builds the parser that writes one — and this refuses by NAME
-      // rather than letting a document fall through the evidence path and be reported
-      // as a corpus record nobody holds.
-      throw new Error(
-        `publishedThesis: version ${mention.versionId} cites a DOCUMENT (#doc_), which document refactor step 34 resolves. ` +
-          'Step 28 added the mention kind; no reader answers it yet.',
-      );
+      entry.citations.push(documentCitation(thesisId, mention, documents.get(mention.name) ?? null, flags));
+      continue;
     }
     const record = records.get(mention.name) ?? null;
     if (record === null) {
@@ -502,6 +525,7 @@ export async function citationsFrom(
   return {
     byVersion,
     records: resolvedRecords,
+    documents,
     pages: [...pages].map(([url, trackedUrlId]) => ({ trackedUrlId, url })),
     flags,
     trajectories: new Map(resolved.map((t) => [t.id, t.currency])),
@@ -580,7 +604,7 @@ async function pageOf(thesisId: string): Promise<ThesisPage | WithdrawnNotice | 
     provision: thesis.provision,
     provisionTitle: provisionTitleOf(thesis.provision),
     version: { versionId: pin, text: version.text, contentHash: version.contentHash, publishedAt: thesis.publishedAt, author: handleOf(handles, thesis.createdById, thesis.id) },
-    citations: requireCitations(resolvedCitations, pin).citations,
+    citations: publicCitations(requireCitations(resolvedCitations, pin).citations, thesis.id),
     appeals: { call, requests, intake: INTAKE },
     rationale: attempt.rationale,
     overObjection: attempt.verdict === 'DISPUTES',
@@ -588,6 +612,26 @@ async function pageOf(thesisId: string): Promise<ThesisPage | WithdrawnNotice | 
     history,
     pages: resolvedCitations.pages,
   };
+}
+
+/**
+ * The PUBLIC page's citations — a DOCUMENT citation refused LOUDLY, by name. What the public reads of a document is
+ * document flows §7 :848–:860's block, step 34's; check 18 `DOCUMENT_OPENING_DECIDED` refuses publication of any head
+ * citing `#doc_` until step 34 builds `decide_opening` (plan :255, R81 Q-2), so this is reachable only by a defect.
+ */
+function publicCitations(
+  citations: readonly (EvidenceCitation | TrajectoryCitation | DocumentCitationBase)[],
+  thesisId: string,
+): (EvidenceCitation | TrajectoryCitation)[] {
+  return citations.map((citation) => {
+    if (citation.kind === 'DOCUMENT') {
+      throw new Error(
+        `publishedThesis: the published version of ${thesisId} cites #doc_${citation.name}. The public reading of a ` +
+          'document is document refactor step 34\'s, and check 18 refuses publication before it — a defect, not a state.',
+      );
+    }
+    return citation;
+  });
 }
 
 /** Every ever-published version, oldest first; a version NAMED BY A WITHDRAWAL keeps its dates and nothing of its content (R11). */
@@ -659,6 +703,49 @@ function evidenceCitation(
       : { notEvaluable: report.reason },
     flag: { flagged: flag.flagged, reasons: flag.reasons },
     argued: argued({ name: mention.name, thesisId, debate: mention.debateSession }),
+    overObjection: mention.debateSession?.promotedOverObjection === true,
+  };
+}
+
+/**
+ * One DOCUMENT citation, over answers ALREADY READ — no query. Its name, pin and argument as an EVIDENCE citation's
+ * are composed (the pin is the mention's, computed by the version write), and its title and custody from the one
+ * document read. A mention naming no document, or a shed one, THROWS by name: the version write refuses both, so
+ * either is a row this design does not write — the SHED arm of FLAGGED(m) is document step 35's.
+ */
+function documentCitation(
+  thesisId: string,
+  mention: {
+    id: string;
+    name: string;
+    contentVersionHash: string | null;
+    debateSession: { status: string; recordFileHash: string; thesisId: string; promotedOverObjection: boolean } | null;
+  },
+  cited: CitedDocument | null,
+  flags: Map<string, FlagReport>,
+): DocumentCitationBase {
+  const pin = mention.contentVersionHash;
+  if (pin === null) {
+    throw new Error(`publishedThesis: the DOCUMENT citation ${mention.id} carries no pin — the version write computes one for every document.`);
+  }
+  if (cited === null) {
+    throw new Error(`publishedThesis: the DOCUMENT citation ${mention.id} names #doc_${mention.name}, which no document holds.`);
+  }
+  if (cited.custody === 'NONE') {
+    throw new Error(`publishedThesis: the DOCUMENT citation ${mention.id} names #doc_${mention.name}, which was SHED — FLAGGED's SHED arm is document step 35's.`);
+  }
+  const flag = flags.get(mention.id);
+  if (flag === undefined) {
+    throw new Error(`publishedThesis: no FLAGGED for the citation ${mention.id} — the map answers for every key asked.`);
+  }
+  return {
+    kind: 'DOCUMENT',
+    name: mention.name,
+    pin,
+    argued: argued({ name: mention.name, thesisId, debate: mention.debateSession }),
+    title: cited.document.title,
+    custody: cited.custody,
+    flag: { flagged: flag.flagged, reasons: flag.reasons },
     overObjection: mention.debateSession?.promotedOverObjection === true,
   };
 }

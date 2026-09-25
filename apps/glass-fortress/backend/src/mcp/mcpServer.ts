@@ -699,7 +699,10 @@ export function createMcpServer(): McpServer {
       'text this platform stored for the capture (when held), plus an EXTRACTION_DIVERGENCE flag when ' +
       'they disagree — the condition that let a false claim survive ' +
       'into a real thesis. Distinguishes "not in the archive" and "fetch failed" from "phrase ' +
-      'absent". Writes nothing.',
+      'absent". Writes nothing. A DOCUMENT instead: give its commitment (no url, no capture) and the phrase is ' +
+      'checked against its current computed text — PRESENT with the surrounding lines, ABSENT, or UNCHECKED where the ' +
+      'document has no computed text — to confirm a quote before it is written into a version. Free, never stored. ' +
+      'Refuses NEITHER (both a capture and a commitment, or neither), NOT_A_DOCUMENT, SHED and AWAITING_DERIVATION.',
     verifyClaimTextSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: stampEnvironment(await verifyClaimTextHandler(input)) }],

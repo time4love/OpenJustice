@@ -8,10 +8,10 @@ import { parseCitations } from '../src/lib/citationTokens';
 // project, which gates (the step-18 record §7).
 //
 // THE GRAMMAR, as the R47 sketch §c states it: a token begins at `#ev_`, `#tr_` or `#doc_`; its body is
-// the maximal run of [A-Za-z0-9] after the prefix. An `#ev_` body is exactly `0x` + 64 lowercase hex; a
-// `#tr_` body is non-empty; `#doc_` is RECOGNISED and not yet citable — document plan step 33 adds the
-// kind (the researcher's ruling, R47 round 2). "A token the parser cannot resolve is a refusal at the
-// version write, never a plain string" (A1 :1245), so no token is ever passed over as text.
+// the maximal run of [A-Za-z0-9] after the prefix. An `#ev_` body and a `#doc_` body are each exactly `0x` + 64
+// lowercase hex; a `#tr_` body is non-empty. `#doc_` was RECOGNISED and refused until document plan step 33 added the
+// kind (:243); the two cases that held that world are AMENDED there, DECLARED. "A token the parser cannot resolve is a
+// refusal at the version write, never a plain string" (A1 :1245), so no token is ever passed over as text.
 // ---------------------------------------------------------------------------
 
 const NAME = `0x${'ab'.repeat(32)}`;
@@ -76,15 +76,19 @@ describe('parseCitations — a token that cannot be read is never a plain string
     });
   }
 
-  it('#doc_ is RECOGNISED — a document is not citable until document plan step 33 adds the kind', () => {
-    expect(parseCitations(`המסמך #doc_${NAME} מראה`)).toEqual({ parsed: false, reason: 'DOCUMENT_NOT_BUILT', token: `#doc_${NAME}` });
+  // AMENDED AT DOCUMENT STEP 33, DECLARED: `#doc_` is a citation of kind DOCUMENT (plan :243), read as strictly as `#ev_`.
+  it('#doc_ is a citation of kind DOCUMENT, its commitment read as strictly as a record name (plan :243; A1 :1244)', () => {
+    expect(parseCitations(`המסמך #doc_${NAME} מראה`)).toEqual({ parsed: true, citations: [{ kind: 'DOCUMENT', name: NAME }] });
+    for (const token of [`#doc_0x${'AB'.repeat(32)}`, `#doc_${'ab'.repeat(32)}`, '#doc_']) {
+      expect(parseCitations(`המסמך ${token} מראה`)).toEqual({ parsed: false, reason: 'MALFORMED', token });
+    }
   });
 
   it('the FIRST unreadable token in text order is the one reported, after any good citation before it', () => {
     expect(parseCitations(`#ev_${NAME} #doc_${OTHER} #ev_0x12`)).toEqual({
       parsed: false,
-      reason: 'DOCUMENT_NOT_BUILT',
-      token: `#doc_${OTHER}`,
+      reason: 'MALFORMED',
+      token: '#ev_0x12',
     });
   });
 });

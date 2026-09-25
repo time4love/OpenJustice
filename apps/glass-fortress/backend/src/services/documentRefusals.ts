@@ -23,7 +23,11 @@ export type DocumentToolCode =
   | 'NAME_MISMATCH'
   | 'NOT_HELD'
   | 'AWAITING_DERIVATION'
-  | 'INCOMPLETE_ANSWER';
+  | 'INCOMPLETE_ANSWER'
+  // DOCUMENT STEP 33 — `verify_claim_text`'s document arm (A4 :1470): a shed document has no text to check, and a call
+  // naming both targets or neither is NEITHER (thesis A4 :1521's spelling for "not exactly one target").
+  | 'SHED'
+  | 'NEITHER';
 
 /**
  * The UPLOAD DIALOG's route's codes (ui A1 :1129; R76 sketch §(c) as amended by the R78 chunk-3 prompt): a

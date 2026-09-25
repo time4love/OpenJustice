@@ -5,6 +5,7 @@ import { contentHash } from '../lib/thesisIdentity';
 import { WRITE_TRANSACTION } from '../walk/pageLog';
 import { pairName, resolveRecordByName, resolveUnacquiredByName } from './corpusReads';
 import { argued, currentVersionOf } from './evidencePredicates';
+import { documentsByCommitment, type CitedDocument } from './documentCitation';
 import { gapList, unargued, type CitedMention } from './thesisPredicates';
 import { resolveTrajectoryCitations } from './trajectoryCitation';
 import { refusal, type Refusal } from '../mcp/tools/thesisRefusals';
@@ -24,6 +25,12 @@ import { refusal, type Refusal } from '../mcp/tools/thesisRefusals';
 // transaction, and decides the three refusals only the transaction can: a framing attached by a race, a
 // head that moved, and `affirmed` moved by a REAFFIRM between its two reads.
 //
+// A `#doc_` CITATION IS THE THIRD KIND, BY ADDITION (document plan step 33 :243–:246; document flows §6 :695–:699,
+// A4 :1452–:1453). Its name is the document's COMMITMENT; it resolves through `documentCitation`, and it refuses
+// NOT_A_RECORD (no document of that name — T2's one word for a token naming nothing, whatever its prefix) · SHED ·
+// AWAITING_DERIVATION. Its pin is computed exactly as an `#ev_` pin is: a promoted document's Evidence row carries
+// `fileHash = commitment` (§6 :669), so `affirmedOf` below reads it by the same key.
+//
 // THE PIN IS COMPUTED, NEVER SUPPLIED (T2 :429). Where an Evidence row exists the pin is its
 // `affirmedContentVersionHash` — the only value allowed (evidence A2 :1006) — and otherwise the record's
 // CURRENT hash, what the author read. Nothing in either input can carry one.
@@ -41,6 +48,7 @@ import { refusal, type Refusal } from '../mcp/tools/thesisRefusals';
 /** A citation the corpus holds, with what the write needs of it. */
 export type ResolvedCitation =
   | { kind: 'EVIDENCE'; name: string; current: string }
+  | { kind: 'DOCUMENT'; name: string; current: string }
   | { kind: 'TRAJECTORY'; name: string };
 
 /** Where the version goes: onto an existing thesis's head, or as the first version of a new thesis. */
@@ -59,7 +67,7 @@ export interface VersionWriteInput {
 }
 
 export interface MentionAnswer {
-  kind: 'EVIDENCE' | 'TRAJECTORY';
+  kind: 'EVIDENCE' | 'DOCUMENT' | 'TRAJECTORY';
   name: string;
   /** The content version pinned; null on a TRAJECTORY mention, which pins nothing (A2 :1284). */
   pin: string | null;
@@ -78,7 +86,7 @@ export interface VersionWritten {
 }
 
 type WriteRefusal = Refusal<'STALE_HEAD' | 'STALE_PIN' | 'FRAMING_ATTACHED'>;
-type CitationRefusal = Refusal<'NOT_A_RECORD' | 'NOT_ACQUIRED' | 'AWAITING_DERIVATION' | 'UNKNOWN_TRAJECTORY_ID'>;
+type CitationRefusal = Refusal<'NOT_A_RECORD' | 'NOT_ACQUIRED' | 'AWAITING_DERIVATION' | 'SHED' | 'UNKNOWN_TRAJECTORY_ID'>;
 
 /** A refusal decided inside the transaction — thrown so the transaction rolls back, and caught at its call site. */
 class Lost extends Error {
@@ -97,24 +105,19 @@ class Lost extends Error {
  * THE ORDER, AND WHY IT IS DEPENDENT (`framingRounds.ts` `loadRecords`' rule): a token that cannot be read
  * is NOT_A_RECORD before anything is looked up; then each record, in text order, through its own chain —
  * a name the corpus does not hold cannot be asked whether it was acquired, and one not acquired has no
- * content version to be awaiting — and the first refusal is returned; every trajectory after every record.
+ * content version to be awaiting — and the first refusal is returned; then each DOCUMENT, in text order, through
+ * ONE read for all of them; every trajectory after every record and document.
  */
 export async function resolveCitations(text: string): Promise<ResolvedCitation[] | CitationRefusal> {
   const parsed = parseCitations(text);
   if (!parsed.parsed) {
-    return parsed.reason === 'DOCUMENT_NOT_BUILT'
-      ? refusal(
-          'NOT_A_RECORD',
-          `${parsed.token} cites a DOCUMENT, and documents are not citable yet — the document class lands at ` +
-            'document plan step 33, which adds the #doc_ kind to this write. Cite a corpus record (#ev_) or a ' +
-            'trajectory (#tr_), or leave the document out of this version.',
-        )
-      : refusal(
-          'NOT_A_RECORD',
-          `${parsed.token} is not a citation this platform can read. A record is cited as #ev_ followed by its ` +
-            'name — 0x and 64 lowercase hex, exactly as list_findings returns it — and a trajectory as #tr_ ' +
-            'followed by the id get_claim_trajectories returned.',
-        );
+    return refusal(
+      'NOT_A_RECORD',
+      `${parsed.token} is not a citation this platform can read. A record is cited as #ev_ followed by its ` +
+        'name — 0x and 64 lowercase hex, exactly as list_findings returns it — a document as #doc_ followed by its ' +
+        'commitment, in the same form, as list_documents returns it — and a trajectory as #tr_ followed by the id ' +
+        'get_claim_trajectories returned.',
+    );
   }
 
   const currentOf = new Map<string, string>();
@@ -123,6 +126,17 @@ export async function resolveCitations(text: string): Promise<ResolvedCitation[]
     const current = await currentOfRecord(citation.name);
     if (typeof current !== 'string') return current;
     currentOf.set(citation.name, current);
+  }
+
+  // THE DOCUMENTS, in text order, over ONE read. A document's name and a record's name are both `0x` + 64 hex, and
+  // the kinds are kept apart by the TOKEN (§6 :655–:660), so each map is keyed within its own kind.
+  const documentNames = parsed.citations.filter((c) => c.kind === 'DOCUMENT').map((c) => c.name);
+  const documents = await documentsByCommitment(documentNames);
+  const documentCurrent = new Map<string, string>();
+  for (const name of documentNames) {
+    const current = currentOfDocument(name, documents.get(name) ?? null);
+    if (typeof current !== 'string') return current;
+    documentCurrent.set(name, current);
   }
 
   const trajectoryIds = parsed.citations.filter((c) => c.kind === 'TRAJECTORY').map((c) => c.name);
@@ -140,6 +154,13 @@ export async function resolveCitations(text: string): Promise<ResolvedCitation[]
   // Text order, records and trajectories interleaved as the text has them.
   return parsed.citations.map((c): ResolvedCitation => {
     if (c.kind === 'TRAJECTORY') return { kind: 'TRAJECTORY', name: c.name };
+    if (c.kind === 'DOCUMENT') {
+      const current = documentCurrent.get(c.name);
+      if (current === undefined) {
+        throw new Error(`thesisVersionWrite: #doc_${c.name} was parsed and never resolved — the resolution loop is defective.`);
+      }
+      return { kind: 'DOCUMENT', name: c.name, current };
+    }
     const current = currentOf.get(c.name);
     if (current === undefined) {
       throw new Error(`thesisVersionWrite: #ev_${c.name} was parsed and never resolved — the resolution loop is defective.`);
@@ -198,6 +219,42 @@ async function currentOfRecord(name: string): Promise<string | CitationRefusal> 
   return current.contentVersionHash;
 }
 
+/**
+ * One `#doc_` commitment: NOT_A_RECORD · SHED · AWAITING_DERIVATION, or CURRENT(d)'s hash — the receipt version for a
+ * SEALED document, the version under the current extractor for a HELD one (A3 :1368–:1370). CURRENT is
+ * `documentCitation`'s, CALLED; each refusal is spelled here once (plan :245–:246).
+ */
+function currentOfDocument(name: string, cited: CitedDocument | null): string | CitationRefusal {
+  if (cited === null) {
+    return refusal(
+      'NOT_A_RECORD',
+      `#doc_${name} names no document this platform holds. A document is cited by its commitment — list_documents ` +
+        'returns every document with it.',
+    );
+  }
+  const { current } = cited;
+  if ('shed' in current) {
+    const shed = cited.shed;
+    if (shed === null) {
+      throw new Error(`thesisVersionWrite: CURRENT of #doc_${name} reads SHED and the document has no Shed row.`);
+    }
+    return refusal(
+      'SHED',
+      `#doc_${name}'s content was taken back (${shed.cause}, ${shed.at.toISOString().slice(0, 10)}): SHED removes the ` +
+        'bytes, the text and the opinion, and nothing can derive them again, so there is no content version to pin.',
+    );
+  }
+  if ('awaiting' in current) {
+    return refusal(
+      'AWAITING_DERIVATION',
+      `The document #doc_${name}${cited.document.title === null ? '' : ` („${cited.document.title}”)`} has no content ` +
+        'version under the current extractor: the derivation pass owes it one, so no pin can be computed. Write the ' +
+        'version again once it is derived.',
+    );
+  }
+  return current.contentVersionHash;
+}
+
 // ---------------------------------------------------------------------------
 // THE TRANSACTION.
 // ---------------------------------------------------------------------------
@@ -217,7 +274,8 @@ interface ParentMention {
  */
 export async function writeThesisVersion(input: VersionWriteInput): Promise<VersionWritten | WriteRefusal> {
   const hash = contentHash(input.text);
-  const evidenceNames = input.citations.filter((c) => c.kind === 'EVIDENCE').map((c) => c.name);
+  // Records AND documents: both carry a pin, and a promoted one's Evidence row is keyed by the same name.
+  const evidenceNames = input.citations.filter((c) => c.kind !== 'TRAJECTORY').map((c) => c.name);
 
   let written: { thesisId: string; versionId: string; mentions: CarriedMention[] };
   try {
@@ -233,12 +291,12 @@ export async function writeThesisVersion(input: VersionWriteInput): Promise<Vers
           return { kind: 'TRAJECTORY', name: citation.name, pin: null, debateSessionId: null, debate: null };
         }
         const pin = affirmedAtRead.get(citation.name) ?? citation.current;
-        // THE ARGUMENT CARRIES only while (name, pin) is unchanged (T2 :415–:418).
+        // THE ARGUMENT CARRIES only while (kind, name, pin) is unchanged (T2 :415–:418).
         const carried = parent.find(
-          (m) => m.kind === 'EVIDENCE' && m.name === citation.name && m.contentVersionHash === pin && m.debateSessionId !== null,
+          (m) => m.kind === citation.kind && m.name === citation.name && m.contentVersionHash === pin && m.debateSessionId !== null,
         );
         return {
-          kind: 'EVIDENCE',
+          kind: citation.kind,
           name: citation.name,
           pin,
           debateSessionId: carried?.debateSessionId ?? null,
@@ -292,13 +350,13 @@ export async function writeThesisVersion(input: VersionWriteInput): Promise<Vers
       const affirmedNow = await affirmedOf(tx, evidenceNames);
       const reaffirmed = mentions.filter((m) => {
         const now = affirmedNow.get(m.name);
-        return m.kind === 'EVIDENCE' && now !== undefined && now !== m.pin;
+        return m.kind !== 'TRAJECTORY' && now !== undefined && now !== m.pin;
       });
       if (reaffirmed.length > 0) {
         throw new Lost(
           refusal(
             'STALE_PIN',
-            `The content version a researcher stands behind for ${reaffirmed.map((m) => `#ev_${m.name}`).join(', ')} ` +
+            `The content version a researcher stands behind for ${reaffirmed.map((m) => `${m.kind === 'DOCUMENT' ? '#doc_' : '#ev_'}${m.name}`).join(', ')} ` +
               'moved while this version was being written (a review re-affirmed it). Nothing was written. Write ' +
               'the version again: it will pin the re-affirmed version, and the argument made against the old one ' +
               'will not carry.',
@@ -317,7 +375,7 @@ export async function writeThesisVersion(input: VersionWriteInput): Promise<Vers
 }
 
 interface CarriedMention {
-  kind: 'EVIDENCE' | 'TRAJECTORY';
+  kind: 'EVIDENCE' | 'DOCUMENT' | 'TRAJECTORY';
   name: string;
   pin: string | null;
   debateSessionId: string | null;
@@ -397,7 +455,8 @@ async function answerOf(
       kind: m.kind,
       name: m.name,
       pin: m.pin,
-      argued: m.kind === 'EVIDENCE' && argued({ name: m.name, thesisId, debate: m.debate }),
+      // A TRAJECTORY has no argument (R47 §6-R16); a record and a document are argued alike (§6 :700).
+      argued: m.kind !== 'TRAJECTORY' && argued({ name: m.name, thesisId, debate: m.debate }),
     })),
     unargued: unargued({ thesisId }, written.mentions),
     gapsNowOpen: gapList(decisions, thesisId, names)

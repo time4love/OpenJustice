@@ -1,5 +1,8 @@
+import type { DocumentOpening } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { headFingerprint, type HeadFingerprint } from './criticMaterial';
+import { documentsByCommitment } from './documentCitation';
+import type { Custody } from './documentPredicates';
 import { checksOf, type EvidenceCheck } from './evidenceChecks';
 import { publishableEvidence, type VersionPublishableReport } from './evidencePredicates';
 import { claimFramed, currentAnalysis, gapsDecided, trajectoryCurrent, type GapEntry } from './thesisPredicates';
@@ -49,7 +52,10 @@ type ThesisCheckId =
   | 'GAPS_DECIDED'
   | 'RATIONALE_SUBSTANCE'
   | 'NAMES_NO_PERSON'
-  | 'ALLEGATIONS_FRAMED';
+  | 'ALLEGATIONS_FRAMED'
+  // Document A6 :1535's first added check — BUILT AT DOCUMENT STEP 33 (plan :255, R81 Q-2), by addition after the
+  // seventeen; check 19 `DOCUMENT_QUOTES_PRESENT` is step 34's.
+  | 'DOCUMENT_OPENING_DECIDED';
 
 /** One row of the gate — `EvidenceCheck`'s shape, so rows 5–10 are evidence's own rows, deep-equal. No binding flag. */
 export type ThesisCheck =
@@ -78,6 +84,12 @@ export interface PublicationEvaluation {
   headed: HeadFingerprint;
   analysisCurrent: boolean;
   list: GapEntry[];
+  /**
+   * Every `#doc_` citation of the version, with its custody and the opening in force for (thesis, document) — the
+   * highest `sequence` (A2's append-only log) — or null where none is decided. Empty when the version cites no document,
+   * and then nothing was read for it.
+   */
+  documents: { name: string; custody: Custody | null; opening: DocumentOpening | null }[];
   assessment: PublicationAssessment | null;
 }
 
@@ -113,6 +125,7 @@ export async function evaluatePublication(
   const headed = await headFingerprint(thesis.id, versionId);
   const { resolved, missing } = await resolveTrajectoryCitations(headed.head.trajectoryIds);
   const analyses = headed.defined ? await prisma.thesisAnalysis.findMany({ where: { versionId } }) : [];
+  const documents = await documentOpeningsOf(thesis.id, headed.head.documentNames);
 
   return {
     versionId,
@@ -138,8 +151,54 @@ export async function evaluatePublication(
     headed,
     analysisCurrent: headed.defined && currentAnalysis(versionId, analyses, headed.fingerprint) !== null,
     list: headed.head.list,
+    documents,
     assessment,
   };
+}
+
+/**
+ * The opening in force for each cited document, and its custody — CUSTODY(d) CALLED through `documentCitation`. ONLY
+ * when the version cites a document: an empty subject set is EXAMINED_NONE with nothing read (the vacuity rule, plan
+ * :270–:272). A cited name no document holds is a malformed version — the version write refuses it — so it is reported
+ * with `custody: null` and fails the check, never dropped.
+ */
+async function documentOpeningsOf(
+  thesisId: string,
+  names: readonly string[],
+): Promise<{ name: string; custody: Custody | null; opening: DocumentOpening | null }[]> {
+  if (names.length === 0) return [];
+  const [documents, decisions] = await Promise.all([
+    documentsByCommitment(names),
+    prisma.documentOpeningDecision.findMany({
+      where: { thesisId, commitment: { in: [...names] } },
+      select: { commitment: true, sequence: true, opening: true },
+    }),
+  ]);
+  return names.map((name) => {
+    const inForce = decisions
+      .filter((d) => d.commitment === name)
+      .reduce<{ sequence: number; opening: DocumentOpening } | null>(
+        (latest, d) => (latest === null || d.sequence > latest.sequence ? d : latest),
+        null,
+      );
+    return { name, custody: documents.get(name)?.custody ?? null, opening: inForce?.opening ?? null };
+  });
+}
+
+/** Check 18's failure for one cited document, or null — A6 :1535: an opening decided, and never BYTES on a sealed one. */
+function openingFailure(d: PublicationEvaluation['documents'][number]): { name: string; opening: DocumentOpening | null; detail: string } | null {
+  if (d.custody === null) return { name: d.name, opening: d.opening, detail: 'no document of this name is held — a malformed citation' };
+  if (d.opening === null) {
+    return {
+      name: d.name,
+      opening: null,
+      detail: 'no opening is decided for this document on this thesis — what publication opens of it is decided before publishing',
+    };
+  }
+  if (d.opening === 'BYTES' && d.custody === 'SEALED') {
+    return { name: d.name, opening: d.opening, detail: 'BYTES cannot be opened on a sealed document — the platform holds no bytes of it' };
+  }
+  return null;
 }
 
 const row = (
@@ -152,7 +211,10 @@ const row = (
 
 /**
  * A6's FIRST SEVENTEEN ROWS, in A6's order (:1591–:1601), each naming what it examined and each failure its subject; an
- * empty scope is EXAMINED_NONE with `examined` present at zero. Checks 18 and 19 are document plan step 34's, by addition.
+ * empty scope is EXAMINED_NONE with `examined` present at zero — then check 18, DOCUMENT_OPENING_DECIDED (document A6
+ * :1535), BY ADDITION AT DOCUMENT STEP 33 (plan :255): a hard row over the version's `#doc_` citations, EXAMINED_NONE on
+ * a version citing none. Nothing writes an opening before step 34's `decide_opening`, so it fails every `#doc_` head
+ * until then — exact, not a stub. Check 19 is step 34's.
  */
 export function rowsOf(e: PublicationEvaluation): ThesisCheck[] {
   const { versionId, thesis, assessment } = e;
@@ -265,6 +327,16 @@ export function rowsOf(e: PublicationEvaluation): ThesisCheck[] {
       assessment === null ? [] : [{ versionId }],
       assessment === null || assessment.allegationsFramed ? [] : [{ versionId, detail: 'the assessor found a claim not framed as an allegation' }],
       assessment === null,
+    ),
+    row(
+      'DOCUMENT_OPENING_DECIDED',
+      'hard',
+      e.documents.map((d) => ({ name: d.name, opening: d.opening })),
+      e.documents.flatMap((d) => {
+        const failure = openingFailure(d);
+        return failure === null ? [] : [failure];
+      }),
+      e.documents.length === 0,
     ),
   ];
 }

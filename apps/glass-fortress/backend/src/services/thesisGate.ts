@@ -11,7 +11,7 @@ import { evaluatePublication, rowsOf, type PublicationAssessment, type ThesisChe
 // publication nothing re-runs (A6 :1610): a reader asking again on a published head reads its rows, and writes nothing.
 // ---------------------------------------------------------------------------
 
-/** A6's first seventeen checks for one version, in A6's order. */
+/** A6's checks for one version, in A6's order — the seventeen, then document A6 :1535's check 18 (document step 33). */
 export async function thesisChecks(versionId: string, assessment: PublicationAssessment | null): Promise<ThesisCheck[]> {
   return rowsOf(await evaluatePublication(versionId, assessment));
 }

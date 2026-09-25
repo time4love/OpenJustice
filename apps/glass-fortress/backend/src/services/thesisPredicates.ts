@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
-import type { Framing, FramingRound, ThesisAnalysis, ThesisGapDecision, ThesisMention, ThesisVersion } from '@prisma/client';
+import type { Framing, FramingRound, MentionType, ThesisAnalysis, ThesisGapDecision, ThesisMention, ThesisVersion } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 // ALIASED, because this module already imports `debateState.namedRecordOf` — TWO LOADERS, ONE NAMING RULE, each
 // over the rows it holds: that one names a record from a DEBATE row's relations, this one from a ResolvedRecord.
 // Two names in one file is the honest spelling; one name for two inputs is not.
 import { namedRecordOf as namedRecordOfResolved, type ResolvedRecord } from './corpusReads';
-import type { NamedRecord } from './evidenceReviews';
+import type { DocumentRecord, NamedRecord } from './evidenceReviews';
 import {
   argued,
   currentVersionOf,
@@ -141,17 +141,18 @@ export type CitedMention = Pick<ThesisMention, 'kind' | 'name'> & {
 };
 
 /**
- * UNARGUED(v) — the version's EVIDENCE citations nobody has argued for:
+ * UNARGUED(v) — the version's EVIDENCE and DOCUMENT citations nobody has argued for:
  *
- *   { m ∈ v.mentions : kind = EVIDENCE and (m.debateSessionId is null or NOT ARGUED(m)) }
+ *   { m ∈ v.mentions : kind ∈ { EVIDENCE, DOCUMENT } and (m.debateSessionId is null or NOT ARGUED(m)) }
  *
  * ARGUED IS CALLED, never re-spelled: evidence A3's predicate already requires the debate to be PROMOTED
  * for THIS record and THIS thesis, which is the second clause A3 :1373–:1374 adds. A TRAJECTORY mention is
- * never in the set — there is no argument for a trajectory.
+ * never in the set — there is no argument for a trajectory. A DOCUMENT mention IS (document flows §6 :700, "the new
+ * #doc_ mention, on T3's work-list"; A3 :1372 — ARGUED "unchanged, over CURRENT(d)"), added at document step 33.
  */
 export function unargued(version: { thesisId: string }, mentions: readonly CitedMention[]): string[] {
   return mentions
-    .filter((m) => m.kind === 'EVIDENCE' && !argued({ name: m.name, thesisId: version.thesisId, debate: m.debate }))
+    .filter((m) => m.kind !== 'TRAJECTORY' && !argued({ name: m.name, thesisId: version.thesisId, debate: m.debate }))
     .map((m) => m.name);
 }
 
@@ -488,8 +489,17 @@ export function reviewCommand(kind: ReviewKind, thesisId: string, headVersionId:
     case 'STALE_TRAJECTORY':
       return `add_thesis_version thesisId=${thesisId} expectedHeadVersionId=${headVersionId} claim=… text=…`;
     case 'UNARGUED':
-      return `open_debate thesisId=${thesisId} record=${record === null ? '…' : JSON.stringify(record)} rationale=…`;
+      return `open_debate thesisId=${thesisId} record=${record === null ? '…' : JSON.stringify(debateInputOf(record))} rationale=…`;
   }
+}
+
+/**
+ * THE RECORD AS `open_debate` TAKES IT, from the record as a read ANSWERS it — they differ for a document only: the
+ * answer is `{ commitment, title }` (QB), the input `{ document: commitment }` (document flows A4 :1455, §6 :701). A
+ * command that pasted the answer back would be refused by the tool's own schema.
+ */
+function debateInputOf(record: NamedRecord): { url: string; capture: string } | { url: string; before: string; after: string } | { document: string } {
+  return 'commitment' in record ? { document: record.commitment } : record;
 }
 
 /**
@@ -506,6 +516,8 @@ export interface ReviewInputs {
   trajectories: ReadonlyMap<string, TrajectoryCurrency>;
   /** EVIDENCE name -> the record the corpus holds, from the `recordsByName` pass the resolver already made. */
   records: ReadonlyMap<string, ResolvedRecord>;
+  /** DOCUMENT commitment -> its row, from the resolver's one document read (document step 33). */
+  documents: ReadonlyMap<string, { document: { commitment: string; title: string | null } }>;
 }
 
 /**
@@ -591,7 +603,16 @@ export function reviewsOf(rows: ThesisRows, resolved: ReviewInputs): OwedEntry[]
     return at;
   };
   /** The record as evidence A1 names it — `namedRecordOf` CALLED over the pass the citation resolver already made. */
-  const recordOf = (name: string, mentionId: string): NamedRecord => {
+  const recordOf = (name: string, mentionId: string, kind: MentionType): NamedRecord => {
+    if (kind === 'DOCUMENT') {
+      const cited = resolved.documents.get(name);
+      if (cited === undefined) {
+        throw new Error(`reviewsOf: mention ${mentionId} cites #doc_${name}, which the resolver of this read did not resolve.`);
+      }
+      // THE RECORD AS A READ ANSWERS IT — `{ commitment, title }`, one shape (R81 QB).
+      const record: DocumentRecord = { commitment: cited.document.commitment, title: cited.document.title };
+      return record;
+    }
     const found = resolved.records.get(name);
     if (found === undefined) {
       throw new Error(`reviewsOf: mention ${mentionId} cites #ev_${name}, which the resolver of this read did not resolve.`);
@@ -616,7 +637,7 @@ export function reviewsOf(rows: ThesisRows, resolved: ReviewInputs): OwedEntry[]
         mentionId: mention.id,
         reasons: report.reasons,
         command: command('FLAGGED'),
-        record: recordOf(mention.name, mention.id),
+        record: recordOf(mention.name, mention.id, mention.kind),
         owedSince: null,
       });
     }
@@ -682,7 +703,7 @@ export function reviewsOf(rows: ThesisRows, resolved: ReviewInputs): OwedEntry[]
       versionId: head,
       mentionId: mention.id,
       command: command('UNARGUED'),
-      record: recordOf(mention.name, mention.id),
+      record: recordOf(mention.name, mention.id, mention.kind),
       // An unargued HEAD citation is owed from the moment the head was written (`thesisReviews.ts` :195-:196).
       owedSince: headCreatedAt,
     });

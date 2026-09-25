@@ -664,7 +664,7 @@ promoted document is an evidence row, and evidence A2's table gains one kind and
 
 ```
 Evidence.kind            CAPTURE | DIFF | DOCUMENT
-Evidence.documentName    String? @unique — set iff kind = DOCUMENT; the CHECK constraint of
+Evidence.documentCommitment String? @unique — set iff kind = DOCUMENT; the CHECK constraint of — **CONFORMED 2026-09-25 to A2 :1327 and plan :134 (the schema's name)**
                          evidence A2 gains its third arm: exactly one key set, matching kind
 Evidence.fileHash        = COMMITMENT(d) — the public name, as for every kind; ID(DOCUMENT record)
                          := COMMITMENT for RECOMPUTABLE(e), evidence A3's predicate unchanged:
@@ -710,7 +710,7 @@ backend      REFUSES NOT_CITED unless the head mentions it · NOTHING_TO_PROMOTE
              the content is bytes (§3)
 Claude       → respond_in_debate · promote_from_debate                          evidence A4 · T3
 backend      E1's transaction: the Evidence row created iff none for this document — kind
-             DOCUMENT, documentName, fileHash = commitment, affirmed = CURRENT(d).hash — else
+             DOCUMENT, documentCommitment, fileHash = commitment, affirmed = CURRENT(d).hash — else — **CONFORMED 2026-09-25 to A2 :1327 and plan :134 (the schema's name)**
              joined; the head's
              mention gains debateSessionId; STALE_PIN as T3. NO CHAIN WRITE: the document was
              committed at receipt (§4), and promotion anchors nothing, as evidence §5 rules
@@ -736,7 +736,7 @@ argument needs the original, the call asks for it and a HELD copy may follow (§
 handwritten memo, a chart — the content version is the bytes (§3): the researcher reads the
 image, the assessor is handed the image, and SUBSTANCE asks the same question of a claim about a
 picture as of a claim about a paragraph — can it be checked against what is there. Every
-assertion is UNCHECKED by the verdict rule, and the check reports that rather than passing.
+assertion is UNCHECKED by the verdict rule, and the check reports that rather than passing. **RULED 2026-09-25 (the researcher, R81 Q-3): an image or a PDF is handed to the assessor as `describe_document` hands it; bytes no model reads (audio, video: A4 :1440; a media file's transcript PDF is what a thesis cites, §9 :1013) are handed as the title and a sentence saying the content is bytes no model reads, and every assertion is UNCHECKED; no new refusal.**
 
 **Paid: one assessor call per round, on the researcher's argument (T3); one model read of a HELD
 document only when the researcher asks for it to be recorded.** Nothing here runs on a read.
@@ -1131,7 +1131,7 @@ a row that is merely unexplained is archaeology (`CLAUDE.md`).
 | `DocumentContentVersion`: text · hash · extractor · version · derivedFrom | the extractor at receipt (both doors) · the derivation pass over HELD bytes when `CURRENT_EXTRACTOR` moves | any research act · a model · anything, for a SEALED document, after receipt |
 | the OPINION register on a version | the model's one read at receipt (SEALED) · a read the researcher asked to have recorded (HELD) | the extractor · anything that publishes |
 | the commitment on the registry: `sha256(DOC_ID ‖ salt)`, category `DOCUMENT_COMMITMENT` | the anchoring module — at receipt, or the standing pass for what is owed — in the deployment | any research act · MCP directly · a second caller of `submit` |
-| the Evidence row, kind DOCUMENT: `fileHash = commitment` · `documentName` · `affirmed` · status | `promote_from_debate` on the first cleared argument · `review_evidence` — evidence §9, unchanged | intake · the doors · the walk |
+| the Evidence row, kind DOCUMENT: `fileHash = commitment` · `documentCommitment` — **CONFORMED 2026-09-25 to A2 :1327 and plan :134 (the schema's name)** · `affirmed` · status | `promote_from_debate` on the first cleared argument · `review_evidence` — evidence §9, unchanged | intake · the doors · the walk |
 | the mention, kind DOCUMENT: commitment · pin · argument | the thesis version write (T2) · `promote_from_debate` for the argument (T3) | any document tool |
 | `ArrivalDecision` DISMISSED, with reason | the thesis author | anyone else · anything automatic |
 | `DocumentOpeningDecision` | the thesis author, before publication; in force from `publish_thesis` | the door · a model · anything that narrows |
@@ -1450,7 +1450,7 @@ shed_document({ commitment, reason })                             WRITE · OPERA
   refuses   NOT_A_DOCUMENT · ALREADY_SHED · REASON_REQUIRED
 
 add_thesis_version          thesis A4 — parses #doc_ tokens into kind DOCUMENT mentions; pin as
-                            T2 over CURRENT(d); refuses NOT_A_DOCUMENT · AWAITING_DERIVATION · SHED
+                            T2 over CURRENT(d); refuses NOT_A_RECORD · AWAITING_DERIVATION · SHED — **CONFORMED 2026-09-24 to §6 :698 (the researcher, R81 Q1): a `#doc_` token naming no document is NOT_A_RECORD, T2's one word for a token that resolves to nothing, whatever its prefix; NOT_A_DOCUMENT stays the word of the tools HANDED a commitment (:1398), a different caller**
 open_debate · promote_from_debate · respond_in_debate · get_debate
                             evidence A4 — record may be { document: commitment }; refuses
                             NOTHING_TO_PROMOTE when CURRENT(d).text is null on a SEALED document;
@@ -1467,7 +1467,7 @@ resolve_record({ fileHash })  evidence A4 — a commitment resolves to §7's pub
                             NOT_PUBLIC unless OPENED(d)
 check_on_chain_status({ commitment })  evidence A4 — asked about a commitment, answers about its
                             entry: registered · ATTRIBUTED · block time · category — **RULED 2026-09-24 (the researcher, R80): a document ANCHORED by A3 :1366's capture arm is answered as attested by that capture, with its index, never as unregistered; NOT_PUBLIC unless PUBLIC(d) (A3 :1379), the gate resolve_record carries at :1466–:1467**
-review_evidence             evidence A4 — unchanged over kind DOCUMENT
+review_evidence             evidence A4 — unchanged over kind DOCUMENT — **RULED 2026-09-23, in scope 2026-09-24 (the researcher, R81 Q3): `verify_claim_text({ commitment, phrase })`, evidence A4 :1101, gains a document ARM and no tool: the ONE verdict rule (A3 :1385) over CURRENT(d)'s computed text — PRESENT | ABSENT | UNCHECKED, UNCHECKED where the content is bytes (§3 :359–:365) — with the surrounding lines of a PRESENT match; free, writes nothing, GATED as read_document; refuses NOT_A_DOCUMENT (handed a commitment, :1398) · AWAITING_DERIVATION · SHED · NEITHER (a call naming both a capture and a commitment, or neither, decided from the input before any row is read: thesis A4 :1521's spelling for "not exactly one target", CONFORMED 2026-09-25); a phrase in and a verdict out, never a search over the text (§12 :1190–:1191); advisory and never stored — the stored verdicts are PassageVerdict's, at publication (A2 :1313)**
 ```
 
 **Retired, and what each was:**
@@ -1578,7 +1578,7 @@ one-hash-two-implementations §2, A1     the shared test vector, in both suites
 
 verdict-rule-one-spelling    §3, A6     a source scan
   one importable symbol computes PRESENT | ABSENT | UNCHECKED; PassageVerdict, the framing
-  assessor's audit and the critic's audit call it; nothing else spells it
+  assessor's audit and the critic's audit call it; nothing else spells it; **RULED 2026-09-25 (the researcher, R81 QA): and the debate's audit, the fourth caller**
 
 retired-names                the factual layer's step-0 scan, extended by A4 and A5's lists
 ```

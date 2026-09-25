@@ -1,5 +1,7 @@
+import type { MentionType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { namedRecordOf, resolveRecordByName } from './corpusReads';
+import { documentsByCommitment } from './documentCitation';
 import type { ContentUnit, Moved } from './evidencePredicates';
 import {
   latestDecisionOf,
@@ -162,8 +164,18 @@ function publishedAtOf(entry: ReviewEntry, at: ThesisInstants): Date {
 
 const later = (a: Date, b: Date): Date => (a.getTime() >= b.getTime() ? a : b);
 
-/** The record a citation names, through the ONE resolver — a name the corpus no longer resolves is a malformed citation. */
-async function recordNamed(name: string, mentionId: string): Promise<NamedRecord> {
+/**
+ * The record a citation names, through the ONE resolver of its kind — a name that no longer resolves is a malformed
+ * citation. A DOCUMENT is answered `{ commitment, title }` (R81 QB) through `documentCitation`, the one document loader.
+ */
+async function recordNamed(name: string, mentionId: string, kind: MentionType): Promise<NamedRecord> {
+  if (kind === 'DOCUMENT') {
+    const cited = (await documentsByCommitment([name])).get(name);
+    if (cited === undefined) {
+      throw new Error(`thesisReviews: mention ${mentionId} cites #doc_${name}, which no document holds.`);
+    }
+    return { commitment: cited.document.commitment, title: cited.document.title };
+  }
   const resolved = await resolveRecordByName(name);
   if (resolved === null) {
     throw new Error(`thesisReviews: mention ${mentionId} cites #ev_${name}, which no record of the corpus resolves.`);
@@ -171,23 +183,27 @@ async function recordNamed(name: string, mentionId: string): Promise<NamedRecord
   return namedRecordOf(resolved);
 }
 
-/** The pin a citation carries — an EVIDENCE mention always has one (CHECK `ThesisMention_fields_by_kind`). */
-async function pinOf(mentionId: string): Promise<string> {
-  const mention = await prisma.thesisMention.findUnique({ where: { id: mentionId }, select: { contentVersionHash: true } });
+/**
+ * The pin a citation carries, and its kind — an EVIDENCE or a DOCUMENT mention always has a pin (CHECK
+ * `ThesisMention_fields_by_kind`); the kind says which resolver names its record.
+ */
+async function pinOf(mentionId: string): Promise<{ pin: string; kind: MentionType }> {
+  const mention = await prisma.thesisMention.findUnique({ where: { id: mentionId }, select: { contentVersionHash: true, kind: true } });
   const pin = mention?.contentVersionHash ?? null;
-  if (pin === null) throw new Error(`thesisReviews: EVIDENCE mention ${mentionId} carries no pin — a malformed citation.`);
-  return pin;
+  if (mention === null || pin === null) throw new Error(`thesisReviews: mention ${mentionId} carries no pin — a malformed citation.`);
+  return { pin, kind: mention.kind };
 }
 
 async function unarguedReview(entry: Extract<ReviewEntry, { kind: 'UNARGUED' }>, at: ThesisInstants): Promise<ThesisReview> {
-  const record = await recordNamed(entry.name, entry.mentionId);
+  const { pin, kind } = await pinOf(entry.mentionId);
+  const record = await recordNamed(entry.name, entry.mentionId, kind);
   return {
     ...entry,
     // THE TOOL'S COMMAND, from the ONE builder REVIEWS used — with the record named, so it pastes as written.
     command: reviewCommand('UNARGUED', entry.thesisId, at.headVersionId, record),
     // An unargued HEAD citation is owed from the moment the head was written.
     owedSince: at.headCreatedAt,
-    material: { versionId: entry.versionId, record, pin: await pinOf(entry.mentionId) },
+    material: { versionId: entry.versionId, record, pin },
   };
 }
 
@@ -196,7 +212,7 @@ async function flaggedReview(entry: Extract<ReviewEntry, { kind: 'FLAGGED' }>, a
   if (row === null) {
     throw new Error(`thesisReviews: mention ${entry.mentionId} is FLAGGED and no evidence row holds ${entry.name} — \`flagged\` answers unflagged on none.`);
   }
-  const pin = await pinOf(entry.mentionId);
+  const { pin, kind } = await pinOf(entry.mentionId);
   const material = await movedFrom(row, pin);
   if (material === null) {
     throw new Error(`thesisReviews: mention ${entry.mentionId} pins ${pin}, which is not a stored version of ${entry.name} — a malformed pin.`);
@@ -221,7 +237,7 @@ async function flaggedReview(entry: Extract<ReviewEntry, { kind: 'FLAGGED' }>, a
     owedSince: earliest === null ? published : later(published, earliest),
     material: {
       versionId: entry.versionId,
-      record: await recordNamed(entry.name, entry.mentionId),
+      record: await recordNamed(entry.name, entry.mentionId, kind),
       pin: material.from,
       current: material.current,
       moved: material.moved,
