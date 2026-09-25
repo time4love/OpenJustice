@@ -261,7 +261,7 @@ new version, the sealed mention pinned to its AT_RECEIPT hash; `open_debate` on 
 photograph refused `NOTHING_TO_PROMOTE`; a SUBSTANCE round on the sealed PDF whose rationale
 leans on the letterhead, that assertion recorded UNCHECKED; promotion, then `check_on_chain_status`
 on the commitment unchanged from before it; `decide_gap CITED`, then `get_arrivals` showing the
-arrival ANSWERED and ARRIVED empty.
+arrival ANSWERED and ARRIVED empty. **STATUS 2026-09-25:** CLOSED ON THE REDUCED SET → `docs/gf-document-step-33-staging-exercise-2026-09-25.md` §3 (PRs #592, #597; the reader fix #599 first). MET: the §6 contract; a HELD document cited in a new version, debated (SUPPORTS, the quote PRESENT), promoted as the first DOCUMENT Evidence row with NO chain write (the registry entry byte-identical, `totalEvidence()` 30 before and after); `decide_gap CITED`. DEFERRED: the sealed pin, `NOTHING_TO_PROMOTE` on a sealed photograph, the letterhead UNCHECKED and ANSWERED with ARRIVED empty → step 32's round (`gate:document-33`); several pages plus a document → the researcher's real end-to-end run (#601). Filed: #600, #602.
 
 ### 34 · Publication — the openings, the two checks, what the public reads
 
