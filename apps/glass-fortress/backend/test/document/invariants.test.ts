@@ -103,13 +103,14 @@ describe('A7 invariant 5 — NOTHING DELETES a Document, Arrival, version or dec
     await anchor();
     // NINE SINCE STEP 30 — `documentOpinion` joined when the OPINION register became a table
     // (A2 :1302 as ruled 2026-09-23): append-only, and SHED nulls its body and removes no row
-    // (A2 :1305 as conformed). Ruled the researcher's Q-H, R76.
+    // (A2 :1305 as conformed). Ruled the researcher's Q-H, R76. TEN SINCE STEP 34 chunk 5-0 (DECLARED) —
+    // `documentContentDerivation`, one APPEND-ONLY row per derivation (A2 :1300 as CONFORMED, the researcher's Q-R1).
     const tables = [
       'document', 'arrival', 'arrivalDocument', 'arrivalDecision',
-      'documentContentVersion', 'documentOpinion', 'documentOpeningDecision', 'passageVerdict', 'shed',
+      'documentContentVersion', 'documentContentDerivation', 'documentOpinion', 'documentOpeningDecision', 'passageVerdict', 'shed',
     ];
-    // THE FLOOR: nine tables named, so a shortened list cannot pass.
-    expect(tables).toHaveLength(9);
+    // THE FLOOR: ten tables named, so a shortened list cannot pass.
+    expect(tables).toHaveLength(10);
     const { readdirSync } = await import('node:fs');
     for (const file of readdirSync(join(SRC, 'services')).filter((f) => f.endsWith('.ts'))) {
       const source = readFileSync(join(SRC, 'services', file), 'utf8');

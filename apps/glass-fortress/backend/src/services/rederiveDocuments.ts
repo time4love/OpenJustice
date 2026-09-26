@@ -3,7 +3,7 @@ import { CURRENT_EXTRACTOR } from '../lib/documentExtractor';
 import { prisma } from '../lib/prisma';
 import { WRITE_TRANSACTION } from '../walk/pageLog';
 import { deriveContent, recordContentVersion } from './documentContentVersions';
-import { currentVersion, custody } from './documentPredicates';
+import { DERIVED_VERSION, currentVersion, custody } from './documentPredicates';
 
 // ---------------------------------------------------------------------------
 // THE DERIVATION PASS OVER HELD BYTES — plan step 29 :159-:161, §3 :346-:348.
@@ -17,8 +17,8 @@ import { currentVersion, custody } from './documentPredicates';
 // that keeps the old (§3 :271-:275).
 //
 // WHEN THE TEXT DID NOT MOVE IT STILL RECORDS SOMETHING (RULED 2026-09-23). A document
-// whose text a new extractor REPRODUCES gets no new row — §3 :317 forbids one — but the
-// row it already has gains today's extractor in `derivedUnder`, so CURRENT(d) resolves
+// whose text a new extractor REPRODUCES gets no new version — §3 :317 forbids one — but the
+// version it already has gains a derivation row for today's extractor, so CURRENT(d) resolves
 // to it (A3 :1368). Before that ruling this case was a TRAP: the pass reported UNCHANGED,
 // no row carried the new version, and the document read AWAITING_DERIVATION forever —
 // permanently uncitable under A6 :1531. The append is `recordContentVersion`'s, because
@@ -61,7 +61,7 @@ export type ReadObject = (document: Document) => Promise<Uint8Array | null>;
  */
 export async function rederiveDocuments(readObject: ReadObject): Promise<RederiveReport> {
   const outcomes: RederiveOutcome[] = [];
-  const documents = await prisma.document.findMany({ include: { versions: true, shed: true } });
+  const documents = await prisma.document.findMany({ include: { versions: DERIVED_VERSION, shed: true } });
   for (const document of documents) {
     if (document.shed !== null) {
       outcomes.push({ commitment: document.commitment, outcome: 'SKIPPED', detail: 'SHED — nothing is derived from a document whose content was taken back' });
@@ -92,7 +92,7 @@ export async function rederiveDocuments(readObject: ReadObject): Promise<Rederiv
       commitment: document.commitment,
       outcome: before.includes(derived.contentVersionHash) ? 'UNCHANGED' : 'SUPERSEDED',
       detail: before.includes(derived.contentVersionHash)
-        ? "re-derived to content the document already holds — NOT a new row (§3 :316-:317), and this extractor is APPENDED to that row's derivedUnder, so CURRENT(d) resolves to it (A3 :1368)"
+        ? "re-derived to content the document already holds — NOT a new row (§3 :316-:317), and this extractor is RECORDED as a derivation of that version, so CURRENT(d) resolves to it (A3 :1368)"
         : `a new version, the old kept; the citing theses owe a review (evidence Flow E3)`,
     });
   }

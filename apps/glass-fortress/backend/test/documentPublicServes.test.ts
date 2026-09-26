@@ -167,8 +167,11 @@ describe('Q-H — /content serves a PINNED version (A5 :1505–:1506 as CONFORME
   /** A second version of the document — derived later, under the CURRENT extractor, and never pinned by default. */
   function newerVersion(text: string): string {
     const hash = contentVersionHashOf(text, DOC);
-    store.versions = store.versions.map((v) => ({ ...v, derivedUnder: ['an-older-extractor'] }));
-    store.versions.push({ id: 'version-newer', commitment: DOC, text, contentVersionHash: hash, extractor: 'pdf', extractorVersion: CURRENT_EXTRACTOR, derivedUnder: [CURRENT_EXTRACTOR], readFailed: false, derivedAt: at(25), derivedFrom: 'HELD_BYTES' });
+    // DECLARED EDIT, step 34 chunk 5-0 (Q-R1): the memberships are DocumentContentDerivation rows, no longer a column —
+    // the seeded version was derived under an older extractor, the newer one under CURRENT_EXTRACTOR.
+    store.derivations = store.derivations.map((d) => ({ ...d, extractorVersion: 'an-older-extractor' }));
+    store.versions.push({ id: 'version-newer', commitment: DOC, text, contentVersionHash: hash, extractor: 'pdf', extractorVersion: CURRENT_EXTRACTOR, readFailed: false, derivedAt: at(25), derivedFrom: 'HELD_BYTES' });
+    store.derivations.push({ id: 'derivation-newer', versionId: 'version-newer', extractorVersion: CURRENT_EXTRACTOR, at: at(25) });
     return hash;
   }
 

@@ -44,8 +44,8 @@ beforeEach(() => {
   seedResearcher('res_1', 'researcher-one');
   seedDocument({ docId: '0x' + 'd1'.repeat(32), commitment: COMMITMENT, bytes: '0x' + 'd1'.repeat(32), title: 'the circular' });
   seedArrival('res_1', COMMITMENT);
-  seedVersion({ commitment: COMMITMENT, text: 'the older text', contentVersionHash: OLDER, derivedUnder: ['old'] });
-  seedVersion({ commitment: COMMITMENT, text: 'the current text', contentVersionHash: CURRENT_HASH, derivedUnder: ['seed'] });
+  seedVersion({ commitment: COMMITMENT, text: 'the older text', contentVersionHash: OLDER }, ['old']);
+  seedVersion({ commitment: COMMITMENT, text: 'the current text', contentVersionHash: CURRENT_HASH }, ['seed']);
 });
 
 /** The link's query, as `read_document` minted it. */
@@ -130,7 +130,9 @@ describe('THE PUBLIC BRANCH — NOT_PUBLIC for every document no publication ope
   // as CONFORMED, Q14 — it takes effect at a publication of a version citing the document), and with that publication the
   // CURRENT text is served. The same call, before and after the publication: the flip is still the case.
   it('THE FLIP — an opening decision ALONE still answers NOT_PUBLIC; a PUBLICATION citing the document puts it in force, and the text is served', async () => {
-    store.versions = store.versions.map((v) => (v['contentVersionHash'] === CURRENT_HASH ? { ...v, derivedUnder: [CURRENT_EXTRACTOR] } : v));
+    // DECLARED EDIT, step 34 chunk 5-0 (Q-R1): the membership is a DocumentContentDerivation row, no longer a column.
+    const current = store.versions.find((v) => v['contentVersionHash'] === CURRENT_HASH);
+    store.derivations.push({ id: 'derivation-current', versionId: current?.['id'], extractorVersion: CURRENT_EXTRACTOR, at: new Date(Date.UTC(2026, 8, 20)) });
     store.openings.push({ id: 'opening-1', thesisId: 'thesis-1', commitment: COMMITMENT, sequence: 1, opening: 'CONTENT', researcherId: 'res_1', createdAt: new Date(Date.UTC(2026, 8, 20)) });
     expect(await serveDocumentContent({ commitment: COMMITMENT }, NOW)).toMatchObject({ code: 'NOT_PUBLIC' });
     // Its PIN — the version write pins every document mention, and `/content` serves the pinned version (A5 :1505 as

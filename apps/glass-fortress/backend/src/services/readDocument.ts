@@ -8,7 +8,7 @@ import { anchoredOf } from './anchorDocuments';
 import { openDocumentRegistryWindow } from './anchorSnapshots';
 import { mintDownloadUrl, readObject } from './documentBucket';
 import { capturesEqualTo } from './documentCaptures';
-import { currentVersion, custody, type Custody } from './documentPredicates';
+import { DERIVED_VERSION, currentVersion, custody, type Custody, type DerivedVersion } from './documentPredicates';
 import { openingsOf } from './documentOpenings';
 import { documentRefusal, NO_RESEARCHER, type DocumentRefusal } from './documentRefusals';
 import { uploadUrl } from './documentUploadUrl';
@@ -187,9 +187,32 @@ function heldOrThrow(document: Loaded): void {
   if (mode === 'NONE') throw new Error(`read_document: ${document.commitment} is SHED — the NONE shape is document step 35's (plan :302)`);
 }
 
+/**
+ * `provenance.derivedUnder`, UNCHANGED ON THE WIRE (A4 :1426) — served from the version's `DocumentContentDerivation` rows
+ * since 2026-09-26 (A2 :1300 as CONFORMED, R86 Q-R1; the wire field SUPPRESSED by REVIEW, R86 Entry 4: the ruling changed
+ * storage and named no wire field). The list keeps the column's ORDER, which was the order of appending, and the rows say
+ * it in three bands (REVIEW's M1, R86 Entry 6):
+ *
+ *   1. the PRODUCER — the row whose extractor is the version's own `extractorVersion`, the column's first member;
+ *   2. the reproductions whose moment is NULL — every one was appended BEFORE the table existed (the migration's word,
+ *      "not recorded"), so each precedes any reproduction the writer recorded; among themselves the append order was not
+ *      kept, and the extractor version orders them so two reads of one version agree;
+ *   3. the reproductions the writer recorded, by `at`, the extractor version breaking a tie.
+ *
+ * A NULL is therefore never read as "latest": it is the oldest thing the table cannot date.
+ */
+function derivedUnderOf(version: DerivedVersion): string[] {
+  const band = (row: DerivedVersion['derivations'][number]): number =>
+    row.extractorVersion === version.extractorVersion ? 0 : row.at === null ? 1 : 2;
+  const byName = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+  return [...version.derivations]
+    .sort((a, b) => band(a) - band(b) || (a.at?.getTime() ?? 0) - (b.at?.getTime() ?? 0) || byName(a.extractorVersion, b.extractorVersion))
+    .map((row) => row.extractorVersion);
+}
+
 export async function readDocument(commitment: string, researcherId: string | null): Promise<ReadDocumentHeld | DocumentRefusal> {
   if (researcherId === null) return NO_RESEARCHER();
-  const document = await prisma.document.findUnique({ where: { commitment }, include: { versions: true, shed: true } });
+  const document = await prisma.document.findUnique({ where: { commitment }, include: { versions: DERIVED_VERSION, shed: true } });
   if (document === null) return documentRefusal('NOT_A_DOCUMENT', `No document is named ${commitment}.`);
   heldOrThrow(document);
 
@@ -219,7 +242,7 @@ export async function readDocument(commitment: string, researcherId: string | nu
       provenance: {
         extractor: version.extractor,
         extractorVersion: version.extractorVersion,
-        derivedUnder: version.derivedUnder,
+        derivedUnder: derivedUnderOf(version),
         readFailed: version.readFailed,
         derivedFrom: version.derivedFrom,
         derivedAt: iso(version.derivedAt),
@@ -273,7 +296,7 @@ export async function listDocuments(
   }
   const documents = await prisma.document.findMany({
     where: args.url === undefined ? {} : { assertedUrl: args.url },
-    include: { versions: true, shed: true },
+    include: { versions: DERIVED_VERSION, shed: true },
   });
   const commitments = documents.map((d) => d.commitment);
   const arrivals = await arrivalsOf(commitments, researcherId);

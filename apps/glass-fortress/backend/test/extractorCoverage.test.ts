@@ -140,9 +140,9 @@ describe('the CORPUS half — §12, by type and by door', () => {
       contentVersionHash: '0xbb',
       extractor: 'exceljs',
       extractorVersion: CURRENT_EXTRACTOR,
-      // CURRENT(d) reads MEMBERSHIP of this list, never equality on `extractorVersion`
-      // (A3 :1368, ruled 2026-09-23).
-      derivedUnder: [CURRENT_EXTRACTOR],
+      // CURRENT(d) reads MEMBERSHIP of these rows, never equality on `extractorVersion`
+      // (A3 :1368, ruled 2026-09-23; rows since 2026-09-26, Q-R1 — DECLARED EDIT, step 34 chunk 5-0).
+      derivations: [{ extractorVersion: CURRENT_EXTRACTOR, at: new Date(0) }],
       readFailed: false,
       derivedAt: new Date(0),
       derivedFrom: 'AT_RECEIPT' as const,
@@ -212,7 +212,7 @@ describe('the CORPUS half — §12, by type and by door', () => {
           contentVersionHash: '0x01',
           extractor: 'pdfjs',
           extractorVersion: CURRENT_EXTRACTOR,
-          derivedUnder: [CURRENT_EXTRACTOR],
+          derivations: [{ extractorVersion: CURRENT_EXTRACTOR, at: new Date(0) }],
           readFailed,
           derivedAt: new Date(0),
           derivedFrom: 'HELD_BYTES' as const,

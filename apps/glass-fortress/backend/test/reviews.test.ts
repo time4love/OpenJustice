@@ -575,7 +575,7 @@ describe('list_evidence_reviews — what is NOT owed, and what cannot be judged'
     // LOW 6: one state, one word, on both surfaces. A second code for the same
     // state is the "one state, two codes" defect step 13 removed.
     store.documents = [documentRow()];
-    store.documentContentVersions = [versionRow(HELD_BEFORE, { derivedUnder: ['v0-an-older-extractor'] })];
+    store.documentContentVersions = [versionRow(HELD_BEFORE, { extractorVersion: 'v0-an-older-extractor' })];
     store.evidenceRows = [
       { fileHash: COMMITMENT, kind: 'DOCUMENT', documentCommitment: COMMITMENT, status: 'PROMOTED', affirmedContentVersionHash: HELD_BEFORE, snapshot: null, urlVersionDiff: null },
     ];

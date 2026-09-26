@@ -55,7 +55,7 @@ beforeEach(() => {
     const commitment = '0x' + `c${n}`.repeat(32);
     seedDocument({ docId, commitment, bytes: docId, title: `document ${n}` });
     seedArrival(researcher, commitment, new Date(Date.UTC(2026, 8, 20 + Number(n))));
-    seedVersion({ commitment, text: `text ${n}`, contentVersionHash: '0x' + `e${n}`.repeat(32), derivedUnder: ['seed'] });
+    seedVersion({ commitment, text: `text ${n}`, contentVersionHash: '0x' + `e${n}`.repeat(32) }, ['seed']);
   }
 });
 

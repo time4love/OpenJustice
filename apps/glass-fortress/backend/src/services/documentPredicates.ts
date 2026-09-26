@@ -1,4 +1,4 @@
-import type { Arrival, Document, DocumentContentVersion, DocumentOpening, DocumentOpeningDecision, Shed } from '@prisma/client';
+import type { Arrival, Document, DocumentContentVersion, DocumentOpening, DocumentOpeningDecision, Prisma, Shed } from '@prisma/client';
 import { commitment, docId } from '../lib/documentIdentity';
 import { verdict as verdictOverText, type Verdict } from '../lib/verdict';
 import type { Evaluated } from './evidencePredicates';
@@ -53,6 +53,19 @@ type AwaitingReason = Extract<Evaluated<never>, { evaluable: false }>['reason'];
 export const AWAITING_DERIVATION: AwaitingReason = 'AWAITING_DERIVATION';
 
 /**
+ * A CONTENT VERSION WITH ITS DERIVATIONS — the shape CURRENT(d) reads, and the ONE spelling of the include that loads
+ * it (A2 :1300 and A3 :1368–:1369 as CONFORMED 2026-09-26, R86 Q-R1: one `DocumentContentDerivation` row per extractor
+ * version that produced or reproduced the text, with its moment). Every loader of a document's versions includes
+ * `{ versions: DERIVED_VERSION }`, so the type and the query cannot disagree about what a version carries. A plain value
+ * and a type-only import: this module gains no dependency.
+ */
+export const DERIVED_VERSION = {
+  include: { derivations: { select: { extractorVersion: true, at: true } } },
+} as const satisfies Prisma.DocumentContentVersionDefaultArgs;
+
+export type DerivedVersion = Prisma.DocumentContentVersionGetPayload<typeof DERIVED_VERSION>;
+
+/**
  * CURRENT(d), as a union whose arms cannot be confused for one another.
  *
  * A3 :1371 makes SHED and AWAITING different answers on purpose: `EVIDENCE_DERIVED`
@@ -61,7 +74,7 @@ export const AWAITING_DERIVATION: AwaitingReason = 'AWAITING_DERIVATION';
  * would let a caller collapse the two.
  */
 export type DocumentCurrent =
-  | DocumentContentVersion
+  | DerivedVersion
   | { awaiting: true }
   | { shed: true };
 
@@ -189,23 +202,24 @@ export function verifiedDocument(
 /**
  * CURRENT(d) — A3 :1368-:1371, by custody mode.
  *
- *   HELD    the version whose `derivedUnder` CONTAINS `CURRENT_EXTRACTOR` (below, and A3
- *           :1368 as ruled 2026-09-23); none → AWAITING_DERIVATION, and the platform owes it.
+ *   HELD    the version with a derivation row for `CURRENT_EXTRACTOR` (below, and A3 :1368 as
+ *           ruled 2026-09-23 and CONFORMED 2026-09-26); none → AWAITING_DERIVATION, and the platform owes it.
  *   SEALED  the version derived AT_RECEIPT, FOREVER. A sealed document's plaintext
  *           existed once (§2), so nothing can derive another and a HELD_BYTES row
  *           against one is ignored rather than preferred. It never reads AWAITING:
  *           there are no bytes to derive from, so nothing is owed.
  *   NONE    SHED — undefined, and the failure names SHED and never AWAITING.
  *
- * IT READS MEMBERSHIP OF `derivedUnder`, NEVER EQUALITY ON `extractorVersion` — RULED
- * BY THE RESEARCHER 2026-09-23 (A3 :1368, A2 :1300, §3 :324). §3 :317 forbids a second
- * row for a re-derivation that yields identical text, and the old rule asked for a row
- * whose `extractorVersion` EQUALS today's — so a held document whose text a new extractor
- * REPRODUCES had no row that could answer, read AWAITING_DERIVATION forever while the pass
- * reported UNCHANGED, and became permanently uncitable under A6 :1531's hard check.
- * `derivedUnder` is the append-only list of every extractor version that reproduced this
- * text; `extractorVersion` still names the one that produced it FIRST and is never
- * overwritten, because it is provenance and not a pointer.
+ * IT READS MEMBERSHIP, NEVER EQUALITY ON `extractorVersion` — RULED BY THE RESEARCHER
+ * 2026-09-23 (A3 :1368, A2 :1300, §3 :324). §3 :317 forbids a second row for a re-derivation
+ * that yields identical text, and the old rule asked for a row whose `extractorVersion`
+ * EQUALS today's — so a held document whose text a new extractor REPRODUCES had no row that
+ * could answer, read AWAITING_DERIVATION forever while the pass reported UNCHANGED, and
+ * became permanently uncitable under A6 :1531's hard check. The membership is the version's
+ * `derivations` — one `DocumentContentDerivation` row per extractor version that produced or
+ * reproduced the text (CONFORMED 2026-09-26, R86 Q-R1; it was the `derivedUnder` column);
+ * `extractorVersion` still names the one that produced it FIRST and is never overwritten,
+ * because it is provenance and not a pointer.
  *
  * `currentExtractor` IS A PARAMETER, AND IT STILL TAKES NULL — BUT THE TREE'S
  * `CURRENT_EXTRACTOR` IS NOT NULL. The researcher ruled the extractor on 2026-09-23
@@ -218,7 +232,7 @@ export function verifiedDocument(
  */
 export function currentVersion(
   document: Document,
-  versions: readonly DocumentContentVersion[],
+  versions: readonly DerivedVersion[],
   currentExtractor: string | null,
   shed: Shed | null,
 ): DocumentCurrent {
@@ -235,7 +249,7 @@ export function currentVersion(
     return receipt;
   }
   if (currentExtractor === null) return awaiting;
-  return versions.find((version) => version.derivedUnder.includes(currentExtractor)) ?? awaiting;
+  return versions.find((version) => version.derivations.some((row) => row.extractorVersion === currentExtractor)) ?? awaiting;
 }
 
 /**

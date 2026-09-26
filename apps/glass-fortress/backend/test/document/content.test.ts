@@ -28,7 +28,7 @@ const AWAITING = { awaiting: true };
 const SHED = { shed: true };
 
 describe('A3 :1368-:1371 — CURRENT(d), HELD', () => {
-  it('the version whose derivedUnder CONTAINS CURRENT_EXTRACTOR — MEMBERSHIP, never equality (A3 :1368, ruled 2026-09-23)', async () => {
+  it('the version with a derivation row for CURRENT_EXTRACTOR — MEMBERSHIP, never equality (A3 :1368, ruled 2026-09-23; rows since Q-R1)', async () => {
     const { currentVersion } = await content();
     const now = version({ extractorVersion: 'v2', derivedFrom: 'HELD_BYTES' });
     const old = version({ id: 'dcv_0', extractorVersion: 'v1', contentVersionHash: '0x' + '00'.repeat(32) });
@@ -41,7 +41,14 @@ describe('A3 :1368-:1371 — CURRENT(d), HELD', () => {
     // new extractor: CURRENT(d) read AWAITING_DERIVATION for ever while the pass reported
     // UNCHANGED, and A6 :1531 is HARD — the document was permanently uncitable.
     const { currentVersion } = await content();
-    const reproduced = version({ extractorVersion: 'v1', derivedUnder: ['v1', 'v2'] });
+    // DECLARED EDIT, step 34 chunk 5-0 (Q-R1): the list is two DocumentContentDerivation rows, no longer a column.
+    const reproduced = version({
+      extractorVersion: 'v1',
+      derivations: [
+        { extractorVersion: 'v1', at: new Date('2026-09-20T09:00:01.000Z') },
+        { extractorVersion: 'v2', at: new Date('2026-09-24T09:00:01.000Z') },
+      ],
+    });
     expect(currentVersion(held(), [reproduced], 'v2', null)).toEqual(reproduced);
     // And `extractorVersion` still names the extractor that produced it FIRST.
     expect(reproduced.extractorVersion).toBe('v1');

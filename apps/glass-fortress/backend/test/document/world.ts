@@ -35,6 +35,9 @@ export const store = {
   arrivals: [] as Row[],
   arrivalDocuments: [] as Row[],
   versions: [] as Row[],
+  // DECLARED EDIT, document step 34 chunk 5-0 (the researcher's Q-R1, R86 Entry 4): `DocumentContentDerivation`, one row
+  // per extractor version that produced or reproduced a version's text — a TABLE of its own, as in the schema.
+  derivations: [] as Row[],
   opinions: [] as Row[],
   trackedUrls: [] as Row[],
   snapshots: [] as Row[],
@@ -101,10 +104,26 @@ function withIncludes(model: 'document', row: Row, include: Row | undefined): Ro
   if (include === undefined) return row;
   const out: Row = { ...row };
   if (model === 'document') {
-    if (include['versions'] === true) out['versions'] = store.versions.filter((v) => v['commitment'] === row['commitment']);
+    const versions = include['versions'];
+    if (versions === true) out['versions'] = store.versions.filter((v) => v['commitment'] === row['commitment']);
+    else if (typeof versions === 'object' && versions !== null) {
+      out['versions'] = store.versions.filter((v) => v['commitment'] === row['commitment']).map((v) => withDerivations(v, versions as Row));
+    }
     if (include['shed'] === true) out['shed'] = store.sheds.find((s) => s['commitment'] === row['commitment']) ?? null;
   }
   return out;
+}
+
+/** A version with its `derivations` when the include asks for them — `{ extractorVersion, at }`, the select the loaders use. */
+function withDerivations(version: Row, args: Row | undefined): Row {
+  const include = args?.['include'] as Row | undefined;
+  if (include?.['derivations'] === undefined) return version;
+  return {
+    ...version,
+    derivations: store.derivations
+      .filter((d) => d['versionId'] === version['id'])
+      .map((d) => ({ extractorVersion: d['extractorVersion'], at: d['at'] })),
+  };
 }
 
 function uniqueOrThrow(list: Row[], row: Row, keys: readonly string[], model: string): void {
@@ -172,11 +191,10 @@ function clientFor(via: Via) {
       ),
     },
     documentContentVersion: {
-      findUnique: jest.fn(({ where }: { where: { commitment_contentVersionHash: { commitment: string; contentVersionHash: string } } }) => {
+      findUnique: jest.fn(({ where, include }: { where: { commitment_contentVersionHash: { commitment: string; contentVersionHash: string } }; include?: Row }) => {
         const key = where.commitment_contentVersionHash;
-        return Promise.resolve(
-          store.versions.find((v) => v['commitment'] === key.commitment && v['contentVersionHash'] === key.contentVersionHash) ?? null,
-        );
+        const found = store.versions.find((v) => v['commitment'] === key.commitment && v['contentVersionHash'] === key.contentVersionHash);
+        return Promise.resolve(found === undefined ? null : withDerivations(found, { include }));
       }),
       findMany: jest.fn(({ where }: { where?: Row } = {}) => Promise.resolve(store.versions.filter((v) => matches(v, where)))),
       create: jest.fn(({ data }: { data: Row }) => {
@@ -188,13 +206,19 @@ function clientFor(via: Via) {
         wrote('documentContentVersion.create');
         return Promise.resolve(row);
       }),
-      update: jest.fn(({ where, data }: { where: { id: string }; data: Row }) => {
-        const at = store.versions.findIndex((v) => v['id'] === where.id);
-        if (at < 0) throw new Error(`no version ${where.id}`);
-        const updated = { ...store.versions[at], ...data };
-        store.versions[at] = updated;
-        wrote('documentContentVersion.update');
-        return Promise.resolve(updated);
+      // A version is NEVER updated since step 34 chunk 5-0: a re-derivation writes a derivation row, and SHED (step 35)
+      // is not built. An update reaching here is a writer this world does not expect — refused by name.
+      update: unmodelled('documentContentVersion.update — a re-derivation writes a DocumentContentDerivation row (A2 :1300 as CONFORMED)'),
+    },
+    documentContentDerivation: {
+      create: jest.fn(({ data }: { data: Row }) => {
+        if (store.derivations.some((d) => d['versionId'] === data['versionId'] && d['extractorVersion'] === data['extractorVersion'])) {
+          throw new Error('Unique constraint failed on DocumentContentDerivation(versionId, extractorVersion)');
+        }
+        const row: Row = { id: nextId('derivation'), ...data };
+        store.derivations.push(row);
+        wrote('documentContentDerivation.create');
+        return Promise.resolve({ extractorVersion: row['extractorVersion'], at: row['at'] });
       }),
     },
     documentOpinion: {
@@ -424,18 +448,27 @@ export function seedArrival(researcherId: string, commitment: string, receivedAt
   store.arrivalDocuments.push({ arrivalId: arrival.id, commitment });
 }
 
-export function seedVersion(row: Row): Row {
+/**
+ * A seeded version and its derivation rows — `derivedUnder`, in order, becomes one `DocumentContentDerivation` row each
+ * (DECLARED EDIT, step 34 chunk 5-0, Q-R1). It DEFAULTS to the version's own `extractorVersion`: every version has its
+ * producer's row (the writer writes it; the migration refuses a version without one), so a version with none is a
+ * world no clause creates. The first row takes the version's `derivedAt`; each later one a minute after the one before.
+ */
+export function seedVersion(row: Row, derivedUnder?: readonly string[]): Row {
   const full = {
     id: nextId('version'),
     text: null,
     extractor: 'seed',
     extractorVersion: 'seed',
-    derivedUnder: [],
     readFailed: false,
     derivedAt: new Date(Date.UTC(2026, 8, 20)),
     derivedFrom: 'AT_RECEIPT',
     ...row,
   };
   store.versions.push(full);
+  const at = (full.derivedAt as Date).getTime();
+  (derivedUnder ?? [String(full.extractorVersion)]).forEach((extractorVersion, index) => {
+    store.derivations.push({ id: nextId('derivation'), versionId: full.id, extractorVersion, at: new Date(at + index * 60_000) });
+  });
   return full;
 }

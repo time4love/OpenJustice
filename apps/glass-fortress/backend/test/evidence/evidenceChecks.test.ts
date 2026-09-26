@@ -38,7 +38,7 @@ function seedDocument(): void {
     { docId: DOCUMENT_ID, commitment: DOCUMENT_NAME, salt: Buffer.alloc(32), cid: null, bytes: DOCUMENT_ID, mimeType: 'application/pdf', byteLength: 1024, verifiedAtReceipt: null, title: null },
   ];
   store.documentContentVersions = [
-    { commitment: DOCUMENT_NAME, contentVersionHash: DOCUMENT_VERSION, text: 'the text', derivedUnder: [CURRENT_EXTRACTOR], extractorVersion: CURRENT_EXTRACTOR, derivedFrom: 'HELD_BYTES' },
+    { commitment: DOCUMENT_NAME, contentVersionHash: DOCUMENT_VERSION, text: 'the text', derivations: [{ extractorVersion: CURRENT_EXTRACTOR, at: new Date(0) }], extractorVersion: CURRENT_EXTRACTOR, derivedFrom: 'HELD_BYTES' },
   ];
 }
 

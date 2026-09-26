@@ -117,7 +117,7 @@ describe('A4 :1452-:1453 — add_thesis_version parses #doc_ into a kind DOCUMEN
   it('refuses NOT_A_RECORD, AWAITING_DERIVATION and SHED — T2’s own refusals, ONE SPELLING EACH', async () => {
     seedHeld();
     const unknown = await write(`#doc_${OTHER_COMMITMENT}`);
-    store.documentContentVersions = [versionRow(HELD_BEFORE, { derivedUnder: ['v0-an-older-extractor'] })];
+    store.documentContentVersions = [versionRow(HELD_BEFORE, { extractorVersion: 'v0-an-older-extractor' })];
     const awaiting = await write(`#doc_${COMMITMENT}`);
     store.documents = [documentRow({ bytes: null })];
     store.sheds = [{ commitment: COMMITMENT, cause: 'SENDER', researcherId: null, reason: null, at: new Date(Date.UTC(2026, 8, 21)) }];
@@ -148,7 +148,7 @@ describe('A4 :1454-:1457 — the debate takes { document: commitment }', () => {
 
   it('NOTHING_TO_PROMOTE when CURRENT(d).text is null on a SEALED document (§6 :702-:703)', async () => {
     store.documents = [documentRow(SEALED)];
-    store.documentContentVersions = [versionRow(RECEIPT, { derivedFrom: 'AT_RECEIPT', derivedUnder: ['v0'], text: null })];
+    store.documentContentVersions = [versionRow(RECEIPT, { derivedFrom: 'AT_RECEIPT', extractorVersion: 'v0', text: null })];
     expect((await openOn()).code).toBe('NOTHING_TO_PROMOTE');
     expect(mockAssess).not.toHaveBeenCalled();
   });
@@ -170,8 +170,8 @@ describe('A4 :1454-:1457 — the debate takes { document: commitment }', () => {
     const worlds: (() => void)[] = [
       () => undefined,
       () => { store.documents = [documentRow({ mimeType: 'audio/mpeg' })]; store.documentContentVersions = [versionRow(HELD_NOW, { text: null })]; },
-      () => { store.documents = [documentRow(SEALED)]; store.documentContentVersions = [versionRow(RECEIPT, { derivedFrom: 'AT_RECEIPT', derivedUnder: ['v0'], text: null })]; },
-      () => { store.documentContentVersions = [versionRow(HELD_BEFORE, { derivedUnder: ['v0'] })]; },
+      () => { store.documents = [documentRow(SEALED)]; store.documentContentVersions = [versionRow(RECEIPT, { derivedFrom: 'AT_RECEIPT', extractorVersion: 'v0', text: null })]; },
+      () => { store.documentContentVersions = [versionRow(HELD_BEFORE, { extractorVersion: 'v0' })]; },
     ];
     for (const arrange of worlds) {
       resetDouble();

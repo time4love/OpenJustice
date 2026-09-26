@@ -114,7 +114,7 @@ describe('the refusals, in order: NOT_A_DOCUMENT · SHED · AWAITING_DERIVATION'
 
   it('AWAITING_DERIVATION for a HELD document with no version under the current extractor', async () => {
     store.documents = [documentRow()];
-    store.documentContentVersions = [versionRow(HELD_BEFORE, { derivedUnder: ['v0-an-older-extractor'] })];
+    store.documentContentVersions = [versionRow(HELD_BEFORE, { extractorVersion: 'v0-an-older-extractor' })];
     expect((await call({ commitment: COMMITMENT }))['code']).toBe('AWAITING_DERIVATION');
   });
 });

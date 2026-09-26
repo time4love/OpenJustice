@@ -133,7 +133,7 @@ describe('add_thesis_version — the three refusals of a #doc_ token, one spelli
   it('AWAITING_DERIVATION for a HELD document with no version under the current extractor — naming it', async () => {
     seedThesis();
     store.documents = [documentRow()];
-    store.documentContentVersions = [versionRow(HELD_BEFORE, { derivedUnder: ['v0-an-older-extractor'] })];
+    store.documentContentVersions = [versionRow(HELD_BEFORE, { extractorVersion: 'v0-an-older-extractor' })];
     const out = await call('add_thesis_version', { ...next, text: textCiting(`#doc_${COMMITMENT}`) }, AUTHOR);
     expectRefused(out, 'AWAITING_DERIVATION');
     expect(String((JSON.parse(out) as { error: string }).error)).toContain(`#doc_${COMMITMENT}`);

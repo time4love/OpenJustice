@@ -51,18 +51,21 @@ export const versionRow = (contentVersionHash: string, over: Row = {}): Row => (
   contentVersionHash,
   extractor: 'pdf',
   extractorVersion: CURRENT_EXTRACTOR,
-  derivedUnder: [CURRENT_EXTRACTOR],
   readFailed: false,
   derivedAt: new Date(Date.UTC(2026, 8, 20)),
   derivedFrom: 'HELD_BYTES',
   ...over,
+  // DECLARED EDIT, step 34 chunk 5-0 (Q-R1): the version's producer, as its DocumentContentDerivation row — taken from
+  // the row's OWN `extractorVersion` (overridden or not), so a fixture cannot plant a membership its provenance
+  // contradicts (the migration refuses that world). A caller naming `derivations` states a reproduction explicitly.
+  derivations: over['derivations'] ?? [{ extractorVersion: over['extractorVersion'] ?? CURRENT_EXTRACTOR, at: new Date(Date.UTC(2026, 8, 20)) }],
 });
 
 /** A HELD document whose CURRENT(d) is HELD_NOW, beside an older version that is no longer current. */
 export function seedHeld(): void {
   store.documents = [documentRow()];
   store.documentContentVersions = [
-    versionRow(HELD_BEFORE, { derivedUnder: ['v0-an-older-extractor'], extractorVersion: 'v0-an-older-extractor' }),
+    versionRow(HELD_BEFORE, { extractorVersion: 'v0-an-older-extractor' }),
     versionRow(HELD_NOW),
   ];
 }
@@ -71,7 +74,7 @@ export function seedHeld(): void {
 export function seedSealed(): void {
   store.documents = [documentRow(SEALED)];
   store.documentContentVersions = [
-    versionRow(RECEIPT, { derivedFrom: 'AT_RECEIPT', derivedUnder: ['v0-the-receipt-extractor'], extractorVersion: 'v0-the-receipt-extractor' }),
+    versionRow(RECEIPT, { derivedFrom: 'AT_RECEIPT', extractorVersion: 'v0-the-receipt-extractor' }),
   ];
 }
 

@@ -22,7 +22,7 @@ export function world(over: { decisions?: [string, number][]; text?: string | nu
   resetWorld();
   const text = over.text === undefined ? TEXT : over.text;
   seedDocument({ docId: DOC_ID, commitment: DOC, salt: SALT, bytes: DOC_ID, mimeType: 'application/pdf', byteLength: BYTES.length, title: 'the circular', ...over.document });
-  seedVersion({ commitment: DOC, text, contentVersionHash: contentVersionHashOf(text, DOC), derivedUnder: [CURRENT_EXTRACTOR] });
+  seedVersion({ commitment: DOC, text, contentVersionHash: contentVersionHashOf(text, DOC) }, [CURRENT_EXTRACTOR]);
   seedObject(DOC_ID, BYTES);
   store.theses.push({ id: 'th_1', createdById: 'res_1', headVersionId: 'v1', publishedVersionId: 'v1' });
   // THE PIN the version write computes for every document mention (A1 :1242–:1243 as CONFORMED; T2) — the seeded version's

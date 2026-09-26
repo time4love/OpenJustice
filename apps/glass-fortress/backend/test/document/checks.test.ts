@@ -69,7 +69,7 @@ async function seedDocumentHead(
     versionRow(pin, {
       commitment: C,
       text: over.text === undefined ? TEXT : over.text,
-      ...(over.sealed === true ? { derivedFrom: 'AT_RECEIPT', derivedUnder: ['v0-receipt'] } : {}),
+      ...(over.sealed === true ? { derivedFrom: 'AT_RECEIPT', extractorVersion: 'v0-receipt' } : {}),
     }),
   ];
   store.evidenceRows = [

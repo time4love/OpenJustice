@@ -1253,17 +1253,30 @@ export const db = {
   // is answered from the rows seeded beside it.
   document: {
     findMany: jest.fn(
-      ask('document', 'findMany', (args?: { where?: Row; include?: { versions?: boolean; shed?: boolean } }) => {
+      ask('document', 'findMany', (args?: { where?: Row; include?: { versions?: boolean | { include?: { derivations?: unknown } }; shed?: boolean } }) => {
         const tests = whereTests('document', args?.where);
         if (!Array.isArray(tests)) return Promise.reject(tests);
+        const asked = args?.include?.versions;
+        // DECLARED EDIT, document step 34 chunk 5-0 (the researcher's Q-R1, R86 Entry 4): a version's derivations are ROWS
+        // (`DocumentContentDerivation`), returned only when the loader INCLUDES them — as Prisma does. A seeded version
+        // carries them inline as `derivations`; asked for and absent is a fixture that forgot them, REFUSED by name rather
+        // than defaulted to none, which would read as AWAITING_DERIVATION.
+        const versionsOf = (commitment: unknown): Row[] =>
+          store.documentContentVersions
+            .filter((v) => v['commitment'] === commitment)
+            .map(({ derivations, ...version }) => {
+              if (typeof asked !== 'object' || asked.include?.derivations === undefined) return version;
+              if (!Array.isArray(derivations)) {
+                throw new Error(`the double: version ${String(version['id'])} was seeded with no \`derivations\` and the loader asked for them`);
+              }
+              return { ...version, derivations };
+            });
         return Promise.resolve(
           store.documents
             .filter((row) => tests.every((test) => test(row)))
             .map((row) => ({
               ...row,
-              ...(args?.include?.versions === true
-                ? { versions: store.documentContentVersions.filter((v) => v['commitment'] === row['commitment']) }
-                : {}),
+              ...(asked === undefined || asked === false ? {} : { versions: versionsOf(row['commitment']) }),
               ...(args?.include?.shed === true ? { shed: store.sheds.find((s) => s['commitment'] === row['commitment']) ?? null } : {}),
             })),
         );

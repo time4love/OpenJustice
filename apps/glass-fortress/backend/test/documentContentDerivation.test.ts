@@ -38,7 +38,7 @@ jest.mock('../src/lib/prisma', () => ({
   },
 }));
 
-import type { Document, DocumentContentVersion, DocumentOpinion, Prisma, Shed } from '@prisma/client';
+import type { Document, DocumentOpinion, Prisma, Shed } from '@prisma/client';
 import { commitment as commitmentOf, contentVersionHashOf, docId as docIdOf } from '../src/lib/documentIdentity';
 import { CURRENT_EXTRACTOR } from '../src/lib/documentExtractor';
 import { prisma } from '../src/lib/prisma';
@@ -48,7 +48,7 @@ import {
   recordOpinion,
   type DerivedContent,
 } from '../src/services/documentContentVersions';
-import { currentVersion } from '../src/services/documentPredicates';
+import { currentVersion, type DerivedVersion } from '../src/services/documentPredicates';
 import { rederiveDocuments } from '../src/services/rederiveDocuments';
 import { FIXTURES, type Fixture, type FixtureKind } from './documentFixtureBytes';
 
@@ -84,16 +84,23 @@ const mocked = prisma as unknown as {
 // ---------------------------------------------------------------------------
 
 interface Store {
-  rows: DocumentContentVersion[];
+  /** The versions, each with its derivation rows JOINED as the loaders include them (`DERIVED_VERSION`). */
+  rows: DerivedVersion[];
+  /**
+   * Every `DocumentContentDerivation` row WRITTEN, as the writer handed it — the `at` it chose included (DECLARED EDIT,
+   * step 34 chunk 5-0, the researcher's Q-R1: one row per derivation, `at` never null for a row the writer writes).
+   */
+  derivationWrites: { versionId: string; extractorVersion: string; at: Date | null }[];
   /** The OPINION register's rows — a table of its own since step 30 (A2 :1302 as ruled 2026-09-23). */
   opinions: DocumentOpinion[];
   creates: number;
   tx: Prisma.TransactionClient;
 }
 
-function store(initial: readonly DocumentContentVersion[] = []): Store {
+function store(initial: readonly DerivedVersion[] = []): Store {
   const state: Store = {
     rows: [...initial],
+    derivationWrites: [],
     opinions: [],
     creates: 0,
     tx: undefined as unknown as Prisma.TransactionClient,
@@ -102,9 +109,14 @@ function store(initial: readonly DocumentContentVersion[] = []): Store {
     documentContentVersion: {
       findUnique: ({
         where,
+        include,
       }: {
         where: { commitment_contentVersionHash: { commitment: string; contentVersionHash: string } };
-      }): Promise<DocumentContentVersion | null> => {
+        include?: { derivations?: unknown };
+      }): Promise<DerivedVersion | null> => {
+        // The writer must ASK for the derivations it reads — a read without the include answers a row without them,
+        // as Prisma does, so a writer that forgot the include finds no membership rather than a planted one.
+        if (include?.derivations === undefined) throw new Error('the double: the writer read a version without its derivations');
         const key = where.commitment_contentVersionHash;
         return Promise.resolve(
           state.rows.find(
@@ -112,31 +124,42 @@ function store(initial: readonly DocumentContentVersion[] = []): Store {
           ) ?? null,
         );
       },
-      create: ({ data }: { data: Omit<DocumentContentVersion, 'id' | 'derivedAt'> }): Promise<DocumentContentVersion> => {
+      create: ({ data }: { data: Omit<DerivedVersion, 'id' | 'derivedAt' | 'derivations'> }): Promise<DerivedVersion> => {
         const duplicate = state.rows.some(
           (row) => row.commitment === data.commitment && row.contentVersionHash === data.contentVersionHash,
         );
         if (duplicate) {
           throw new Error('the double refuses what @@unique([commitment, contentVersionHash]) refuses');
         }
-        const row: DocumentContentVersion = {
+        const row: DerivedVersion = {
           ...data,
           id: `version-${String(state.rows.length + 1)}`,
           derivedAt: new Date(0),
+          // A version create writes NO derivation: the writer's second write does (below).
+          derivations: [],
         };
         state.rows.push(row);
         state.creates += 1;
         return Promise.resolve(row);
       },
-      update: ({ where, data }: { where: { id: string }; data: Partial<DocumentContentVersion> }): Promise<DocumentContentVersion> => {
-        const row = state.rows.find((candidate) => candidate.id === where.id);
-        if (row === undefined) throw new Error(`no version ${where.id}`);
-        // MERGES whatever it is handed rather than one named field: the row gains an
-        // OPINION by one writer and an appended `derivedUnder` by another, and a double
-        // that only understood the first would make the second's case vacuous.
-        const updated = { ...row, ...data };
-        state.rows = state.rows.map((candidate) => (candidate.id === where.id ? updated : candidate));
-        return Promise.resolve(updated);
+      // A version is NEVER updated since step 34 chunk 5-0 (Q-R1): a re-derivation writes a derivation row instead, and
+      // a writer still updating a version fails here by name.
+      update: (): never => {
+        throw new Error('the double: a DocumentContentVersion is never updated — a re-derivation writes a DocumentContentDerivation row');
+      },
+    },
+    // APPEND-ONLY, and unique per (version, extractor) as the schema's `@@unique([versionId, extractorVersion])` is.
+    documentContentDerivation: {
+      create: ({ data }: { data: { versionId: string; extractorVersion: string; at: Date | null } }): Promise<{ extractorVersion: string; at: Date | null }> => {
+        const version = state.rows.find((row) => row.id === data.versionId);
+        if (version === undefined) throw new Error(`the double: no version ${data.versionId} — the foreign key refuses it`);
+        if (version.derivations.some((row) => row.extractorVersion === data.extractorVersion)) {
+          throw new Error('the double refuses what @@unique([versionId, extractorVersion]) refuses');
+        }
+        state.derivationWrites.push(data);
+        const written = { extractorVersion: data.extractorVersion, at: data.at };
+        state.rows = state.rows.map((row) => (row.id === version.id ? { ...row, derivations: [...row.derivations, written] } : row));
+        return Promise.resolve(written);
       },
     },
     // APPEND-ONLY: the double models `create` and nothing else, so a writer that UPDATED an
@@ -172,7 +195,7 @@ function heldDocument(overrides: Partial<Document> = {}): Document {
   };
 }
 
-function versionRow(overrides: Partial<DocumentContentVersion> = {}): DocumentContentVersion {
+function versionRow(overrides: Partial<DerivedVersion> = {}): DerivedVersion {
   return {
     id: 'version-0',
     commitment: '0x' + 'b'.repeat(64),
@@ -180,9 +203,9 @@ function versionRow(overrides: Partial<DocumentContentVersion> = {}): DocumentCo
     contentVersionHash: '0x' + 'c'.repeat(64),
     extractor: 'pdfjs',
     extractorVersion: OLD_EXTRACTOR,
-    // A row's list carries the extractor that produced it, by construction — the case
-    // that matters overrides it to state what a RE-derivation added.
-    derivedUnder: [OLD_EXTRACTOR],
+    // A version's derivation rows carry the extractor that produced it, by construction —
+    // the case that matters overrides them to state what a RE-derivation added.
+    derivations: [{ extractorVersion: OLD_EXTRACTOR, at: new Date(0) }],
     readFailed: false,
     derivedAt: new Date(0),
     derivedFrom: 'AT_RECEIPT',
@@ -295,7 +318,7 @@ describe('recordContentVersion — a re-derivation with identical text is NOT a 
     // ruling of 2026-09-23: the row records that today's extractor REPRODUCED its text,
     // which is what makes CURRENT(d) resolve to it instead of reading AWAITING for ever.
     expect(row.id).toBe(existing.id);
-    expect(row.derivedUnder).toEqual([OLD_EXTRACTOR, CURRENT_EXTRACTOR]);
+    expect(row.derivations.map((d) => d.extractorVersion)).toEqual([OLD_EXTRACTOR, CURRENT_EXTRACTOR]);
     expect(row.extractorVersion).toBe(OLD_EXTRACTOR);
     expect(state.creates).toBe(0);
     expect(state.rows).toHaveLength(1);
@@ -309,14 +332,65 @@ describe('recordContentVersion — a re-derivation with identical text is NOT a 
     expect(state.creates).toBe(1);
     expect(state.rows).toHaveLength(2);
     // A row created today carries today's extractor as the first that reproduced it.
-    expect(moved.derivedUnder).toEqual([CURRENT_EXTRACTOR]);
+    expect(moved.derivations.map((d) => d.extractorVersion)).toEqual([CURRENT_EXTRACTOR]);
+  });
+
+  // DECLARED ADDITION, step 34 chunk 5-0 — the researcher's Q-R1 (R86 Entry 4): "one row per derivation, (versionId,
+  // extractorVersion, at), at null only for rows derived before the table". NULL is the MIGRATION's word for a moment
+  // nobody kept; the writer always knows its moment, so a row it writes with none would be a false "not recorded".
+  it('Q-R1 — a CREATED version writes its first derivation row in the same write, `at` = the version’s own derivedAt, NEVER null', async () => {
+    const state = store();
+    const derived: DerivedContent = {
+      text: 'a new text',
+      contentVersionHash: '0x' + 'f'.repeat(64),
+      extractor: 'pdfjs',
+      extractorVersion: CURRENT_EXTRACTOR,
+      readFailed: false,
+      derivedFrom: 'HELD_BYTES',
+    };
+
+    const created = await recordContentVersion(state.tx, '0x' + 'b'.repeat(64), derived);
+
+    // THE FLOOR: exactly one row was written, so the next lines cannot pass over none.
+    expect(state.derivationWrites).toHaveLength(1);
+    expect(state.derivationWrites.at(0)).toEqual({ versionId: created.id, extractorVersion: CURRENT_EXTRACTOR, at: created.derivedAt });
+    expect(state.derivationWrites.at(0)?.at).toBeInstanceOf(Date);
+    expect(created.derivations).toEqual([{ extractorVersion: CURRENT_EXTRACTOR, at: created.derivedAt }]);
+  });
+
+  it('Q-R1 — a RE-REACHED version gains a row whose `at` is THIS derivation’s moment, NEVER null and never the version’s derivedAt (A→B→A)', async () => {
+    const existing = versionRow({ id: 'version-existing', contentVersionHash: '0x' + 'd'.repeat(64) });
+    const state = store([existing]);
+    const before = Date.now();
+
+    const row = await recordContentVersion(state.tx, existing.commitment, {
+      text: existing.text,
+      contentVersionHash: existing.contentVersionHash,
+      extractor: 'pdfjs',
+      extractorVersion: CURRENT_EXTRACTOR,
+      readFailed: false,
+      derivedFrom: 'HELD_BYTES',
+    });
+
+    expect(state.derivationWrites).toHaveLength(1);
+    const written = state.derivationWrites.at(0);
+    expect(written?.versionId).toBe(existing.id);
+    expect(written?.at).toBeInstanceOf(Date);
+    // The moment the version BECAME current under today's extractor (A3 :1369 as CONFORMED) — now, not the past its
+    // own `derivedAt` names (new Date(0) here).
+    expect(written?.at?.getTime() ?? 0).toBeGreaterThanOrEqual(before);
+    expect(written?.at?.getTime()).not.toBe(existing.derivedAt.getTime());
+    expect(row.derivations.at(-1)).toEqual({ extractorVersion: CURRENT_EXTRACTOR, at: written?.at });
   });
 
   it('returns the row UNTOUCHED when this extractor is already in its list — append-only is not append-again', async () => {
     const existing = versionRow({
       id: 'version-existing',
       contentVersionHash: '0x' + 'd'.repeat(64),
-      derivedUnder: [OLD_EXTRACTOR, CURRENT_EXTRACTOR],
+      derivations: [
+        { extractorVersion: OLD_EXTRACTOR, at: new Date(0) },
+        { extractorVersion: CURRENT_EXTRACTOR, at: new Date(60_000) },
+      ],
     });
     const state = store([existing]);
 
@@ -330,8 +404,9 @@ describe('recordContentVersion — a re-derivation with identical text is NOT a 
     });
 
     expect(row).toBe(existing);
-    expect(row.derivedUnder).toEqual([OLD_EXTRACTOR, CURRENT_EXTRACTOR]);
+    expect(row.derivations.map((d) => d.extractorVersion)).toEqual([OLD_EXTRACTOR, CURRENT_EXTRACTOR]);
     expect(state.creates).toBe(0);
+    expect(state.derivationWrites).toEqual([]);
   });
 
   it('a READ THAT FAILED reaches the ROW \u2014 deriveContent carries it and the writer stores it (A2 :1300)', async () => {
@@ -456,7 +531,7 @@ describe('the OPINION register REFUSES an unlabelled reading — COMPLIANCE.md r
 });
 
 // ---------------------------------------------------------------------------
-// `derivedUnder` — THE RE-DERIVATION TRAP, RULED BY THE RESEARCHER 2026-09-23.
+// THE MEMBERSHIP — THE RE-DERIVATION TRAP, RULED BY THE RESEARCHER 2026-09-23; ROWS SINCE 2026-09-26 (Q-R1).
 //
 // §3 :317 (*a re-derivation yielding identical text is not a new row*) and A3 :1368
 // (*the version with extractorVersion = CURRENT_EXTRACTOR*) together TRAPPED a held
@@ -464,22 +539,26 @@ describe('the OPINION register REFUSES an unlabelled reading — COMPLIANCE.md r
 // CURRENT(d) read AWAITING_DERIVATION forever while the pass reported UNCHANGED — and
 // `EVIDENCE_DERIVED` (A6 :1531) is HARD, so the document became permanently uncitable.
 //
-// THE RULING: A2 :1300 gives the row `derivedUnder String[]`, APPEND-ONLY — every
-// extractor version that reproduced this exact text — and A3 :1368 makes CURRENT(d)
-// read MEMBERSHIP of that list, never equality on `extractorVersion`. The row keeps
-// its identity AND its provenance: `extractorVersion` still records which extractor
-// FIRST produced the text and is never overwritten.
+// THE RULING: A2 :1300 gives the version an APPEND-ONLY record of every extractor version
+// that reproduced this exact text — the `derivedUnder` column until 2026-09-26, one
+// `DocumentContentDerivation` row each since (R86 Q-R1) — and A3 :1368 makes CURRENT(d)
+// read MEMBERSHIP of it, never equality on `extractorVersion`. The row keeps its identity
+// AND its provenance: `extractorVersion` still records which extractor FIRST produced the
+// text and is never overwritten.
 // ---------------------------------------------------------------------------
 
-describe('CURRENT(d) reads MEMBERSHIP of derivedUnder — A3 :1368, A2 :1300', () => {
+describe('CURRENT(d) reads MEMBERSHIP of the derivation rows — A3 :1368, A2 :1300', () => {
   it('a version a NEW extractor reproduced is CURRENT, not AWAITING_DERIVATION', () => {
     // The trapped document, exactly: derived once under the OLD extractor, and the
     // pass has since re-derived the same text under today's. One row, two versions in
     // its list, and `extractorVersion` still names the first.
-    const reproduced = {
-      ...versionRow({ extractorVersion: OLD_EXTRACTOR }),
-      derivedUnder: [OLD_EXTRACTOR, CURRENT_EXTRACTOR],
-    } as DocumentContentVersion;
+    const reproduced = versionRow({
+      extractorVersion: OLD_EXTRACTOR,
+      derivations: [
+        { extractorVersion: OLD_EXTRACTOR, at: new Date(0) },
+        { extractorVersion: CURRENT_EXTRACTOR, at: new Date(60_000) },
+      ],
+    });
 
     const current = currentVersion(heldDocument(), [reproduced], CURRENT_EXTRACTOR, null);
 
@@ -490,10 +569,7 @@ describe('CURRENT(d) reads MEMBERSHIP of derivedUnder — A3 :1368, A2 :1300', (
   it('a version NO extractor reproduced under today’s is AWAITING_DERIVATION — the floor', () => {
     // Without this the case above is satisfied by a predicate that answers the first
     // row it is handed, which is the defect one step the other way.
-    const stale = {
-      ...versionRow({ extractorVersion: OLD_EXTRACTOR }),
-      derivedUnder: [OLD_EXTRACTOR],
-    } as DocumentContentVersion;
+    const stale = versionRow({ extractorVersion: OLD_EXTRACTOR, derivations: [{ extractorVersion: OLD_EXTRACTOR, at: new Date(0) }] });
 
     const current = currentVersion(heldDocument(), [stale], CURRENT_EXTRACTOR, null);
 
@@ -503,17 +579,14 @@ describe('CURRENT(d) reads MEMBERSHIP of derivedUnder — A3 :1368, A2 :1300', (
   it('MEMBERSHIP and not equality — a row whose extractorVersion IS today’s but whose list is not still answers', () => {
     // `extractorVersion` is provenance and never the pointer. A row written by today's
     // extractor carries today's version in BOTH fields, so this states the direction
-    // that decays: the list is what is read.
-    const first = {
-      ...versionRow({ extractorVersion: CURRENT_EXTRACTOR }),
-      derivedUnder: [CURRENT_EXTRACTOR],
-    } as DocumentContentVersion;
+    // that decays: the rows are what is read.
+    const first = versionRow({ extractorVersion: CURRENT_EXTRACTOR, derivations: [{ extractorVersion: CURRENT_EXTRACTOR, at: new Date(0) }] });
 
     expect(currentVersion(heldDocument(), [first], CURRENT_EXTRACTOR, null)).toBe(first);
   });
 });
 
-describe('the pass APPENDS to derivedUnder when it re-derives to content the row already holds', () => {
+describe('the pass writes a DERIVATION ROW when it re-derives to content the version already holds', () => {
   it('appends today\u2019s extractor, moves NO row, and never overwrites extractorVersion', async () => {
     // The row already carries EXACTLY the text today's reader returns, derived under an
     // older extractor. Under the ruling the pass must record that today's extractor
@@ -540,8 +613,8 @@ describe('the pass APPENDS to derivedUnder when it re-derives to content the row
     // THE PROVENANCE IS UNTOUCHED — `extractorVersion` still names the extractor that
     // FIRST produced this text, which is the whole reason the list exists beside it.
     expect(after?.extractorVersion).toBe(OLD_EXTRACTOR);
-    expect(after?.derivedUnder).toContain(CURRENT_EXTRACTOR);
-    expect(after?.derivedUnder).toContain(OLD_EXTRACTOR);
+    expect(after?.derivations.map((d) => d.extractorVersion)).toContain(CURRENT_EXTRACTOR);
+    expect(after?.derivations.map((d) => d.extractorVersion)).toContain(OLD_EXTRACTOR);
   }, 30000);
 
   it('appends ONCE \u2014 a second pass over the same document adds no duplicate', async () => {
@@ -553,13 +626,17 @@ describe('the pass APPENDS to derivedUnder when it re-derives to content the row
       text: SHEET.groundTruth,
       contentVersionHash: contentVersionHashOf(SHEET.groundTruth, document.commitment),
       extractorVersion: OLD_EXTRACTOR,
-      derivedUnder: [OLD_EXTRACTOR, CURRENT_EXTRACTOR],
+      derivations: [
+        { extractorVersion: OLD_EXTRACTOR, at: new Date(0) },
+        { extractorVersion: CURRENT_EXTRACTOR, at: new Date(60_000) },
+      ],
     });
     const state = store([reproduced]);
     corpus([{ ...document, versions: state.rows, shed: null }], state);
 
     await rederiveDocuments(() => Promise.resolve(SHEET.bytes()));
 
-    expect(state.rows.at(0)?.derivedUnder).toEqual([OLD_EXTRACTOR, CURRENT_EXTRACTOR]);
+    expect(state.rows.at(0)?.derivations.map((d) => d.extractorVersion)).toEqual([OLD_EXTRACTOR, CURRENT_EXTRACTOR]);
+    expect(state.derivationWrites).toEqual([]);
   }, 30000);
 });

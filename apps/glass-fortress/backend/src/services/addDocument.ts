@@ -10,7 +10,7 @@ import { openDocumentRegistryWindow } from './anchorSnapshots';
 import { readObject, statObject } from './documentBucket';
 import { capturesEqualTo } from './documentCaptures';
 import { deriveContent, recordContentVersion, type DerivedContent } from './documentContentVersions';
-import { currentVersion } from './documentPredicates';
+import { DERIVED_VERSION, currentVersion } from './documentPredicates';
 import { documentRefusal, NO_RESEARCHER, type DocumentRefusal } from './documentRefusals';
 
 // ---------------------------------------------------------------------------
@@ -160,7 +160,7 @@ async function receive(
   call: Assertions,
   researcherId: string,
 ): Promise<AddDocumentAnswer> {
-  const existing = await prisma.document.findUnique({ where: { docId: key }, include: { versions: true, shed: true } });
+  const existing = await prisma.document.findUnique({ where: { docId: key }, include: { versions: DERIVED_VERSION, shed: true } });
 
   if (existing === null) {
     // OUTSIDE: the fresh salt, then the derivation (step 29's pure half) — in that order, because a bytes-only version

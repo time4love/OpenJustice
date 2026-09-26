@@ -345,12 +345,14 @@ describe('interaction A7 :1273 — "every write tool is one transaction", compos
   it('the FIRST arrival writes the Document, the Arrival and the version ALL through the transaction’s client', async () => {
     const { addDocument } = await tool();
     await addDocument({ docId: OBJECT_IN_BUCKET, title: TITLE, mimeType: 'application/pdf' }, 'res_1');
-    // THE FLOOR: the four writes the first arrival makes — zero would pass the next line vacuously.
+    // THE FLOOR: the five writes the first arrival makes — zero would pass the next line vacuously. DECLARED EDIT, step 34
+    // chunk 5-0 (the researcher's Q-R1): the version's first DocumentContentDerivation row joins it, in the same transaction.
     expect(rowWrites().map((write) => write.op)).toEqual([
       'document.create',
       'arrival.create',
       'arrivalDocument.create',
       'documentContentVersion.create',
+      'documentContentDerivation.create',
     ]);
     expect(rowWrites().filter((write) => write.via !== 'transaction')).toEqual([]);
   });

@@ -53,7 +53,9 @@ beforeEach(() => {
   store.theses.push({ id: 'th_1', createdById: 'res_1', headVersionId: HEAD });
   store.documents.push(documentRow(CITED, false), documentRow(SEALED, true));
   // A sealed document's CURRENT(d) is its AT_RECEIPT version, forever (A3 :1370).
-  store.versions.push({ commitment: SEALED, contentVersionHash: '0x' + 'a1'.repeat(32), text: 'the receipt text', derivedFrom: 'AT_RECEIPT', derivedUnder: ['v0'] });
+  // DECLARED EDIT, step 34 chunk 5-0 (Q-R1): its producer's DocumentContentDerivation row, no longer a column.
+  store.versions.push({ id: 'version-sealed', commitment: SEALED, contentVersionHash: '0x' + 'a1'.repeat(32), text: 'the receipt text', derivedFrom: 'AT_RECEIPT' });
+  store.derivations.push({ id: 'derivation-sealed', versionId: 'version-sealed', extractorVersion: 'v0', at: new Date(Date.UTC(2026, 8, 20)) });
   store.mentions.push(
     { versionId: HEAD, kind: 'DOCUMENT', name: CITED, thesisVersion: { thesisId: 'th_1' } },
     { versionId: HEAD, kind: 'DOCUMENT', name: SEALED, thesisVersion: { thesisId: 'th_1' } },

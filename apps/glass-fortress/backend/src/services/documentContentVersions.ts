@@ -1,11 +1,13 @@
-import { Prisma, type DocumentContentVersion, type DocumentDerivedFrom, type DocumentOpinion as DocumentOpinionRow } from '@prisma/client';
+import { Prisma, type DocumentDerivedFrom, type DocumentOpinion as DocumentOpinionRow } from '@prisma/client';
 import { z } from 'zod';
 import { contentVersionHashOf } from '../lib/documentIdentity';
 import { CURRENT_EXTRACTOR, extract } from '../lib/documentExtractor';
+import { DERIVED_VERSION, type DerivedVersion } from './documentPredicates';
 
 // ---------------------------------------------------------------------------
-// `DocumentContentVersion`'s ONE WRITER, and `DocumentOpinion`'s — plan step 29 :158-:161,
-// A2 :1296-:1305 (the opinion a table since step 30, A2 :1302 as ruled 2026-09-23).
+// `DocumentContentVersion`'s ONE WRITER, `DocumentContentDerivation`'s, and `DocumentOpinion`'s — plan step 29
+// :158-:161, A2 :1296-:1305 (the opinion a table since step 30, A2 :1302 as ruled 2026-09-23; the derivation a table
+// since step 34, A2 :1300 as CONFORMED 2026-09-26).
 //
 // CONTENT IS A VERSION, APPEND-ONLY, AND THE NAME NEVER MOVES (§3 :271-:275). Two acts
 // write the content register and nothing else does: DERIVATION, which appends a version of
@@ -19,7 +21,7 @@ import { CURRENT_EXTRACTOR, extract } from '../lib/documentExtractor';
 // workbook's cell walk is not free; the 2026-09-06 failure that made this a rule
 // was seventeen round trips inside one window, and no test can observe it because
 // the suite mocks Prisma. So `deriveContent` is a PURE function the caller runs
-// BEFORE it opens a transaction, and `recordContentVersion` does one write.
+// BEFORE it opens a transaction, and `recordContentVersion` reads once and writes at most twice — it never extracts.
 //
 // A RE-DERIVATION WITH IDENTICAL TEXT IS NOT A NEW ROW (§3 :316-:317, A2 :1304).
 // That is held by `@@unique([commitment, contentVersionHash])` in the schema rather
@@ -79,26 +81,31 @@ export async function deriveContent(
 /**
  * Append a content version, or record that this extractor REPRODUCED the one that exists.
  *
- * ONE WRITE, and it takes a transaction client so a caller writing a Document and
- * its first version does both in one transaction. It creates no ROW when the
- * content is unchanged: `@@unique([commitment, contentVersionHash])` means a
- * re-derivation that agrees finds the existing row (§3 :316-:317).
+ * ONE TRANSACTION CLIENT, so a caller writing a Document and its first version does both in one
+ * transaction. It creates no VERSION when the content is unchanged: `@@unique([commitment,
+ * contentVersionHash])` means a re-derivation that agrees finds the existing row (§3 :316-:317).
  *
- * BUT IT IS NOT A NO-OP — RULED BY THE RESEARCHER 2026-09-23 (A2 :1300, A3 :1368).
- * The row that already holds this content gains today's extractor in `derivedUnder`,
- * the append-only list of every version that REPRODUCED this exact text, and
- * `CURRENT(d)` reads MEMBERSHIP of that list. Without the append, a held document
- * whose text a new extractor reproduces has no row carrying the new version, reads
- * AWAITING_DERIVATION forever while the pass reports UNCHANGED, and becomes
+ * BUT IT IS NOT A NO-OP — RULED BY THE RESEARCHER 2026-09-23 (A2 :1300, A3 :1368), AND ITS
+ * RECORD IS A ROW SINCE 2026-09-26 (R86 Q-R1: "one row per derivation, (versionId,
+ * extractorVersion, at)"). Every derivation writes a `DocumentContentDerivation` row IN THE SAME
+ * TRANSACTION as the version it created or re-reached, and `CURRENT(d)` reads MEMBERSHIP of those
+ * rows. Without it, a held document whose text a new extractor reproduces has no row carrying the
+ * new version, reads AWAITING_DERIVATION forever while the pass reports UNCHANGED, and becomes
  * permanently uncitable under A6 :1531's hard check.
  *
- * THE APPEND LIVES IN THE ONE WRITER RATHER THAN IN THE PASS, for the reason the
- * header already gives about `@@unique`: this table has ONE writer (plan :158-:161),
- * and a caller issuing its own `update` would be a second one. It is also why
- * `add_document` inherits the behaviour without knowing about it.
+ * `at` IS ALWAYS SET, and it is the moment of THIS derivation — NULL is reserved for the memberships
+ * the migration found with no moment kept (A2 :1300 as CONFORMED). A version's FIRST row takes the
+ * version's own `derivedAt`, read back from the create, so the two can never disagree; a re-reach
+ * takes now, which is when CURRENT(d) moved to the older text (A3 :1369 as CONFORMED — the A→B→A
+ * case, where the version's `derivedAt` names the past).
  *
- * `extractorVersion` IS NEVER OVERWRITTEN. It names the extractor that produced this
- * text FIRST — provenance, not a pointer — and the list is what moves.
+ * THE WRITE LIVES IN THE ONE WRITER RATHER THAN IN THE PASS, for the reason the header already gives
+ * about `@@unique`: these tables have ONE writer (plan :158-:161), and a caller issuing its own
+ * create would be a second one. It is also why `add_document` inherits the behaviour without
+ * knowing about it.
+ *
+ * `extractorVersion` IS NEVER OVERWRITTEN. It names the extractor that produced this text FIRST —
+ * provenance, not a pointer — and the rows are what grow.
  *
  * IT WRITES NO OPINION. The OPINION register has its own writer below, into its own table
  * (A2 :1302 as ruled), and folding the two into one call would let a derivation carry a
@@ -108,7 +115,7 @@ export async function recordContentVersion(
   tx: Prisma.TransactionClient,
   commitment: string,
   derived: DerivedContent,
-): Promise<DocumentContentVersion> {
+): Promise<DerivedVersion> {
   const existing = await tx.documentContentVersion.findUnique({
     where: {
       commitment_contentVersionHash: {
@@ -116,29 +123,36 @@ export async function recordContentVersion(
         contentVersionHash: derived.contentVersionHash,
       },
     },
+    ...DERIVED_VERSION,
   });
   if (existing !== null) {
-    // APPEND-ONLY IS NOT APPEND-AGAIN: the list is the SET of versions that reproduced
-    // this text, so a pass run twice must not grow it.
-    if (existing.derivedUnder.includes(derived.extractorVersion)) return existing;
-    return tx.documentContentVersion.update({
-      where: { id: existing.id },
-      data: { derivedUnder: [...existing.derivedUnder, derived.extractorVersion] },
+    // APPEND-ONLY IS NOT APPEND-AGAIN: the rows are the SET of extractors that reproduced this
+    // text, so a pass run twice writes nothing the second time (and `@@unique([versionId,
+    // extractorVersion])` refuses a racing second write).
+    if (existing.derivations.some((row) => row.extractorVersion === derived.extractorVersion)) return existing;
+    const reached = await tx.documentContentDerivation.create({
+      data: { versionId: existing.id, extractorVersion: derived.extractorVersion, at: new Date() },
+      select: DERIVED_VERSION.include.derivations.select,
     });
+    return { ...existing, derivations: [...existing.derivations, reached] };
   }
-  return tx.documentContentVersion.create({
+  const created = await tx.documentContentVersion.create({
     data: {
       commitment,
       text: derived.text,
       contentVersionHash: derived.contentVersionHash,
       extractor: derived.extractor,
       extractorVersion: derived.extractorVersion,
-      // The version that produced it is the first that reproduced it, by construction.
-      derivedUnder: [derived.extractorVersion],
       readFailed: derived.readFailed,
       derivedFrom: derived.derivedFrom,
     },
   });
+  // The version that produced it is its first derivation, by construction — at the version's own moment.
+  const first = await tx.documentContentDerivation.create({
+    data: { versionId: created.id, extractorVersion: created.extractorVersion, at: created.derivedAt },
+    select: DERIVED_VERSION.include.derivations.select,
+  });
+  return { ...created, derivations: [first] };
 }
 
 // ---------------------------------------------------------------------------
