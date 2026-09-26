@@ -60,7 +60,10 @@ export type Voice = ({ voice: 'RESEARCHER' } & Researcher) | ({ voice: 'MODEL' }
  * already holds it for the public surfaces. What the gated reads add is the `url`, because a reviewer reading
  * an owed entry has no page in hand.
  */
-export type NamedRecord = ({ url: string } & RecordNames) | DocumentRecord;
+export type NamedRecord = PageRecord | DocumentRecord;
+
+/** A PAGE's record — a capture or a pair of captures, by its page's URL (evidence A1). */
+export type PageRecord = { url: string } & RecordNames;
 
 /**
  * A DOCUMENT, as a record is ANSWERED — `{ commitment, title }`, ONE shape wherever a record is answered (evidence A4
@@ -553,12 +556,32 @@ export interface Moved {
   left: ContentUnit[];
 }
 
-/** Why the content moved — a UNION, accumulated, never one object (evidence A4 :1146). */
+/** Why a PAGE's content moved — a UNION, accumulated, never one object (evidence A4 :1146). */
 export type Cause =
   | { kind: 'DECISION'; capture: string; decisionId: string; decisionType: string; waybackTimestamp: string | null; sequence: number; at: string }
   | { kind: 'EXTRACTOR'; capture: string; from: string; to: string; at: string }
   | { kind: 'DIFF_VERSION'; from: string; to: string; at: string }
   | { kind: 'UNREADABLE'; capture: string; reason: string };
+
+/**
+ * Why a DOCUMENT's content moved — evidence A4 :1146 as CONFORMED (R85 Q-D; R86 Q-R1): the EXTRACTOR cause with NO new
+ * kind, naming the RECORD where a page's cause names the capture. `to` is the current extractor and `at` the moment the
+ * current version became current under it.
+ */
+export interface DocumentCause {
+  kind: 'EXTRACTOR';
+  record: DocumentRecord;
+  from: string;
+  to: string;
+  at: string;
+}
+
+/**
+ * A RECORD AND ITS CAUSES, PAIRED BY THE RECORD'S FORM (evidence A4 :1146 and thesis A4 :1523 as CONFORMED): a page's
+ * carries the page causes, a document's the document cause — "a reader dispatches on the entry's `record` form BEFORE
+ * `kind`". Two arms, so no body can pair a document with a capture cause or the reverse and still type.
+ */
+export type RecordCauses = { record: PageRecord; cause: Cause[] } | { record: DocumentRecord; cause: DocumentCause[] };
 
 export const FLAG_REASONS = ['WITHDRAWN', 'NOT_CITATION_CURRENT', 'AWAITING_DERIVATION'] as const;
 export type FlagReason = (typeof FLAG_REASONS)[number];
@@ -604,17 +627,15 @@ export type ThesisReviewEntry =
       command: string;
     };
 
-/** FLAGGED's material: the pin beside CURRENT, what moved, why, and what E3 last decided about the record. */
-export interface FlaggedMaterial {
+/** FLAGGED's material: the pin beside CURRENT, what moved, why (paired with the record's form), and E3's last decision. */
+export type FlaggedMaterial = {
   versionId: string;
-  record: NamedRecord;
   pin: ContentVersion;
   current: ContentVersion | null;
   moved: Moved | null;
-  cause: Cause[];
   /** E3's last decision about the record, or none — its fields are the decision pane's, not this step's. */
   decision: unknown;
-}
+} & RecordCauses;
 
 /** STALE_TRAJECTORY's material: the cited pass beside the newest one. */
 export interface StaleMaterial {
@@ -674,22 +695,21 @@ export interface EvidenceCitation {
   argument: { debateSessionId: string; argued: boolean } | null;
 }
 
-export interface EvidenceReview {
+/** One record owed a decision — its record and causes PAIRED by the record's form, the backend's `ReviewEntry` shape. */
+export type EvidenceReview = {
   kind: 'CONTENT_MOVED';
   fileHash: string;
-  record: NamedRecord;
   owedSince: string;
   decisionSequence: number;
   affirmed: ContentVersion;
   current: ContentVersion;
   moved: Moved;
-  cause: Cause[];
   citedBy: EvidenceCitation[];
   /** DIFF only — a capture record is never narrowed. Its members are the narrowing pane's, not this step's. */
   narrowed: unknown;
   /** §29 :892–:894's plural: an evidence review draws one COPY control per command. */
   commands: string[];
-}
+} & RecordCauses;
 
 export const NOT_EVALUABLE_REASONS = ['AWAITING_DERIVATION', 'AFFIRMED_VERSION_MISSING'] as const;
 export type EvidenceNotEvaluableReason = (typeof NOT_EVALUABLE_REASONS)[number];

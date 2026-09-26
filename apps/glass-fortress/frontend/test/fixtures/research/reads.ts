@@ -180,6 +180,75 @@ export const evidenceReviews: EvidenceReviewList = {
   ],
 };
 
+// ---------------------------------------------------------------------------
+// A DOCUMENT'S REVIEW — document step 34 chunk 5b (#594). ADDITIONS ONLY: the landed page fixtures above are untouched,
+// and are what a page body must still parse to, identically. evidence A4 :1146 and thesis A4 :1523 as CONFORMED (R85 Q-D;
+// R86 Q-R1): the record is `{ commitment, title }` and its cause the EXTRACTOR form naming the RECORD, never a capture.
+// ---------------------------------------------------------------------------
+
+const DOCUMENT_RECORD = { commitment: `0x${'c1'.repeat(32)}`, title: 'חוזר המנכ״ל' } as const;
+const DOCUMENT_CAUSE = {
+  kind: 'EXTRACTOR',
+  record: DOCUMENT_RECORD,
+  from: 'v1-pdfjs6.2.0',
+  to: 'v2-pdfjs6.3.289',
+  at: '2026-09-25T12:00:00.000Z',
+} as const;
+
+/** `list_evidence_reviews` over a promoted DOCUMENT whose CURRENT(d) moved — one entry, its document cause. */
+export const documentEvidenceReviews: EvidenceReviewList = {
+  owed: 1,
+  reviews: [
+    {
+      kind: 'CONTENT_MOVED',
+      fileHash: DOCUMENT_RECORD.commitment,
+      record: DOCUMENT_RECORD,
+      owedSince: '2026-09-25T12:00:00.000Z',
+      decisionSequence: 0,
+      affirmed: { hash: `0x${'b0'.repeat(32)}`, chunks: [{ text: 'יש לשמור את ערוץ הדיווח פתוח.' }] },
+      // A version whose content IS the bytes has no units (§3 :284).
+      current: { hash: DOCUMENT_RECORD.commitment, chunks: [] },
+      moved: { entered: [], left: [{ text: 'יש לשמור את ערוץ הדיווח פתוח.' }] },
+      cause: [DOCUMENT_CAUSE],
+      citedBy: [{ thesisId: 'cmu0aaaa00011112222333344', versionId: 'version-1', published: true, argument: null }],
+      narrowed: null,
+      commands: [
+        `review_evidence fileHash=${DOCUMENT_RECORD.commitment} decision=REAFFIRM expectedSequence=0`,
+        `review_evidence fileHash=${DOCUMENT_RECORD.commitment} decision=WITHDRAW reason=… expectedSequence=0`,
+      ],
+    },
+  ],
+  notEvaluable: [],
+};
+
+/** `list_thesis_reviews` — a FLAGGED DOCUMENT mention: the pin beside CURRENT(d), and the document cause. */
+export const documentThesisReviews: ThesisReviewList = {
+  owed: 1,
+  reviews: [
+    {
+      kind: 'FLAGGED',
+      thesisId: 'cmu0aaaa00011112222333344',
+      name: DOCUMENT_RECORD.commitment,
+      versionId: 'version-1',
+      mentionId: 'mention-doc',
+      reasons: ['NOT_CITATION_CURRENT'],
+      command: 'add_thesis_version thesisId=cmu0aaaa00011112222333344',
+      owedSince: '2026-09-25T12:00:00.000Z',
+      author: AUTHOR,
+      mine: true,
+      material: {
+        versionId: 'version-1',
+        record: DOCUMENT_RECORD,
+        pin: { hash: `0x${'b0'.repeat(32)}`, chunks: [{ text: 'יש לשמור את ערוץ הדיווח פתוח.' }] },
+        current: { hash: `0x${'b1'.repeat(32)}`, chunks: [{ text: 'יש לשמור את ערוץ הדיווח פתוח עד סוף הרבעון.' }] },
+        moved: { entered: [{ text: 'יש לשמור את ערוץ הדיווח פתוח עד סוף הרבעון.' }], left: [{ text: 'יש לשמור את ערוץ הדיווח פתוח.' }] },
+        cause: [DOCUMENT_CAUSE],
+        decision: null,
+      },
+    },
+  ],
+};
+
 /** `list_theses` at `all` — ALL FOUR states, `mine` both ways, and one row with no framing attached. */
 export const thesesList: ThesesList = {
   theses: [

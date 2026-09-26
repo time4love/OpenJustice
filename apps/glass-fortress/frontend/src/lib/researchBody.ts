@@ -6,6 +6,7 @@ import type {
   AssessorVerdict,
   CaptureRow,
   Cause,
+  DocumentCause,
   CitedOn,
   DocumentCurrent,
   DocumentRow,
@@ -26,6 +27,7 @@ import type {
   ModelVoice,
   Moved,
   NamedRecord,
+  RecordCauses,
   NotEvaluable,
   Outcome,
   PageEntry,
@@ -238,6 +240,31 @@ function cause(value: unknown, at: string): Cause {
 }
 
 const causes = (value: unknown, at: string): Cause[] => list(value, at).map((one, index) => cause(one, `${at}[${String(index)}]`));
+
+/**
+ * A DOCUMENT's cause — evidence A4 :1146 as CONFORMED (R85 Q-D; R86 Q-R1): the EXTRACTOR kind and no other, naming the
+ * RECORD, which must itself be a document. It never asks for `capture`, as the page parser above never asks for `record`.
+ */
+function documentCause(value: unknown, at: string): DocumentCause {
+  const row = object(value, at);
+  const kind = oneOf(row.kind, ['EXTRACTOR'] as const, `${at}.kind`);
+  const record = namedRecord(row.record, `${at}.record`);
+  if (!('commitment' in record)) return fail(`${at}.record`, 'a document { commitment, title }', row.record);
+  return { kind, record, from: text(row.from, `${at}.from`), to: text(row.to, `${at}.to`), at: instant(row.at, `${at}.at`) };
+}
+
+/**
+ * THE RECORD FIRST, THEN ITS CAUSES BY ITS FORM — evidence A4 :1146 and thesis A4 :1523 as CONFORMED: "a reader dispatches
+ * on the entry's `record` form BEFORE `kind`, so a capture cause is never asked for `record` and a document cause never
+ * for `capture`". ONE function for both doors that carry a cause — the evidence review and the FLAGGED material.
+ */
+function recordCauses(record: unknown, cause: unknown, at: string): RecordCauses {
+  const named = namedRecord(record, `${at}.record`);
+  if ('commitment' in named) {
+    return { record: named, cause: list(cause, `${at}.cause`).map((one, index) => documentCause(one, `${at}.cause[${String(index)}]`)) };
+  }
+  return { record: named, cause: causes(cause, `${at}.cause`) };
+}
 
 function citedOn(value: unknown, at: string): CitedOn {
   const row = object(value, at);
@@ -812,11 +839,10 @@ function thesisReview(value: unknown, at: string): ThesisReview {
       ...entry,
       material: {
         versionId: text(material.versionId, `${at}.material.versionId`),
-        record: namedRecord(material.record, `${at}.material.record`),
+        ...recordCauses(material.record, material.cause, `${at}.material`),
         pin: contentVersion(material.pin, `${at}.material.pin`),
         current: material.current === null || material.current === undefined ? null : contentVersion(material.current, `${at}.material.current`),
         moved: material.moved === null || material.moved === undefined ? null : moved(material.moved, `${at}.material.moved`),
-        cause: causes(material.cause, `${at}.material.cause`),
         decision: present(material.decision, `${at}.material.decision`),
       },
     };
@@ -887,13 +913,12 @@ function evidenceReview(value: unknown, at: string): EvidenceReview {
   return {
     kind: oneOf(row.kind, ['CONTENT_MOVED'] as const, `${at}.kind`),
     fileHash: text(row.fileHash, `${at}.fileHash`),
-    record: namedRecord(row.record, `${at}.record`),
+    ...recordCauses(row.record, row.cause, at),
     owedSince: instant(row.owedSince, `${at}.owedSince`),
     decisionSequence: count(row.decisionSequence, `${at}.decisionSequence`),
     affirmed: contentVersion(row.affirmed, `${at}.affirmed`),
     current: contentVersion(row.current, `${at}.current`),
     moved: moved(row.moved, `${at}.moved`),
-    cause: causes(row.cause, `${at}.cause`),
     citedBy: list(row.citedBy, `${at}.citedBy`).map((one, index) => evidenceCitation(one, `${at}.citedBy[${String(index)}]`)),
     narrowed: present(row.narrowed, `${at}.narrowed`),
     commands: names(row.commands, `${at}.commands`),

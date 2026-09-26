@@ -106,6 +106,12 @@ export interface PublicationEvaluation {
    */
   titles: string[];
   /**
+   * The commitment of every cited document with NO title — row 16 names each NOT EXAMINED rather than folding it into a
+   * clean list (A6 :1537; LOW-m, R84 Entry 16, under Q-R2 (a), R86 Entry 3). Only a SEALED document can have none (the CHECK
+   * `Document_title_required_when_held`). Empty when every cited document is titled, or none is cited.
+   */
+  untitled: string[];
+  /**
    * Check 19's subjects — per DOCUMENT mention of the version, every quoted span of every paragraph carrying its token,
    * each with VERDICT(span, d) (document A6 :1536; A2 :1315). `mentionId` rides so `publish_thesis` writes the SAME
    * verdicts as PassageVerdict rows — derived here once, never recomputed at the write. Empty when the version cites no
@@ -198,6 +204,7 @@ export async function evaluatePublication(
       const title = cited.get(name)?.document.title ?? null;
       return title === null ? [] : [title];
     }),
+    untitled: names.filter((name) => (cited.get(name)?.document.title ?? null) === null),
     assessment,
   };
 }
@@ -404,8 +411,15 @@ export function rowsOf(e: PublicationEvaluation): ThesisCheck[] {
     row(
       'NAMES_NO_PERSON',
       'hard',
-      // The names the assessor listed, and each cited document's TITLE it was handed to examine (A6 :1537; Q15).
-      assessment === null ? [] : [...assessment.names, ...e.titles.map((title) => ({ title }))],
+      // The names the assessor listed, each cited document's TITLE it was handed to examine (A6 :1537; Q15) — and each cited
+      // document with NO title, named NOT EXAMINED: the check names what it examined, and an untitled one was not (LOW-m).
+      assessment === null
+        ? []
+        : [
+            ...assessment.names,
+            ...e.titles.map((title) => ({ title })),
+            ...e.untitled.map((commitment) => ({ commitment, title: null, examined: false })),
+          ],
       assessment === null ? [] : assessment.names.map((name) => ({ name })),
       assessment === null,
     ),

@@ -24,13 +24,14 @@ import {
   type ContentUnit,
   type Moved,
 } from './evidencePredicates';
+import { CURRENT_EXTRACTOR } from '../lib/documentExtractor';
 import {
-  documentReviewNotBuilt,
   documentShedNotBuilt,
   documentsByCommitment,
   evidenceCurrentOf,
   type CitedDocument,
 } from './documentCitation';
+import type { DerivedVersion } from './documentPredicates';
 
 // ---------------------------------------------------------------------------
 // FLOW E3's LIST — docs/gf-evidence-flows.md §6, §7 and A4.
@@ -80,7 +81,7 @@ export interface DocumentRecord {
   title: string | null;
 }
 
-/** A capture's or a pair's record — what this module's CONTENT_MOVED path names; a document has no captures to move. */
+/** A capture's or a pair's record — the CORPUS arm; a document is named `{ commitment, title }` and has no captures to move. */
 type CorpusRecordName = Exclude<NamedRecord, DocumentRecord>;
 
 /**
@@ -94,7 +95,7 @@ type CorpusRecordName = Exclude<NamedRecord, DocumentRecord>;
  * price of a better differ … stated here so nobody pays it by surprise", which
  * makes it exactly the one that must not be swallowed.
  */
-export type Cause =
+export type CorpusCause =
   | {
       kind: 'DECISION';
       capture: string;
@@ -108,6 +109,25 @@ export type Cause =
   | { kind: 'EXTRACTOR'; capture: string; from: string; to: string; at: Date }
   | { kind: 'DIFF_VERSION'; from: string; to: string; at: Date }
   | { kind: 'UNREADABLE'; capture: string; reason: string };
+
+/**
+ * WHY A DOCUMENT'S CONTENT MOVED — evidence A4 :1146 as CONFORMED (R85 Q-D; R86 Q-R1): the EXTRACTOR cause with NO new
+ * kind, naming the RECORD where a capture's names the capture. The derivation pass is the only writer (document §3 :348;
+ * no decision row, no person), so an entry carries exactly one: `from` the extractor that FIRST produced the version the
+ * move is measured from, `to` CURRENT_EXTRACTOR — the member that makes CURRENT(d) current (A3 :1368) — and `at` the
+ * moment of that derivation, its `DocumentContentDerivation` row, which CURRENT(d)'s own `derivedAt` is not when an older
+ * text is re-reached (A→B→A).
+ */
+export interface DocumentCause {
+  kind: 'EXTRACTOR';
+  record: DocumentRecord;
+  from: string;
+  to: string;
+  at: Date;
+}
+
+/** Every cause, by the record's form — a reader dispatches on the entry's `record` BEFORE `kind` (A4 :1146). */
+export type Cause = CorpusCause | DocumentCause;
 
 /** One citation of the record on a HEAD or PUBLISHED version — one row per MENTION. */
 export interface Citation {
@@ -129,21 +149,23 @@ export interface NarrowingMaterial {
   carried: CarriedChunk[];
 }
 
-/** One record owed a decision. */
-export interface ReviewEntry {
+/**
+ * One record owed a decision — its RECORD'S FORM PAIRED WITH ITS CAUSES (A4 :1146 as CONFORMED): a page's entry carries
+ * the capture causes, byte for byte as before; a document's carries document causes. Two arms, so the compiler refuses an
+ * entry that names a document and a capture cause, or the reverse.
+ */
+export type ReviewEntry = {
   kind: 'CONTENT_MOVED';
   fileHash: string;
-  record: NamedRecord;
   owedSince: Date;
   decisionSequence: number;
   affirmed: { hash: string; chunks: ContentUnit[] };
   current: { hash: string; chunks: ContentUnit[] };
   moved: Moved;
-  cause: Cause[];
   citedBy: Citation[];
   narrowed: NarrowingMaterial | null;
   commands: string[];
-}
+} & ({ record: CorpusRecordName; cause: CorpusCause[] } | { record: DocumentRecord; cause: DocumentCause[] });
 
 /**
  * A PROMOTED record that cannot be judged — named, never absent and never a
@@ -317,28 +339,24 @@ function documentKeyOf(row: RecordRow): string[] {
 
 /**
  * A PROMOTED DOCUMENT, judged over CURRENT(d) — document A3 :1372 (NEEDS_REVIEW over CURRENT(d)); evidence A4 :1146 as
- * ruled (R81 QB: `record` is `{ commitment, title }`).
+ * ruled (R81 QB: `record` is `{ commitment, title }`) and CONFORMED (R85 Q-D, R86 Q-R1: its cause).
  *
  *   affirmed = CURRENT(d)   → owed NOTHING, in neither list
  *   CURRENT(d) awaits       → notEvaluable AWAITING_DERIVATION, named — "a human is not asked to judge a version that
  *                              does not exist" (A3 :1029), the capture's and diff's word for the same state
- *   CURRENT(d) moved        → the LOUD guard (R82 Entry 8, §3 :348): the re-affirmation is step 34's
+ *   CURRENT(d) moved        → the entry (#594, document §3 :348 → evidence Flow E3, unchanged): old beside new, what
+ *                              moved, why, who cites it, the two commands
  */
-function documentOwed(row: RecordRow, documents: ReadonlyMap<string, CitedDocument>): NotEvaluable | null {
-  const cited = row.documentCommitment === null ? undefined : documents.get(row.documentCommitment);
-  if (cited === undefined) {
-    throw new Error(
-      `evidenceReviews: ${row.fileHash} is a DOCUMENT row naming no document — Evidence_one_record_key and its ` +
-        'foreign key to Document forbid it, so the row was written wrong.',
-    );
-  }
+async function documentOwed(row: RecordRow, documents: ReadonlyMap<string, CitedDocument>): Promise<ReviewEntry | NotEvaluable | null> {
+  const cited = citedDocumentOf(row, documents);
   const { document, current } = cited;
   if ('shed' in current) throw documentShedNotBuilt(document.commitment);
+  const record: DocumentRecord = { commitment: document.commitment, title: document.title };
   const owed = needsReview(row, evidenceCurrentOf(current));
   if (!owed.evaluable) {
     return {
       fileHash: row.fileHash,
-      record: { commitment: document.commitment, title: document.title },
+      record,
       reason: 'AWAITING_DERIVATION',
       detail:
         `The document ${document.title === null ? document.commitment : `„${document.title}”`} has no content version ` +
@@ -347,7 +365,47 @@ function documentOwed(row: RecordRow, documents: ReadonlyMap<string, CitedDocume
     };
   }
   if (!owed.value) return null;
-  throw documentReviewNotBuilt(document.commitment);
+
+  const material = movedFromDocument(cited, row.affirmedContentVersionHash);
+  if (material === null) {
+    return {
+      fileHash: row.fileHash,
+      record,
+      reason: 'AFFIRMED_VERSION_MISSING',
+      detail:
+        `The version a human affirmed (${row.affirmedContentVersionHash}) is not among the content versions of the ` +
+        'document. The row cannot be judged old-beside-new; forensics:audit-evidence names this state.',
+    };
+  }
+  const { current: now, moved, owedSince } = requireMoved(material, row.fileHash);
+  const decisionSequence = await decisionSequenceOf(row.fileHash);
+  return {
+    kind: 'CONTENT_MOVED',
+    fileHash: row.fileHash,
+    record,
+    owedSince,
+    decisionSequence,
+    affirmed: material.from,
+    current: now,
+    moved,
+    cause: material.cause,
+    citedBy: await citationsOf(row.fileHash, 'DOCUMENT'),
+    // "Nothing is diffed against a document, ever" (document §9 :1037) — null BY CONSTRUCTION.
+    narrowed: null,
+    commands: commandsFor(row.fileHash, decisionSequence),
+  };
+}
+
+/** The document a DOCUMENT row names, from the loaded map — or the loud guard for a row the schema forbids. */
+function citedDocumentOf(row: RecordRow, documents: ReadonlyMap<string, CitedDocument>): CitedDocument {
+  const cited = row.documentCommitment === null ? undefined : documents.get(row.documentCommitment);
+  if (cited === undefined) {
+    throw new Error(
+      `evidenceReviews: ${row.fileHash} is a DOCUMENT row naming no document — Evidence_one_record_key and its ` +
+        'foreign key to Document forbid it, so the row was written wrong.',
+    );
+  }
+  return cited;
 }
 
 /** One row: the entry it owes, the reason it cannot be judged, or nothing at all. */
@@ -456,14 +514,14 @@ const asSegments = (text: string): ContentUnit[] => segments(text).map((t) => ({
 // why, and when — one spelling for both, so the two lists cannot tell a researcher different things about one record.
 // ---------------------------------------------------------------------------
 
-/** A record's content between a stored version and CURRENT. */
-interface MovedMaterial {
+/** A record's content between a stored version and CURRENT — its causes of the record's own form. */
+interface MovedMaterial<C extends Cause = Cause> {
   from: { hash: string; chunks: ContentUnit[] };
   /** Null only when CURRENT is undefined — a diff the walk owes a version (evidence A3). */
   current: { hash: string; chunks: ContentUnit[] } | null;
   /** `movedBetween(from, current)` — null exactly when `current` is. */
   moved: Moved | null;
-  cause: Cause[];
+  cause: C[];
   /**
    * The moment CURRENT moved off `from` (§2e): the newest cause that carries a moment, else the kept version's
    * `supersededAt` (a capture) or CURRENT's `derivedAt` (a diff). Null when `from` IS CURRENT (nothing moved) or when
@@ -479,11 +537,100 @@ interface MovedMaterial {
 export async function movedFrom(row: RecordRow, fromHash: string): Promise<MovedMaterial | null> {
   if (row.urlVersionDiff !== null) return movedFromDiff(row.urlVersionDiff, fromHash);
   if (row.snapshot !== null) return movedFromCapture(requireCapture(row.snapshot), fromHash);
-  // A DOCUMENT row: what moved from a pin to CURRENT(d) is the review step 34 builds (R82 Entry 8, §3 :348).
-  throw documentReviewNotBuilt(row.fileHash);
+  // A DOCUMENT row — #594 (document §3 :348): the same material over CURRENT(d), through the one loader.
+  const documents = await documentsByCommitment(documentKeyOf(row));
+  const cited = citedDocumentOf(row, documents);
+  if ('shed' in cited.current) throw documentShedNotBuilt(cited.document.commitment);
+  return movedFromDocument(cited, fromHash);
 }
 
-async function movedFromCapture(capture: LoadedCapture, fromHash: string): Promise<MovedMaterial | null> {
+// ---------------------------------------------------------------------------
+// A DOCUMENT'S MATERIAL — #594, document step 34 chunk 5a. Its units are SEGMENTS of each version's text, through the
+// ONE spelling (`asSegments`), as a capture's are; a version whose content IS the bytes (text null) has none.
+// ---------------------------------------------------------------------------
+
+/**
+ * A document's content from `fromHash` to CURRENT(d) — or null when `fromHash` is not one of its versions, which each
+ * caller names in its own words (evidence: AFFIRMED_VERSION_MISSING; the thesis list: a malformed pin). PURE over the
+ * loaded document: the versions arrived with their derivations (`DERIVED_VERSION`), so nothing more is read.
+ *
+ *   CURRENT(d) awaits   → `current: null`, no cause, no moment — the thesis list's AWAITING_DERIVATION flag reads it
+ *   from IS CURRENT(d)  → nothing moved: no cause, no moment (the capture arm's precedent)
+ *   moved               → ONE cause (§3 :348: the derivation pass is the only writer), evidence A4 :1146 as CONFORMED
+ */
+function movedFromDocument(cited: CitedDocument, fromHash: string): MovedMaterial<DocumentCause> | null {
+  const from = cited.versions.find((version) => version.contentVersionHash === fromHash);
+  if (from === undefined) return null;
+  const fromUnits = unitsOf(from);
+  const { current } = cited;
+  if ('shed' in current) throw documentShedNotBuilt(cited.document.commitment);
+  if ('awaiting' in current) return { from: { hash: fromHash, chunks: fromUnits }, current: null, moved: null, cause: [], movedAt: null };
+
+  const currentUnits = unitsOf(current);
+  const material = {
+    from: { hash: fromHash, chunks: fromUnits },
+    current: { hash: current.contentVersionHash, chunks: currentUnits },
+    moved: movedBetween(fromUnits, currentUnits),
+  };
+  if (current.id === from.id) return { ...material, cause: [], movedAt: null };
+
+  const at = becameCurrentAt(cited, current);
+  return {
+    ...material,
+    cause: [
+      {
+        kind: 'EXTRACTOR',
+        record: { commitment: cited.document.commitment, title: cited.document.title },
+        from: from.extractorVersion,
+        to: CURRENT_EXTRACTOR,
+        at,
+      },
+    ],
+    movedAt: at,
+  };
+}
+
+/** A version's units: the SEGMENTS of its text, or none where its content IS the bytes (§3 :284). */
+const unitsOf = (version: DerivedVersion): ContentUnit[] => (version.text === null ? [] : asSegments(version.text));
+
+/**
+ * THE MOMENT CURRENT(d) BECAME CURRENT — its `DocumentContentDerivation` row for CURRENT_EXTRACTOR (A3 :1369 and evidence
+ * A4 :1146 as CONFORMED, R86 Q-R1).
+ *
+ * TWO LOUD GUARDS, each a world no clause creates for a MOVED document:
+ *   · a SEALED document whose CURRENT(d) is not the version a human affirmed. CURRENT(d) of a sealed document is its
+ *     AT_RECEIPT version, forever (A3 :1370), and nothing else is pinnable; the one way it moves is plaintext arriving
+ *     again, HELD, through the receipt (§3 :350) — step 32's door, and not this derivation cause;
+ *   · a NULL moment. NULL is the migration's word for a reproduction appended before the table ("not recorded"); measured
+ *     on staging, the one such row belongs to a document with ONE version and no evidence row (R86 Entry 4), so no moved
+ *     entry can stand on it. Answering a date here would invent one.
+ */
+function becameCurrentAt(cited: CitedDocument, current: DerivedVersion): Date {
+  if (cited.custody !== 'HELD') {
+    throw new Error(
+      `evidenceReviews: ${cited.document.commitment} is ${cited.custody} and its CURRENT(d) moved off a pinned version — a ` +
+        'sealed document is current at its AT_RECEIPT version forever (A3 :1370); plaintext arriving again (§3 :350) is ' +
+        "document step 32's door, not the derivation pass.",
+    );
+  }
+  const row = current.derivations.find((derivation) => derivation.extractorVersion === CURRENT_EXTRACTOR);
+  if (row === undefined) {
+    throw new Error(
+      `evidenceReviews: ${cited.document.commitment}'s CURRENT(d) carries no derivation row for ${CURRENT_EXTRACTOR} — ` +
+        'CURRENT(d) is read by that very membership (A3 :1368), so the two reads disagree.',
+    );
+  }
+  if (row.at === null) {
+    throw new Error(
+      `evidenceReviews: ${cited.document.commitment} moved to a version whose moment under ${CURRENT_EXTRACTOR} was not ` +
+        'recorded — a membership appended before the table (A2 :1300 as CONFORMED, R86 Q-R1). No moved entry can stand on ' +
+        'one (R86 Entry 4), and a date here would be invented.',
+    );
+  }
+  return row.at;
+}
+
+async function movedFromCapture(capture: LoadedCapture, fromHash: string): Promise<MovedMaterial<CorpusCause> | null> {
   const unmoved = fromHash === capture.textHash;
   const kept = unmoved
     ? null
@@ -544,7 +691,7 @@ async function movedFromCapture(capture: LoadedCapture, fromHash: string): Promi
 }
 
 /** The evidence entry's material or its not-evaluable reason — the loader's answer, never re-derived. */
-function requireMoved(material: MovedMaterial, fileHash: string): { current: NonNullable<MovedMaterial['current']>; moved: Moved; owedSince: Date } {
+function requireMoved<C extends Cause>(material: MovedMaterial<C>, fileHash: string): { current: NonNullable<MovedMaterial['current']>; moved: Moved; owedSince: Date } {
   if (material.current === null || material.moved === null || material.movedAt === null) {
     throw new Error(
       `evidenceReviews: ${fileHash} is owed a review and its content could not be read beside CURRENT — ` +
@@ -559,7 +706,7 @@ async function entryForCapture(
   record: CorpusRecordName,
   capture: LoadedCapture,
 ): Promise<ReviewEntry | NotEvaluable> {
-  const material = await movedFrom(row, row.affirmedContentVersionHash);
+  const material = await movedFromCapture(capture, row.affirmedContentVersionHash);
   if (material === null) {
     return {
       fileHash: row.fileHash,
@@ -584,7 +731,7 @@ async function entryForCapture(
     current,
     moved,
     cause: material.cause,
-    citedBy: await citationsOf(row.fileHash),
+    citedBy: await citationsOf(row.fileHash, 'EVIDENCE'),
     // "A CAPTURE record is never narrowed" (§7), so the field is null BY
     // CONSTRUCTION rather than by an unasked question.
     narrowed: null,
@@ -609,7 +756,7 @@ function captureCause(
     } | null;
   },
   currentExtractor: string,
-): Cause[] {
+): CorpusCause[] {
   // A CAUSE THAT CANNOT BE READ IS A FOURTH KIND, AND THE ENTRY STAYS (§2c).
   // "The record's CURRENT has moved off what a human affirmed whether or not the
   // platform can explain why", so withholding the entry would drop a real
@@ -655,7 +802,7 @@ function captureCause(
   ];
 }
 
-async function movedFromDiff(diff: NonNullable<RecordRow['urlVersionDiff']>, fromHash: string): Promise<MovedMaterial | null> {
+async function movedFromDiff(diff: NonNullable<RecordRow['urlVersionDiff']>, fromHash: string): Promise<MovedMaterial<CorpusCause> | null> {
   const name = `${nameOf(diff.beforeSnapshot)} → ${nameOf(diff.afterSnapshot)}`;
   const from = diff.contentVersions.find((v) => v.contentVersionHash === fromHash);
   if (from === undefined) return null;
@@ -668,7 +815,7 @@ async function movedFromDiff(diff: NonNullable<RecordRow['urlVersionDiff']>, fro
   });
   const current = resolved.defined && resolved.kind === 'DIFF' ? resolved.version : null;
 
-  const cause: Cause[] = [];
+  const cause: CorpusCause[] = [];
   // 1. THE VERSION LABEL, ASKED ON ITS OWN — different means a DIFF_VERSION
   //    cause WHATEVER THE ENDPOINTS DID. §3: "every CITED DIFF enters review —
   //    the price of a better differ, paid by a human once per record, and stated
@@ -725,7 +872,7 @@ async function entryForDiff(
   diff: NonNullable<RecordRow['urlVersionDiff']>,
   pages: PageCache,
 ): Promise<ReviewEntry | NotEvaluable> {
-  const material = await movedFrom(row, row.affirmedContentVersionHash);
+  const material = await movedFromDiff(diff, row.affirmedContentVersionHash);
   if (material === null) {
     return {
       fileHash: row.fileHash,
@@ -750,7 +897,7 @@ async function entryForDiff(
     current,
     moved,
     cause: material.cause,
-    citedBy: await citationsOf(row.fileHash),
+    citedBy: await citationsOf(row.fileHash, 'EVIDENCE'),
     narrowed: await narrowingFor(diff, record, current.chunks, pages),
     commands: commandsFor(row.fileHash, decisionSequence),
   };
@@ -791,7 +938,7 @@ async function contentOf(
 }
 
 /** One endpoint's route: the DECISION, the EXTRACTOR, or UNREADABLE (§2c). */
-async function endpointCause(snapshot: LoadedCapture, affirmedHash: string): Promise<Cause[]> {
+async function endpointCause(snapshot: LoadedCapture, affirmedHash: string): Promise<CorpusCause[]> {
   const capture = nameOf(snapshot);
   const kept = await prisma.textVersion.findUnique({
     where: { snapshotId_textHash: { snapshotId: snapshot.id, textHash: affirmedHash } },
@@ -884,10 +1031,12 @@ async function decisionSequenceOf(fileHash: string): Promise<number> {
  * GATED working state and must show a DRAFT's citation — precisely the one a
  * REAFFIRM protects. Two loaders, two questions, declared.
  */
-async function citationsOf(fileHash: string): Promise<Citation[]> {
+async function citationsOf(fileHash: string, kind: 'EVIDENCE' | 'DOCUMENT'): Promise<Citation[]> {
   const mentions = await prisma.thesisMention.findMany({
     where: {
-      kind: 'EVIDENCE',
+      // THE ROW'S OWN KIND OF MENTION — a document is cited by `#doc_<commitment>` (a DOCUMENT mention, T2), a capture or
+      // a diff by `#ev_` (EVIDENCE). Asked with the wrong kind, a document's citations would read as NONE, in silence.
+      kind,
       name: fileHash,
       // The PIN itself decides, rather than a status anyone could set separately:
       // `isHead` and `isPublished` are the back-relations of the two pointers.

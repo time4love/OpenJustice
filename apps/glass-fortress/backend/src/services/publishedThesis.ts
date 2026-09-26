@@ -72,8 +72,9 @@ export async function assessorMaterial(
   const { call, requests } = await publishedAppeals(thesis.id, versionId);
   const cited = await prisma.thesisMention.findMany({ where: { versionId, kind: 'DOCUMENT' }, select: { name: true } });
   const documents = await documentsByCommitment(cited.map((m) => m.name));
-  // Every document a version cites was written with a title (A2, NO_TITLE since 2026-09-23); a cited one without is a
-  // pre-rule row, and it is handed as nothing rather than as an empty title the model would read as "no name here".
+  // A cited document with no title (a SEALED one — the CHECK `Document_title_required_when_held`) has nothing to hand the
+  // model, and is handed nothing rather than an empty title it would read as "no name here"; row 16 names it NOT EXAMINED
+  // (LOW-m, under Q-R2 (a), R86 Entry 3 — the material and the approved prompt V2 unchanged).
   const titles = cited.flatMap((m) => {
     const title = documents.get(m.name)?.document.title ?? null;
     return title === null ? [] : [title];

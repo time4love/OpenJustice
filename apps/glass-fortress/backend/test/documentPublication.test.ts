@@ -427,5 +427,27 @@ describe('Q15 — every cited document’s TITLE is handed to the publication as
     expect(row.examined).toEqual(expect.arrayContaining([{ title: TITLE }]));
     expect(row.failures).toEqual([{ name: 'יוסי כהן' }]);
   });
+
+  // LOW-m (R84 Entry 16), under Q-R2 (a) — REVIEW's suppression, R86 Entry 3: a cited document with NO title is named NOT
+  // EXAMINED by row 16, never folded into a clean list (A6 :1537: "the check examines every `#doc_` mention's title and
+  // names the one it examined"). The assessor's material is UNCHANGED — there is no title to hand it — so no prompt moves
+  // (Q-P). Its world: an untitled document is a SEALED one (the CHECK `Document_title_required_when_held`), which step 32's
+  // door creates; the suite plants sealed documents already (Q3).
+  it('B16 an UNTITLED cited document: the assessor is handed no title, and row 16 names it NOT EXAMINED — examined, not dropped; the row does not fail on it', async () => {
+    await seedCitingDocument({ sealed: true });
+    store.documents = store.documents.map((d) => ({ ...d, title: null }));
+    jest.spyOn(documentStanding, 'documentVerificationOf').mockResolvedValue(asked({ verified: true }));
+    const draw = jest.spyOn(publicationAssessor, 'assess').mockResolvedValue(ASSESSED);
+    const out = JSON.parse(await checkPublicationReadinessHandler({ thesisId: THESIS.id, rationale: 'הטיעון' })) as {
+      checks: ThesisCheck[];
+    };
+
+    expect(draw.mock.calls.at(0)?.[0].titles).toEqual([]);
+    const row = rowOf(out.checks, 'NAMES_NO_PERSON');
+    expect(row.examined).toEqual([{ commitment: COMMITMENT, title: null, examined: false }]);
+    // A null title publishes no words (§7 :848), so there is nothing to name a person in — NOT EXAMINED, and not a failure.
+    expect(row.verdict).toBe('PASS');
+    expect(row.failures).toEqual([]);
+  });
 });
 
