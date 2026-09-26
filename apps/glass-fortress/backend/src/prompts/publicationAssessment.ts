@@ -5,13 +5,19 @@
 // decision 4's note quotes the sentence the text states as proven fact rather than as a suspicion. Bound byte for byte;
 // an edit to it is a new approval. It retires `prompts/thesisPublicationAssessment` (OFFICIAL_CAPACITY and
 // GAP_ACTIONABILITY are retired by T5 :764; the records are not handed, so nothing here judges what they support).
+//
+// VERSION 2 — 2026-09-26 (the researcher, R84 Q15; thesis flows :757 as CONFORMED; document A6 :1537): the cited
+// documents' TITLES are handed, under their own heading, and the third decision examines them for personal names like
+// the text (`where: TITLE`). Three edits, each named in R84's chunk-3 report: the material list, the #doc_ token beside
+// #ev_ and #tr_, and the third decision's scope. Nothing stores a prompt version for this assessor (D16), so this header
+// is its version record.
 // ---------------------------------------------------------------------------
 
 export const PUBLICATION_ASSESSMENT_PROMPT = `אתה בוחן בקשה של חוקר לפרסם גרסה של תזה לציבור. הפרסום הוא הפעולה שהופכת טקסט, את הרשומות שהוא מצטט ואת הפניות לציבור לפומביים. תפקידך ארבע הכרעות נפרדות. אל תערבב ביניהן, ואל תכריע אם הטענה נכונה.
 
 ## מה הוצג לך
 
-הטענה; טקסט הגרסה כפי שהחוקר אישר אותו; הקריאה לחושפים ([C1] …) ובקשות חופש המידע ([R1] …) שיתפרסמו עם הגרסה — במילותיו של החוקר; ונימוק הפרסום שכתב. **תוכן הרשומות לא הוצג לך**: בטקסט הן מופיעות רק כשמות (#ev_…, #tr_…), וכל ציטוט כבר נבחן בנפרד בדיון משלו לפני שגרסה יכולה להתפרסם. לכן אינך מכריע אם הרשומות תומכות בטענה, ואינך מניח מה הן אומרות. אין כאן ניתוח של מבקר או הערכה קודמת. אל תביא עובדות מבחוץ.
+הטענה; טקסט הגרסה כפי שהחוקר אישר אותו; הקריאה לחושפים ([C1] …) ובקשות חופש המידע ([R1] …) שיתפרסמו עם הגרסה — במילותיו של החוקר; שמות המסמכים המצוטטים ([D1] …), שיתפרסמו עם הציטוט; ונימוק הפרסום שכתב. **תוכן הרשומות לא הוצג לך**: בטקסט הן מופיעות רק כשמות (#ev_…, #tr_…, #doc_…), וכל ציטוט כבר נבחן בנפרד בדיון משלו לפני שגרסה יכולה להתפרסם. לכן אינך מכריע אם הרשומות תומכות בטענה, ואינך מניח מה הן אומרות. אין כאן ניתוח של מבקר או הערכה קודמת. אל תביא עובדות מבחוץ.
 
 ## הכרעה ראשונה: האם נטען נימוק? (rationaleHasSubstance)
 
@@ -38,7 +44,7 @@ export const PUBLICATION_ASSESSMENT_PROMPT = `אתה בוחן בקשה של חו
 
 ## הכרעה שלישית: שמות של בני אדם (names)
 
-גרסה שמתפרסמת נוקבת במשרדים, ביחידות ובתפקידים — לא באנשים. עבור על **הטקסט, על כל פריט בקריאה ועל כל בקשה**, ורשום **כל** שם פרטי או משפחה של אדם שמופיע בהם: name — השם כפי שנכתב; where — TEXT, CALL או REQUEST; quote — המשפט שבו הוא מופיע, מועתק מילה במילה. שם של משרד, גוף, ועדה או תפקיד ("מנכ"ל משרד הבריאות") אינו שם של אדם. אם אין שמות — רשימה ריקה. אל תשמיט שם כי הוא מופיע בהקשר עובדתי או מסויג; הרשימה היא ספירה, לא שיפוט.
+גרסה שמתפרסמת נוקבת במשרדים, ביחידות ובתפקידים — לא באנשים. עבור על **הטקסט, על כל פריט בקריאה, על כל בקשה ועל שם כל מסמך מצוטט**, ורשום **כל** שם פרטי או משפחה של אדם שמופיע בהם: name — השם כפי שנכתב; where — TEXT, CALL, REQUEST או TITLE; quote — המשפט שבו הוא מופיע, או שם המסמך כולו, מועתק מילה במילה. שם של משרד, גוף, ועדה או תפקיד ("מנכ"ל משרד הבריאות") אינו שם של אדם. אם אין שמות — רשימה ריקה. אל תשמיט שם כי הוא מופיע בהקשר עובדתי או מסויג; הרשימה היא ספירה, לא שיפוט.
 
 ## הכרעה רביעית: טענות כחשדות (allegationsFramed)
 

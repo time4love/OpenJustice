@@ -137,6 +137,8 @@ describe('publish_thesis — the happy path: ONE draw, then the pin and ONE PUBL
       publishedAt: (publishedAt as Date).toISOString(),
       overObjection: false,
       opened: [URL],
+      // Document A4 :1461 (document step 34, DECLARED): the head cites no document, so this act opened none.
+      documentsOpened: [],
     });
     expect(store.thesis).toMatchObject({ publishedVersionId: VERSION.id, publishedById: AUTHOR, publicInterestStatement: STATEMENT });
     expect(tripped).toEqual([]);

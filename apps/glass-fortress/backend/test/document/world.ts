@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 // ---------------------------------------------------------------------------
 // THE DOCUMENT SUITE'S OWN WORLD — document step 30 (R76, REVIEW's finding 1).
@@ -43,6 +43,10 @@ export const store = {
   openings: [] as Row[],
   sheds: [] as Row[],
   evidence: [] as Row[],
+  // DOCUMENT STEP 34, additive (R84 chunk 2, DECLARED): the theses `decide_opening` reads its author and head from, and
+  // the PUBLISHED attempts OPENED(d) reads "ever published" and "in force" from (`documentOpenings.ts`).
+  theses: [] as Row[],
+  attempts: [] as Row[],
 };
 
 export const objects = new Map<string, { bytes: Uint8Array; createdAt: Date }>();
@@ -218,13 +222,46 @@ function clientFor(via: Via) {
       findMany: jest.fn(({ where }: { where?: Row } = {}) => Promise.resolve(store.researchers.filter((r) => matches(r, where)))),
     },
     thesisMention: {
-      findMany: jest.fn(({ where }: { where?: Row } = {}) => Promise.resolve(store.mentions.filter((m) => matches(m, where)))),
+      // `thesisVersion: EVER_PUBLISHED` (document step 34, additive): a mention whose version has a PUBLISHED attempt —
+      // read off `store.attempts`, the same rows `publicationAttempt.findMany` answers, so the two cannot disagree. Any
+      // other relation filter is not modelled and throws by name (`matches`).
+      findMany: jest.fn(({ where }: { where?: Row } = {}) => {
+        const { thesisVersion, ...rest } = where ?? {};
+        if (thesisVersion !== undefined && JSON.stringify(thesisVersion) !== JSON.stringify({ publicationAttempts: { some: { outcome: 'PUBLISHED' } } })) {
+          throw new Error(`the document world models thesisVersion: EVER_PUBLISHED only — got ${JSON.stringify(thesisVersion)}`);
+        }
+        const everPublished = (m: Row): boolean => store.attempts.some((a) => a['versionId'] === m['versionId'] && a['outcome'] === 'PUBLISHED');
+        return Promise.resolve(store.mentions.filter((m) => matches(m, rest) && (thesisVersion === undefined || everPublished(m))));
+      }),
+    },
+    thesis: {
+      findUnique: jest.fn(({ where }: { where: Row }) => Promise.resolve(store.theses.find((t) => matches(t, where)) ?? null)),
+    },
+    publicationAttempt: {
+      findMany: jest.fn(({ where }: { where?: Row } = {}) => Promise.resolve(store.attempts.filter((a) => matches(a, where)))),
     },
     evidence: {
       findMany: jest.fn(({ where }: { where?: Row } = {}) => Promise.resolve(store.evidence.filter((e) => matches(e, where)))),
     },
     documentOpeningDecision: {
       findMany: jest.fn(({ where }: { where?: Row } = {}) => Promise.resolve(store.openings.filter((o) => matches(o, where)))),
+      // Document step 34, additive: the ONE writer (`decide_opening`), append-only, under @@unique([thesisId, commitment,
+      // sequence]) — a duplicate raises the P2002 Prisma raises, its target the three columns (`isUniqueViolation`).
+      create: jest.fn(({ data }: { data: Row }) => {
+        if (store.openings.some((o) => o['thesisId'] === data['thesisId'] && o['commitment'] === data['commitment'] && o['sequence'] === data['sequence'])) {
+          return Promise.reject(
+            new Prisma.PrismaClientKnownRequestError('Unique constraint failed on DocumentOpeningDecision', {
+              code: 'P2002',
+              clientVersion: 'double',
+              meta: { target: ['thesisId', 'commitment', 'sequence'] },
+            }),
+          );
+        }
+        const row = { id: nextId('opening'), createdAt: new Date(), ...data };
+        store.openings.push(row);
+        wrote('documentOpeningDecision.create');
+        return Promise.resolve(row);
+      }),
     },
   };
 }

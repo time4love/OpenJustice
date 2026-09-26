@@ -67,6 +67,8 @@ import { unpublishThesisSchema, unpublishThesisHandler } from './tools/unpublish
 import {
   addDocumentHandler,
   addDocumentSchema,
+  decideOpeningHandler,
+  decideOpeningSchema,
   describeDocumentHandler,
   describeDocumentSchema,
   listDocumentsHandler,
@@ -1312,6 +1314,24 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: stampEnvironment(await describeDocumentHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'decide_opening',
+    {
+      description:
+        "DECIDE WHAT PUBLICATION OPENS OF A CITED DOCUMENT — the researcher's decision, per document, having read it; " +
+        'recorded now and in force from the next publication of a version that cites it, never before. PASSAGE serves ' +
+        'nothing of the document ' +
+        '(only the quoted passages, each checked PRESENT, ABSENT or UNCHECKED); CONTENT serves its text; BYTES serves the ' +
+        'file with its docId and salt. Opening only widens. Free; writes one decision. Refuses NO_RESEARCHER, NOT_AUTHOR, ' +
+        'NOT_CITED (no #doc_ token for it in the head), NOT_HELD (BYTES on a sealed document), CANNOT_NARROW (below what a ' +
+        'publication already opened) and STALE_SEQUENCE.',
+      inputSchema: decideOpeningSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await decideOpeningHandler(input)) }],
     }),
   );
 

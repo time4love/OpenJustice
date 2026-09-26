@@ -27,7 +27,13 @@ export type DocumentToolCode =
   // DOCUMENT STEP 33 — `verify_claim_text`'s document arm (A4 :1470): a shed document has no text to check, and a call
   // naming both targets or neither is NEITHER (thesis A4 :1521's spelling for "not exactly one target").
   | 'SHED'
-  | 'NEITHER';
+  | 'NEITHER'
+  // DOCUMENT STEP 34 — `decide_opening` (A4 :1445–:1446): the thesis's author, the head's citation, the widening order
+  // and the log's compare-and-set. NOT_HELD above is shared: BYTES on a sealed document.
+  | 'NOT_AUTHOR'
+  | 'NOT_CITED'
+  | 'CANNOT_NARROW'
+  | 'STALE_SEQUENCE';
 
 /**
  * The UPLOAD DIALOG's route's codes (ui A1 :1129; R76 sketch §(c) as amended by the R78 chunk-3 prompt): a

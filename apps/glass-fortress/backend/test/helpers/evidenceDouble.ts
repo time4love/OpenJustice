@@ -231,6 +231,8 @@ export const store = {
   documentContentVersions: [] as Row[],
   sheds: [] as Row[],
   documentOpeningDecisions: [] as Row[],
+  /** Document step 34, additive (R84 chunk 3, DECLARED): the verdicts `publish_thesis` writes per quoted span (A2 :1313). */
+  passageVerdicts: [] as Row[],
 };
 
 type ThesisRowsKey =
@@ -686,7 +688,7 @@ export const db = {
     // PUBLISHED's apart, and a double that answered every row to `{ versionId }`
     // would let a head-only reading pass a case about the published version.
     findMany: jest.fn(
-      ask('thesisMention', 'findMany', (args: { where?: { versionId?: string | { in?: string[] }; kind?: string } }) => {
+      ask('thesisMention', 'findMany', (args: { where?: { versionId?: string | { in?: string[] }; kind?: string | { in?: string[] } } }) => {
         const where = args.where ?? {};
         if (where.versionId === undefined) return Promise.resolve(store.mentions);
         // AND `{ in }`, which `carriedWhere` already honours for every other delegate — R57 chunk 3's
@@ -698,9 +700,14 @@ export const db = {
           typeof where.versionId === 'object' && where.versionId !== null
             ? (where.versionId.in ?? [])
             : [where.versionId];
+        // `kind` TAKES `{ in }` TOO — document step 34, additive (DECLARED): the evidence half folds EVIDENCE and DOCUMENT
+        // mentions in one query, and the equality below compared a row's kind to the CONDITION OBJECT and answered
+        // nothing — the same "cites nothing" silence as above, one field along.
+        const kinds =
+          where.kind === undefined ? null : typeof where.kind === 'object' ? (where.kind.in ?? []) : [where.kind];
         return Promise.resolve(
           store.mentions.filter(
-            (m) => wanted.includes(String(m['versionId'])) && (where.kind === undefined || m['kind'] === where.kind),
+            (m) => wanted.includes(String(m['versionId'])) && (kinds === null || kinds.includes(String(m['kind']))),
           ),
         );
       }),
@@ -1168,6 +1175,17 @@ export const db = {
   thesisAnalysis: appendOnly('thesisAnalysis', 'analyses', ['versionId', 'inputFingerprint']),
   thesisGapDecision: appendOnly('thesisGapDecision', 'gapDecisions', ['thesisId', 'gapId', 'sequence']),
   publicationAttempt: appendOnly('publicationAttempt', 'attempts'),
+  // DOCUMENT STEP 34, additive (DECLARED): `publish_thesis` writes the verdicts in ONE bulk call inside its transaction
+  // (memory: the 5 s window) — each row recorded as written, so "a refused attempt writes none" is a read of `written`.
+  passageVerdict: {
+    createMany: jest.fn((args: { data: Row[] }) => {
+      for (const row of args.data) {
+        store.passageVerdicts.push(row);
+        record('passageVerdict', 'createMany', row);
+      }
+      return Promise.resolve({ count: args.data.length });
+    }),
+  },
   withdrawal: appendOnly('withdrawal', 'withdrawals'),
   note: appendOnly('note', 'notes'),
   // THE AUTHORS `list_theses` names — thesis step 20, additive (R47 E5): `{ id: { in } }` and equality, any
@@ -1275,6 +1293,7 @@ export function resetDouble(): void {
   store.documentContentVersions = [];
   store.sheds = [];
   store.documentOpeningDecisions = [];
+  store.passageVerdicts = [];
   db.debateSession.findUnique.mockImplementation(defaultSessionLookup);
   db.$transaction.mockImplementation(defaultTransaction);
   db.trackedUrl.findUnique.mockImplementation(defaultPageLookup);

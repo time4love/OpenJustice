@@ -468,7 +468,9 @@ describe('PUBLISHABLE(v) — every conjunct, each held alone (thesis step 23)', 
     const p = await seedPublishable();
     const half = jest.spyOn(evidencePredicates, 'publishableEvidence').mockResolvedValue(EVIDENCE_PASSES);
     expect(await p.publishableVersion(VERSION.id, PASSING)).toEqual({ publishable: true, failed: [] });
-    expect(half).toHaveBeenCalledWith(VERSION.id);
+    // DECLARED EDIT, document step 34 (the researcher's Q1; document plan :273–:274): the half takes VERIFIED(d) as the
+    // caller read it, and PUBLISHABLE(v) called bare asks nothing of the chain.
+    expect(half).toHaveBeenCalledWith(VERSION.id, { asked: false });
   });
 
   it('the evidence half NOT publishable — a WITHDRAWN record — makes the version not publishable; what `failed` names is 7.4\'s (L2)', async () => {

@@ -5,6 +5,7 @@ import { readChainIdentity } from '../lib/chainIdentity';
 import { prisma } from '../lib/prisma';
 import { refusal, type Refusal } from '../mcp/tools/evidenceRefusals';
 import { capturesEqualTo } from './documentCaptures';
+import { openingsOf } from './documentOpenings';
 import { anchored, custody, digestOf } from './documentPredicates';
 import { attributeClaim, entryFromChain, RegistryReadError, type ClaimAttribution } from './registryState';
 import { Web3Service } from './Web3Service';
@@ -71,13 +72,9 @@ export function chainUnavailable(err: unknown): Refusal<'CHAIN_UNAVAILABLE'> {
   );
 }
 
-/** PUBLIC(d) = OPENED(d) is defined — step 34's. Before it, false; an opening that exists early is a world this cannot answer. */
+/** PUBLIC(d) = OPENED(d) is defined (A3 :1379) — through the ONE loader, so this gate and the public serves agree. */
 async function publicDocument(commitment: string): Promise<boolean> {
-  const opened = (await prisma.documentOpeningDecision.findMany({ where: { commitment }, select: { commitment: true } })).at(0);
-  if (opened !== undefined) {
-    throw new Error(`check_on_chain_status: ${opened.commitment} has an opening decision, and PUBLIC(d) is document step 34's to read — nothing before it writes one`);
-  }
-  return false;
+  return (await openingsOf([commitment])).get(commitment)?.public ?? false;
 }
 
 export async function commitmentOnChain(commitment: string): Promise<CommitmentStatus | Refusal<'NOT_PUBLIC' | 'CHAIN_UNAVAILABLE'>> {

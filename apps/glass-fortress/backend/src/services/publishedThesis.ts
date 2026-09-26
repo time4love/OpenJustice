@@ -58,8 +58,9 @@ export async function publishedAppeals(thesisId: string, versionId: string): Pro
 
 /**
  * What the publication assessor is handed for `versionId` (the R49 sketch §d1): the claim, the provision, the text
- * VERBATIM, the appeals as they would publish with it, and the rationale — and nothing of the corpus: no record is
- * resolved, so a citation reaches the assessor as the name the text carries.
+ * VERBATIM, the appeals as they would publish with it, the TITLE of every document the version cites (R84 Q15 — published
+ * with the citation, so examined for names like the text), and the rationale — and nothing of the corpus: no record is
+ * resolved and no document's text is read, so a citation reaches the assessor as the name the text carries.
  */
 export async function assessorMaterial(
   thesis: { id: string; provision: string | null },
@@ -71,7 +72,15 @@ export async function assessorMaterial(
     throw new Error(`publishedThesis: thesis ${thesis.id} points at version ${versionId}, which does not exist.`);
   }
   const { call, requests } = await publishedAppeals(thesis.id, versionId);
-  return { claim: version.claim, provision: thesis.provision, text: version.text, call, requests, rationale };
+  const cited = await prisma.thesisMention.findMany({ where: { versionId, kind: 'DOCUMENT' }, select: { name: true } });
+  const documents = await documentsByCommitment(cited.map((m) => m.name));
+  // Every document a version cites was written with a title (A2, NO_TITLE since 2026-09-23); a cited one without is a
+  // pre-rule row, and it is handed as nothing rather than as an empty title the model would read as "no name here".
+  const titles = cited.flatMap((m) => {
+    const title = documents.get(m.name)?.document.title ?? null;
+    return title === null ? [] : [title];
+  });
+  return { claim: version.claim, provision: thesis.provision, text: version.text, call, requests, titles, rationale };
 }
 
 // ---------------------------------------------------------------------------

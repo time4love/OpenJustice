@@ -754,7 +754,7 @@ that says so:
 | `DOCUMENT_QUOTES_PRESENT` | hard | every quoted span of a paragraph carrying a `#doc_` token is PRESENT or UNCHECKED in the content the platform holds; ABSENT refuses — document flows §7, A6 |
 | `RATIONALE_SUBSTANCE` | hard | the publication assessor: did the rationale ARGUE — the debate's question of the whole; MERIT is advisory and recorded |
 | `PUBLIC_INTEREST_STATEMENT` | hard | present on the thesis (COMPLIANCE.md rule 5) |
-| `NAMES_NO_PERSON` | hard | the assessor lists every personal name in the text and in the call items and requests that publish with it; the list is empty. A published version and its appeals name offices, units and roles (T2); the corpus records beneath it carry the names as the pages said them — no gap decision is refused for a name, it is caught here (2026-09-14) |
+| `NAMES_NO_PERSON` | hard | the assessor lists every personal name in the text and in the call items and requests that publish with it, and in the TITLE of every cited document, handed to the assessor with its material (**CONFORMED 2026-09-26, the researcher, R84 Q15, to document A6 :1537**); the list is empty. A published version and its appeals name offices, units and roles (T2); the corpus records beneath it carry the names as the pages said them — no gap decision is refused for a name, it is caught here (2026-09-14) |
 | `ALLEGATIONS_FRAMED` | advisory | the assessor's opinion that claims are framed as allegations under investigation (COMPLIANCE.md rule 1); recorded with the publication |
 
 **Every check names what it examined, and an empty scope says so.** `NAMES_NO_PERSON` reports the

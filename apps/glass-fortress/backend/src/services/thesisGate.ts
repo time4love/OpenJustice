@@ -1,3 +1,4 @@
+import { NOT_ASKED, type DocumentVerification } from './evidencePredicates';
 import { evaluatePublication, rowsOf, type PublicationAssessment, type ThesisCheck } from './publicationEvaluation';
 
 // ---------------------------------------------------------------------------
@@ -11,7 +12,15 @@ import { evaluatePublication, rowsOf, type PublicationAssessment, type ThesisChe
 // publication nothing re-runs (A6 :1610): a reader asking again on a published head reads its rows, and writes nothing.
 // ---------------------------------------------------------------------------
 
-/** A6's checks for one version, in A6's order — the seventeen, then document A6 :1535's check 18 (document step 33). */
-export async function thesisChecks(versionId: string, assessment: PublicationAssessment | null): Promise<ThesisCheck[]> {
-  return rowsOf(await evaluatePublication(versionId, assessment));
+/**
+ * A6's checks for one version, in A6's order — the seventeen, then document A6 :1535's check 18 (document step 33).
+ * `verification` is VERIFIED(d) as the caller read it from the chain (document step 34, Q1); not asked, a DOCUMENT citation
+ * is not evaluable.
+ */
+export async function thesisChecks(
+  versionId: string,
+  assessment: PublicationAssessment | null,
+  verification: DocumentVerification = NOT_ASKED,
+): Promise<ThesisCheck[]> {
+  return rowsOf(await evaluatePublication(versionId, assessment, verification));
 }

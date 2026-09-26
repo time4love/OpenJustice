@@ -233,6 +233,8 @@ export const WRITE_TOOLS = new Set([
   'read_document',
   'list_documents',
   'describe_document',
+  // DOCUMENT STEP 34 — `decide_opening` WRITES an opening decision, attributed (A4 :1443–:1446).
+  'decide_opening',
 ]);
 
 // ---------------------------------------------------------------------------

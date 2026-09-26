@@ -455,13 +455,21 @@ describe('A4 :1432-:1435 — list_documents, GATED, oldest first', () => {
     expect([...LIST_DOCUMENTS_REFUSALS].sort()).toEqual(['NOT_SURVEYED', 'NO_RESEARCHER']);
   });
 
-  it('an OPENING row is a world step 34 creates — list_documents THROWS naming it, never answers `opening: null` over it', async () => {
-    // WORLD: `decide_opening` (document step 34) is the only writer of DocumentOpeningDecision, so
-    // no row exists at step 30 — and the list's `opening: null` is true only while none does. A row
-    // appearing before this read learns OPENED(d) is a row it would silently misreport.
-    store.openings.push({ id: 'opening-1', thesisId: 'thesis-1', commitment: HELD_COMMITMENT, sequence: 1, opening: 'CONTENT', researcherId: 'res_1' });
+  // DECLARED EDIT, document step 34 (R84 chunk 2): the step-30 guard this case held — an opening row THROWS, "OPENED(d) is
+  // step 34's" — is replaced by OPENED(d) itself (A4 :1434; A3 :1377–:1378 as CONFORMED 2026-09-26).
+  it('`opening` is OPENED(d) — null while no publication has put a decision in force, the decision once one has', async () => {
+    store.openings.push({ id: 'opening-1', thesisId: 'thesis-1', commitment: HELD_COMMITMENT, sequence: 1, opening: 'CONTENT', researcherId: 'res_1', createdAt: new Date(Date.UTC(2026, 8, 21)) });
+    store.mentions.push({ versionId: 'version-1', kind: 'DOCUMENT', name: HELD_COMMITMENT, thesisVersion: { thesisId: 'thesis-1', thesis: { publishedVersionId: null } } });
     const { listDocuments } = await reads();
-    await expect(listDocuments({}, 'res_1')).rejects.toThrow(/document step 34/);
+    const rowOf = async (): Promise<unknown> => {
+      const answer = await listDocuments({ scope: 'all' }, 'res_1');
+      if (!('documents' in answer)) throw new Error(`list_documents refused: ${JSON.stringify(answer)}`);
+      return answer.documents.find((d) => d.commitment === HELD_COMMITMENT)?.opening;
+    };
+
+    expect(await rowOf()).toBeNull();
+    store.attempts.push({ id: 'attempt-1', thesisId: 'thesis-1', versionId: 'version-1', outcome: 'PUBLISHED', createdAt: new Date(Date.UTC(2026, 8, 22)) });
+    expect(await rowOf()).toBe('CONTENT');
   });
 
   it('THE DIALOG’S LINK RIDES THIS ENVELOPE, so A4 GAINS NO TOOL (§9 :998)', async () => {

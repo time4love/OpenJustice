@@ -110,19 +110,24 @@ async function anchorOnce(window: RegistryWindow, document: AnchorableDocument):
 }
 
 /**
- * ANCHORED(d) for each document, read from chain state — the one read `read_document`, `list_documents` and
- * `add_document`'s answer share. Sequential: a public endpoint rate-limits bursts (`registryState.ts` :77–:79). A chain
- * that cannot be read answers FALSE for the documents it could not answer, logged — never a refusal of the read.
+ * ANCHORED(d) for each document, read from chain state — the one read `read_document`, `list_documents`, `add_document`'s
+ * answer and the publication gate's VERIFIED(d) share. Sequential: a public endpoint rate-limits bursts
+ * (`registryState.ts` :77–:79). A document the chain could not answer for is `{ unread }`, NAMING THE OUTAGE — never
+ * `anchored: false` here, so the gate can refuse by the outage's name (document step 34, the researcher's Q1 (ii)).
+ * `anchoredOf` below is the view that reads an outage as owed, as §4 :447 rules for every other read.
  */
-export async function anchoredOf(window: RegistryWindow, documents: readonly AnchorableDocument[]): Promise<Map<string, Standing>> {
-  const owed: Standing = { anchored: false, by: null };
-  const answers = new Map<string, Standing>(documents.map((d) => [d.commitment, owed]));
+export async function standingsOf(
+  window: RegistryWindow,
+  documents: readonly AnchorableDocument[],
+): Promise<Map<string, Standing | { unread: string }>> {
+  const answers = new Map<string, Standing | { unread: string }>();
   if (documents.length === 0) return answers;
   let registrar: CaptureRegistrar;
   try {
     registrar = await window.registrar();
   } catch (error) {
-    console.error(`anchoredOf: the chain could not be reached; ${String(documents.length)} document(s) read as owed — ${messageOf(error)}`);
+    const unread = `the chain could not be reached — ${messageOf(error)}`;
+    for (const document of documents) answers.set(document.commitment, { unread });
     return answers;
   }
   for (const document of documents) {
@@ -130,7 +135,25 @@ export async function anchoredOf(window: RegistryWindow, documents: readonly Anc
       const { anchored: isAnchored, by } = await standingOf(registrar, document);
       answers.set(document.commitment, { anchored: isAnchored, by });
     } catch (error) {
-      console.error(`anchoredOf: ${document.commitment} could not be read from the chain and reads as owed — ${messageOf(error)}`);
+      answers.set(document.commitment, { unread: `${document.commitment} could not be read from the chain — ${messageOf(error)}` });
+    }
+  }
+  return answers;
+}
+
+/**
+ * ANCHORED(d) for each document, as every read but the gate shows it: a chain that cannot be read answers FALSE for the
+ * documents it could not answer, logged — never a refusal of the read (§4 :447). A VIEW of `standingsOf`, the one read.
+ */
+export async function anchoredOf(window: RegistryWindow, documents: readonly AnchorableDocument[]): Promise<Map<string, Standing>> {
+  const owed: Standing = { anchored: false, by: null };
+  const answers = new Map<string, Standing>();
+  for (const [commitment, standing] of await standingsOf(window, documents)) {
+    if ('unread' in standing) {
+      console.error(`anchoredOf: ${standing.unread}; the document reads as owed`);
+      answers.set(commitment, owed);
+    } else {
+      answers.set(commitment, standing);
     }
   }
   return answers;

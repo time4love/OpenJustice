@@ -272,10 +272,12 @@ export const EVIDENCE_FAILS: VersionPublishableReport = {
 };
 
 /**
- * A DOCUMENT citation that failed nothing: four conjuncts examined none, so the
- * report cannot be graded. NO VERSION IN THIS TREE CAN CITE ONE — `#doc_` is
- * document step 33's — so the mention this stub names is not the fixture
- * version's; it is the one shape of the state, stated whole.
+ * A DOCUMENT citation that failed nothing and whose VERIFIED(d) the caller did not
+ * ask (document step 34, the researcher's Q1): VERIFIED examined none, CHAIN_NOT_ASKED,
+ * so the report cannot be graded; check 17 examined none, as for every document. The
+ * mention this stub names is not the fixture version's; it is the one shape of the
+ * state, stated whole. (DECLARED edit, document plan :273–:274 — the non-binding arm
+ * this fixture used to state FELL.)
  */
 export const DOCUMENT_EXAMINED: ExaminedMention = {
   mentionId: 'mention-document',
@@ -287,15 +289,19 @@ export const EVIDENCE_NOT_EVALUABLE: VersionPublishableReport = {
   evaluable: false,
   versionId: VERSION.id,
   mentionsExamined: 1,
-  reason: 'DOCUMENT_CLASS_NOT_BUILT',
+  reason: 'CHAIN_NOT_ASKED',
   notEvaluable: [DOCUMENT_EXAMINED],
   mentions: [
     {
       evaluable: false,
       examined: DOCUMENT_EXAMINED,
-      reason: 'DOCUMENT_CLASS_NOT_BUILT',
+      reason: 'CHAIN_NOT_ASKED',
       conjuncts: SIX_PASS.map((c) =>
-        c.id === 'RECORD_PROMOTED' || c.id === 'ARGUED' ? c : conjunct(c.id, 'EXAMINED_NONE', 'DOCUMENT_CLASS_NOT_BUILT'),
+        c.id === 'VERIFIED'
+          ? conjunct(c.id, 'EXAMINED_NONE', 'CHAIN_NOT_ASKED')
+          : c.id === 'INPUT_SOUND'
+            ? conjunct(c.id, 'EXAMINED_NONE', 'NOT_DIFF_DERIVED')
+            : c,
       ),
     },
   ],

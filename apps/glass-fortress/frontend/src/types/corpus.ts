@@ -441,11 +441,13 @@ export interface CitingPublishedVersion {
 /**
  * VERIFIED, OR THE REASON IT CANNOT BE ASKED of this record (A4 :1106).
  *
- * The three reasons ARE narrowed — they are `evidencePredicates.ts` :566's closed union, reached through
+ * The TWO reasons ARE narrowed — they are `evidencePredicates.ts`' `VerifiedReport` closed union, reached through
  * `resolveRecord.ts` :134 (`notEvaluable: report.reason`), and §18 :574 shows each as a reason rather than a
- * failure. A fourth reason must reach the page as a loud parse failure and not as an unrendered string.
+ * failure. A third reason must reach the page as a loud parse failure and not as an unrendered string. The third it
+ * once had, `DOCUMENT_CLASS_NOT_BUILT`, was retired at document step 34 (evidence A4 :1106 as CONFORMED 2026-09-26,
+ * the researcher's Q12): no DOCUMENT row reaches this read.
  */
-export const NOT_EVALUABLE_REASONS = ['NOT_PROMOTED', 'MALFORMED_RECORD_KEY', 'DOCUMENT_CLASS_NOT_BUILT'] as const;
+export const NOT_EVALUABLE_REASONS = ['NOT_PROMOTED', 'MALFORMED_RECORD_KEY'] as const;
 
 export type NotEvaluableReason = (typeof NOT_EVALUABLE_REASONS)[number];
 

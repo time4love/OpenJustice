@@ -169,13 +169,21 @@ describe('no research act reaches the chain, through ANY chain of imports (evide
     expect([reach?.chain.at(-1), reach?.nonLiteral]).toEqual([expect.stringMatching(TARGET), false]);
   });
 
+  // DECLARED EDIT, document step 34 (the researcher's Q1 (iii), `R84-review-state.md` Entry 3): the two publication tools
+  // ask VERIFIED(d) through `documentStanding` and hand it to the gate, so its importers are THREE — every one a tool,
+  // none a subject. The walker above still holds that no subject reaches it by any chain of imports.
   it('THE SECOND CONTROL — documentStanding.ts, V’s `verified`, reaches the chain, and no subject imports it', () => {
     expect(chainToTarget(onDisk, 'services/documentStanding.ts')?.chain.at(-1)).toMatch(TARGET);
     const all = listSources(SRC);
     const importers = all.filter((path) =>
       specifiersOf(onDisk(path) ?? '').some((s) => resolveSpecifier(onDisk, path, s) === 'services/documentStanding.ts'),
     );
-    expect(importers).toEqual(['mcp/tools/getThesisContext.ts']);
+    expect(importers.sort()).toEqual([
+      'mcp/tools/checkPublicationReadiness.ts',
+      'mcp/tools/getThesisContext.ts',
+      'mcp/tools/publishThesis.ts',
+    ]);
+    expect(importers.filter((path) => (SUBJECTS as readonly string[]).includes(path))).toEqual([]);
   });
 });
 

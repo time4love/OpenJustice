@@ -204,16 +204,28 @@ export const MIN_QUOTED_LENGTH = 12;
  * quotation delimiter produces noise, not findings.
  */
 export function extractQuotedPhrases(text: string): string[] {
+  return quotedSpans(text).filter((value) => value.length >= MIN_QUOTED_LENGTH);
+}
+
+/**
+ * EVERY quoted span, with NO length floor — the pattern `extractQuotedPhrases` filters.
+ *
+ * ONE PATTERN, TWO CONSUMERS (document step 34, R84 sketch S6). `audit_thesis_claims` wants phrases long enough to
+ * search an archive for; the publication gate's check 19 examines "every quoted span of every paragraph carrying a
+ * #doc_ token" (document A6 :1536; A2 :1315), and a floor there would exempt a short quote from a HARD check in silence.
+ * Empty spans are dropped: a pair of quotation marks around nothing quotes nothing.
+ */
+export function quotedSpans(text: string): string[] {
   const pattern = /"([^"]+)"|“([^”]+)”|„([^”"]+)[”"]|«([^»]+)»|״([^״]+)״/g;
-  const phrases: string[] = [];
+  const spans: string[] = [];
   for (const match of text.matchAll(pattern)) {
     // Exactly one alternative captures; the rest are undefined at runtime even
     // though the match type does not say so.
     const captured = match.slice(1).find((group: string | undefined) => group !== undefined);
     const value = (captured ?? '').trim();
-    if (value.length >= MIN_QUOTED_LENGTH) phrases.push(value);
+    if (value.length > 0) spans.push(value);
   }
-  return phrases;
+  return spans;
 }
 
 export interface ParsedInterval {

@@ -89,6 +89,8 @@ const MATERIAL: PublicationMaterial = {
   text: 'הטקסט',
   call: [],
   requests: [],
+  // DECLARED (document step 34, R84 Q15): the material gains the cited documents' titles — none here.
+  titles: [],
   rationale: 'הנימוק',
 };
 
@@ -159,6 +161,8 @@ describe('the material — the version, its appeals and the rationale; never the
       text: CITING_BOTH_VERSION.text,
       call: [CALL_ITEM],
       requests: [REQUEST],
+      // DECLARED (document step 34, R84 Q15): the cited documents' titles — this version cites none.
+      titles: [],
       rationale: 'הנימוק המלא',
     });
 
@@ -194,5 +198,26 @@ describe('the material — the version, its appeals and the rationale; never the
     expect([`#ev_${DIFF_NAME}`, `#tr_${TRAJECTORY_ID}`].filter((name) => !prompt.includes(name))).toEqual([]);
     expect([...recordContent, ...trajectoryContent].filter((content) => prompt.includes(content))).toEqual([]);
     expect(resolvers.map((spy) => spy.mock.calls.length)).toEqual([0, 0, 0]);
+  });
+});
+
+// DOCUMENT STEP 34 — the researcher's Q15 (thesis flows :757 as CONFORMED 2026-09-26; document A6 :1537): every cited
+// document's TITLE is handed with the material, and the prompt asks for the names in it as in the text.
+describe('the TITLES of the cited documents — handed, and examined for names like the text', () => {
+  it('a version citing a document hands its title; the draw carries it under its heading, and the prompt names TITLE', async () => {
+    const commitment = `0x${'c1'.repeat(32)}`;
+    store.thesis = THESIS;
+    store.versions = [{ ...VERSION, text: `${VERSION.text}\n\nהמסמך #doc_${commitment}.` }];
+    store.mentions = [mentionRow({ id: 'mention-doc', versionId: VERSION.id, kind: 'DOCUMENT', name: commitment, contentVersionHash: `0x${'b1'.repeat(32)}`, debateSessionId: null }, false)];
+    store.documents = [{ docId: `0x${'d1'.repeat(32)}`, commitment, salt: Buffer.alloc(32), cid: null, bytes: `0x${'d1'.repeat(32)}`, mimeType: 'application/pdf', byteLength: 1, title: 'מכתב של יוסי כהן' }];
+    const material = await assessorMaterial(THESIS, VERSION.id, 'הנימוק');
+    expect(material.titles).toEqual(['מכתב של יוסי כהן']);
+
+    mockModel.answers.push({ ...OUTPUT, names: [{ name: 'יוסי כהן', where: 'TITLE', quote: 'מכתב של יוסי כהן' }] });
+    const out = await assess(material);
+    expect(out.names).toEqual([{ name: 'יוסי כהן', where: 'TITLE', quote: 'מכתב של יוסי כהן' }]);
+    const [system, user] = (mockModel.invocations.at(0) as { content: string }[]);
+    expect(user?.content).toContain('--- שמות המסמכים המצוטטים ---\n[D1] מכתב של יוסי כהן');
+    expect(system?.content).toContain('שם כל מסמך מצוטט');
   });
 });

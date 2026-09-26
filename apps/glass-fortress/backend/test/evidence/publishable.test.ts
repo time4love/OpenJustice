@@ -37,13 +37,30 @@ import {
   anchorCheck,
 } from '../helpers/corpusFixture';
 import { publishable, publishableEvidence, type Conjunct } from '../../src/services/evidencePredicates';
+import { CURRENT_EXTRACTOR } from '../../src/lib/documentExtractor';
+import { commitment } from '../../src/lib/documentIdentity';
 
 /** A capture as the identity select reads it — the page's url is part of the name. */
 const withPage = (c: Record<string, unknown>): Row => ({ ...c, trackedUrl: { url: URL } });
 const BEFORE_ROW = withPage(BEFORE);
 const AFTER_ROW = withPage(AFTER);
 
-const DOCUMENT_NAME = `0x${'dc'.repeat(32)}`;
+// DOCUMENT STEP 34 — the non-binding arm FELL (document plan :273–:274; DECLARED edit). A DOCUMENT record is now graded
+// over its Document: named by the commitment its row reproduces (document A3 :1364), HELD, its CURRENT(d) derived under
+// today's extractor — and its VERIFIED(d) NOT ASKED, since nothing here reads the chain (the researcher's Q1).
+const DOCUMENT_ID = `0x${'dd'.repeat(32)}`;
+const DOCUMENT_NAME = commitment(DOCUMENT_ID, Buffer.alloc(32));
+const DOCUMENT_VERSION = `0x${'de'.repeat(32)}`;
+
+/** The Document the DOCUMENT row names, and its one current version. */
+function seedDocument(): void {
+  store.documents = [
+    { docId: DOCUMENT_ID, commitment: DOCUMENT_NAME, salt: Buffer.alloc(32), cid: null, bytes: DOCUMENT_ID, mimeType: 'application/pdf', byteLength: 1024, verifiedAtReceipt: null, title: null },
+  ];
+  store.documentContentVersions = [
+    { commitment: DOCUMENT_NAME, contentVersionHash: DOCUMENT_VERSION, text: 'the text', derivedUnder: [CURRENT_EXTRACTOR], extractorVersion: CURRENT_EXTRACTOR, derivedFrom: 'HELD_BYTES' },
+  ];
+}
 
 /** The pair, promoted, whose CURRENT version is the one the fixture calls current. */
 function diffRow(over: Row = {}): Row {
@@ -360,19 +377,21 @@ describe('DERIVED and INPUT_SOUND — the precondition A6 promotes, and check 17
   });
 });
 
-describe('a DOCUMENT record — the class whose predicates document step 28 builds', () => {
-  it('failing nothing: FOUR conjuncts examined none, and the report is NOT EVALUABLE', async () => {
-    given({ mention: mentionRow({ name: DOCUMENT_NAME }), row: documentRow(), checks: [] });
+describe('a DOCUMENT record — graded over its Document since document step 34; VERIFIED(d) is the caller\'s to ask', () => {
+  it('failing nothing and NOT ASKED: VERIFIED and check 17 examined none, CURRENT(d) is graded, and the report is NOT EVALUABLE', async () => {
+    given({ mention: mentionRow({ name: DOCUMENT_NAME, contentVersionHash: DOCUMENT_VERSION }), row: documentRow(), checks: [] });
+    seedDocument();
     const report = await publishable('mention-1');
 
-    for (const id of ['VERIFIED', 'CITATION_CURRENT', 'DERIVED', 'INPUT_SOUND']) {
-      expect(verdictOf(report.conjuncts, id)).toBe('EXAMINED_NONE');
-      expect(detailOf(report.conjuncts, id)).toContain('DOCUMENT_CLASS_NOT_BUILT');
-    }
+    expect(verdictOf(report.conjuncts, 'VERIFIED')).toBe('EXAMINED_NONE');
+    expect(detailOf(report.conjuncts, 'VERIFIED')).toContain('CHAIN_NOT_ASKED');
+    expect(verdictOf(report.conjuncts, 'INPUT_SOUND')).toBe('EXAMINED_NONE');
+    expect(detailOf(report.conjuncts, 'INPUT_SOUND')).toContain('NOT_DIFF_DERIVED');
+    for (const id of ['CITATION_CURRENT', 'DERIVED']) expect(verdictOf(report.conjuncts, id)).toBe('PASS');
     expect(verdictOf(report.conjuncts, 'ARGUED')).toBe('PASS');
     expect(verdictOf(report.conjuncts, 'RECORD_PROMOTED')).toBe('PASS');
     expect(report.evaluable).toBe(false);
-    expect(!report.evaluable && report.reason).toBe('DOCUMENT_CLASS_NOT_BUILT');
+    expect(!report.evaluable && report.reason).toBe('CHAIN_NOT_ASKED');
   });
 
   it('whose debate is OPEN: EVALUABLE and NOT publishable — the CONDITION, not the arm', async () => {
@@ -383,17 +402,19 @@ describe('a DOCUMENT record — the class whose predicates document step 28 buil
     given({
       mention: mentionRow({
         name: DOCUMENT_NAME,
+        contentVersionHash: DOCUMENT_VERSION,
         debateSession: { status: 'OPEN', recordFileHash: DOCUMENT_NAME, thesisId: 'thesis-1' },
       }),
       row: documentRow(),
       checks: [],
     });
+    seedDocument();
     const report = await publishable('mention-1');
 
     expect(verdictOf(report.conjuncts, 'ARGUED')).toBe('FAIL');
     expect(report.evaluable).toBe(true);
     expect(report.evaluable && report.publishable).toBe(false);
-    for (const id of ['VERIFIED', 'CITATION_CURRENT', 'DERIVED', 'INPUT_SOUND']) {
+    for (const id of ['VERIFIED', 'INPUT_SOUND']) {
       expect(verdictOf(report.conjuncts, id)).toBe('EXAMINED_NONE');
     }
   });
@@ -472,15 +493,12 @@ describe('every verdict that is not a PASS carries its KEY — the reason a prog
       { ...ALL_PASS, INPUT_SOUND: 'NOT_DIFF_DERIVED' },
     ],
     [
-      'a DOCUMENT record',
-      () => given({ mention: mentionRow({ name: DOCUMENT_NAME }), row: documentRow(), checks: [] }),
-      {
-        ...ALL_PASS,
-        VERIFIED: 'DOCUMENT_CLASS_NOT_BUILT',
-        CITATION_CURRENT: 'DOCUMENT_CLASS_NOT_BUILT',
-        DERIVED: 'DOCUMENT_CLASS_NOT_BUILT',
-        INPUT_SOUND: 'DOCUMENT_CLASS_NOT_BUILT',
+      'a DOCUMENT record, its VERIFIED(d) not asked',
+      () => {
+        given({ mention: mentionRow({ name: DOCUMENT_NAME, contentVersionHash: DOCUMENT_VERSION }), row: documentRow(), checks: [] });
+        seedDocument();
       },
+      { ...ALL_PASS, VERIFIED: 'CHAIN_NOT_ASKED', INPUT_SOUND: 'NOT_DIFF_DERIVED' },
     ],
   ])('%s', async (_label, setup, expected) => {
     setup();
@@ -587,24 +605,25 @@ describe('publishableEvidence — the EVIDENCE half of PUBLISHABLE(v)', () => {
     expect(report.evaluable && report.publishable).toBe(true);
   });
 
-  it('asks for the version\'s EVIDENCE mentions alone — the fold widens at document step 28', async () => {
+  it('asks for the version\'s EVIDENCE and DOCUMENT mentions — the fold WIDENED at document step 34 (document A6 :1524–:1525)', async () => {
     twoMentions([diffRow()], [mentionRow()], [anchorCheck(BEFORE.id), anchorCheck(AFTER.id)]);
     await publishableEvidence('version-1');
 
     const query = asked.find((a) => a.model === 'thesisMention' && a.op === 'findMany');
-    expect(query?.args).toMatchObject({ where: { versionId: 'version-1', kind: 'EVIDENCE' } });
+    expect(query?.args).toMatchObject({ where: { versionId: 'version-1', kind: { in: ['EVIDENCE', 'DOCUMENT'] } } });
   });
 
   it('a version citing a DOCUMENT record is NOT EVALUABLE, and names the mention it could not grade', async () => {
     twoMentions(
       [diffRow(), documentRow()],
-      [mentionRow(), second({ name: DOCUMENT_NAME })],
+      [mentionRow(), second({ name: DOCUMENT_NAME, contentVersionHash: DOCUMENT_VERSION })],
       [anchorCheck(BEFORE.id), anchorCheck(AFTER.id)],
     );
+    seedDocument();
     const report = await publishableEvidence('version-1');
 
     expect(report.evaluable).toBe(false);
-    expect(!report.evaluable && report.reason).toBe('DOCUMENT_CLASS_NOT_BUILT');
+    expect(!report.evaluable && report.reason).toBe('CHAIN_NOT_ASKED');
     expect(!report.evaluable && report.notEvaluable.map((m) => m.mentionId)).toEqual(['mention-2']);
   });
 });

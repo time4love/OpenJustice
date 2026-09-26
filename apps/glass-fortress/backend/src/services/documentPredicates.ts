@@ -1,4 +1,4 @@
-import type { Arrival, Document, DocumentContentVersion, Shed } from '@prisma/client';
+import type { Arrival, Document, DocumentContentVersion, DocumentOpening, DocumentOpeningDecision, Shed } from '@prisma/client';
 import { commitment, docId } from '../lib/documentIdentity';
 import { verdict as verdictOverText, type Verdict } from '../lib/verdict';
 import type { Evaluated } from './evidencePredicates';
@@ -291,4 +291,58 @@ export function digestOf(hash: string): string {
 export function answered(arrival: Pick<Arrival, 'thesisId'>, cited: readonly string[], documents: readonly string[]): boolean {
   if (arrival.thesisId === null) return false;
   return documents.some((commitment) => cited.includes(commitment));
+}
+
+/**
+ * THE WIDENING ORDER — §7 :777–:789: PASSAGE < CONTENT < BYTES. Compared by POSITION, never by name, so "wider" has one
+ * spelling: `decide_opening`'s CANNOT_NARROW and OPENED(d)'s widest are both read off this list.
+ */
+export const OPENING_ORDER: readonly DocumentOpening[] = ['PASSAGE', 'CONTENT', 'BYTES'];
+
+/** An opening's place in `OPENING_ORDER` — the one comparison "narrower" and "wider" are made by. */
+export function openingRank(opening: DocumentOpening): number {
+  return OPENING_ORDER.indexOf(opening);
+}
+
+/**
+ * OPENED(d) — A3 :1377–:1378 as CONFORMED 2026-09-26 (the researcher, R84 Q2; Q9): per thesis, its LATEST decision by
+ * sequence among those IN FORCE; over every thesis a version of which EVER published cites d; the WIDEST of them. None →
+ * null, which is "not public" and never a default of PASSAGE.
+ *
+ * PURE. `decisions` are the decisions IN FORCE, grouped by `keyOf` — REQUIRED, with no default: the grouping IS the rule
+ * (per thesis before Q14, per publication since), so a caller states which it means; `keys` the keys that count. The loader (`documentOpenings.ts`) keys each decision by the PUBLICATION that put it in force — a PUBLISHED
+ * attempt of a version citing d (A4 :1444 as CONFORMED 2026-09-26, Q14) — so "latest per key" is the decision in force at
+ * that publication and "widest across keys" is OPENED(d). A decision under a key not in the list opens nothing.
+ */
+export function opened<D extends Pick<DocumentOpeningDecision, 'thesisId' | 'commitment' | 'sequence' | 'opening'>>(
+  commitment: string,
+  decisions: readonly D[],
+  keys: readonly string[],
+  keyOf: (decision: D) => string,
+): DocumentOpening | null {
+  const latest = new Map<string, Pick<DocumentOpeningDecision, 'sequence' | 'opening'>>();
+  for (const decision of decisions) {
+    const key = keyOf(decision);
+    if (decision.commitment !== commitment || !keys.includes(key)) continue;
+    const held = latest.get(key);
+    if (held === undefined || decision.sequence > held.sequence) latest.set(key, decision);
+  }
+  let widest: DocumentOpening | null = null;
+  for (const { opening } of latest.values()) {
+    if (widest === null || openingRank(opening) > openingRank(widest)) widest = opening;
+  }
+  return widest;
+}
+
+/**
+ * PUBLIC(d) — A3 :1379–:1380: OPENED(d) is defined. PER DOCUMENT, never per page: there is no PUBLIC_PAGE analogue and no
+ * "the sender's other documents" — another document of the same arrival is public only by its own opening.
+ */
+export function publicDocument<D extends Pick<DocumentOpeningDecision, 'thesisId' | 'commitment' | 'sequence' | 'opening'>>(
+  commitment: string,
+  decisions: readonly D[],
+  keys: readonly string[],
+  keyOf: (decision: D) => string,
+): boolean {
+  return opened(commitment, decisions, keys, keyOf) !== null;
 }

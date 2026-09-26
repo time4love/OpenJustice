@@ -10,7 +10,9 @@ import {
   argued,
   currentVersionOf,
   flagged,
+  NOT_ASKED,
   type ContentVersionProvenance,
+  type DocumentVerification,
   type FlagReason,
   type FlagReport,
   type RecordContent,
@@ -386,8 +388,9 @@ export function trajectoryCurrent(currency: TrajectoryCurrency): boolean {
 export async function publishableVersion(
   versionId: string,
   assessment: PublicationAssessment | null,
+  verification: DocumentVerification = NOT_ASKED,
 ): Promise<{ publishable: boolean; failed: string[] }> {
-  return publishabilityOf(await evaluatePublication(versionId, assessment));
+  return publishabilityOf(await evaluatePublication(versionId, assessment, verification));
 }
 
 // ---------------------------------------------------------------------------

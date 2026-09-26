@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getResearcherId } from '../../context/researcherContext';
 import { addDocument } from '../../services/addDocument';
+import { decideOpening } from '../../services/decideOpening';
 import { describeDocument } from '../../services/describeDocument';
 import { isDocumentRefusal, type DocumentRefusal } from '../../services/documentRefusals';
 import { imageFor, listDocuments, readDocument, type ListDocumentsAnswer, type ListDocumentsCode, type ReadDocumentHeld } from '../../services/readDocument';
@@ -42,6 +43,13 @@ export const listDocumentsSchema = {
 
 export const describeDocumentSchema = { commitment: COMMITMENT.describe('The document to have a model read, by its commitment') };
 
+export const decideOpeningSchema = {
+  thesisId: z.string().describe('The thesis whose head cites the document — yours'),
+  commitment: COMMITMENT.describe('The cited document, by its commitment'),
+  opening: z.enum(['PASSAGE', 'CONTENT', 'BYTES']).describe('What publication opens of it — as the researcher decided, having read it'),
+  expectedSequence: z.number().int().nonnegative().describe("The last sequence of this thesis's openings of this document — 0 for the first"),
+};
+
 export async function addDocumentHandler(input: z.infer<z.ZodObject<typeof addDocumentSchema>>): Promise<string> {
   return JSON.stringify(await addDocument(input, getResearcherId()));
 }
@@ -75,4 +83,8 @@ export async function listDocumentsHandler(input: z.infer<z.ZodObject<typeof lis
 
 export async function describeDocumentHandler(input: z.infer<z.ZodObject<typeof describeDocumentSchema>>): Promise<string> {
   return JSON.stringify(await describeDocument(input.commitment, getResearcherId()));
+}
+
+export async function decideOpeningHandler(input: z.infer<z.ZodObject<typeof decideOpeningSchema>>): Promise<string> {
+  return JSON.stringify(await decideOpening(input, getResearcherId()));
 }

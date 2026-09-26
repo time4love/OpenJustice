@@ -14,7 +14,9 @@ import type { PublicationAssessment } from './publicationEvaluation';
 // ONE EXPORTED DRAW, `assess` — the boundary the suite stubs (R48 §6-R25); the model factory stays a tripwire.
 //
 // WHAT IT IS HANDED (the R49 sketch §d1): the claim, the provision, the version's text VERBATIM, THE_CALL and THE_REQUESTS
-// as they would publish with it, and the researcher's rationale. NEVER A RECORD'S CONTENT, an analysis, a framing round, a
+// as they would publish with it, the TITLE of every document the version cites — published with the citation (document
+// §7 :848), so examined for personal names like the text (thesis :757 as CONFORMED 2026-09-26, R84 Q15; document A6
+// :1537) — and the researcher's rationale. NEVER A RECORD'S CONTENT, a document's text, an analysis, a framing round, a
 // debate or a note: a citation stays a name inside the text, so the assessor cannot judge what a record supports, and the
 // prompt never asks it to.
 //
@@ -30,6 +32,8 @@ export interface PublicationMaterial {
   call: readonly unknown[];
   /** THE_REQUESTS likewise; a request's `restsOn` names stay names, never resolved. */
   requests: readonly unknown[];
+  /** The TITLE of every document the version cites, as the researcher approved it — published with the citation (Q15). */
+  titles: readonly string[];
   rationale: string;
 }
 
@@ -46,11 +50,11 @@ const AssessmentShape = z.object({
     .array(
       z.object({
         name: z.string().describe('A personal name, as written'),
-        where: z.enum(['TEXT', 'CALL', 'REQUEST']).describe('Where it appears'),
+        where: z.enum(['TEXT', 'CALL', 'REQUEST', 'TITLE']).describe('Where it appears — TITLE for a cited document\'s title'),
         quote: z.string().describe('The sentence it appears in, copied word for word'),
       }),
     )
-    .describe('EVERY personal name in the text, the call items and the requests; [] when there are none'),
+    .describe('EVERY personal name in the text, the call items, the requests and the cited documents\' titles; [] when there are none'),
   allegationsFramed: z.boolean().describe('Whether the claims are framed as suspicions under examination, not proven facts'),
   allegationsNote: z
     .string()
@@ -109,6 +113,7 @@ export async function assess(material: PublicationMaterial): Promise<Publication
         `--- טקסט הגרסה ---\n${material.text}\n--- סוף הטקסט ---\n\n` +
         `--- הקריאה לחושפים ---\n${appealsSection('C', material.call, 'אין פריטים בקריאה.')}\n\n` +
         `--- בקשות חופש המידע ---\n${appealsSection('R', material.requests, 'אין בקשות.')}\n\n` +
+        `--- שמות המסמכים המצוטטים ---\n${material.titles.length === 0 ? 'אין מסמכים מצוטטים.' : material.titles.map((title, i) => `[D${String(i + 1)}] ${title}`).join('\n')}\n\n` +
         `--- נימוק הפרסום ---\n${material.rationale}\n--- סוף הנימוק ---`,
     },
   ]);

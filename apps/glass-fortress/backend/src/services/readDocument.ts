@@ -9,6 +9,7 @@ import { openDocumentRegistryWindow } from './anchorSnapshots';
 import { mintDownloadUrl, readObject } from './documentBucket';
 import { capturesEqualTo } from './documentCaptures';
 import { currentVersion, custody, type Custody } from './documentPredicates';
+import { openingsOf } from './documentOpenings';
 import { documentRefusal, NO_RESEARCHER, type DocumentRefusal } from './documentRefusals';
 import { uploadUrl } from './documentUploadUrl';
 import { handlesOf } from './publishedThesis';
@@ -281,16 +282,9 @@ export async function listDocuments(
     where: { kind: 'DOCUMENT', name: { in: commitments } },
     select: { name: true, versionId: true, thesisVersion: { select: { thesisId: true, thesis: { select: { publishedVersionId: true } } } } },
   });
-  // OPENED(d) is step 34's predicate over DocumentOpeningDecision, and nothing writes that table
-  // before `decide_opening` (step 34) — so every row below answers `opening: null`, which is TRUE
-  // only while no decision exists. A decision appearing before this read learns OPENED(d) is one it
-  // would misreport in silence, so it THROWS naming the step that owns it.
-  const opened = (
-    await prisma.documentOpeningDecision.findMany({ where: { commitment: { in: commitments } }, select: { commitment: true } })
-  ).at(0);
-  if (opened !== undefined) {
-    throw new Error(`list_documents: ${opened.commitment} has an opening decision, and OPENED(d) is document step 34's to read — nothing before it writes one`);
-  }
+  // OPENED(d) — document step 34 (A3 :1377–:1378 as CONFORMED 2026-09-26): what publication has opened of each, read
+  // through the ONE loader, so this row and the public serves cannot disagree. Null until a publication puts one in force.
+  const openings = await openingsOf(commitments);
 
   const scoped = documents.filter((d) => (args.scope ?? 'mine') === 'all' || byOf(d.commitment)?.mine === true);
   const standing = await anchoredOf(
@@ -314,8 +308,7 @@ export async function listDocuments(
           current: currentView(current),
           anchored: standing.get(document.commitment)?.anchored ?? false,
           citedBy: citedByOf(mentions, document.commitment),
-          // No decision exists — the guard above throws on one (step 34 reads OPENED(d)).
-          opening: null,
+          opening: openings.get(document.commitment)?.opened ?? null,
           by: byOf(document.commitment),
         };
       }),

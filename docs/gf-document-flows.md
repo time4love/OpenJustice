@@ -790,8 +790,8 @@ BYTES      the file in full, every content version, DOC_ID and the salt — so a
 
 ```
 DocumentOpeningDecision   thesisId · commitment · opening · sequence · researcherId · createdAt
-OPENED(d)                 the WIDEST opening decided by any thesis whose PUBLISHED version cites
-                          d — PASSAGE < CONTENT < BYTES; derived, never stored on the document
+OPENED(d)                 the WIDEST opening decided by any thesis a version of which EVER PUBLISHED cites
+                          d — PASSAGE < CONTENT < BYTES; derived, never stored on the document — **CONFORMED 2026-09-26 (the researcher, R84 Q2) to :797–:801 and thesis T6 :920–:924: a withdrawal or a later version closes nothing; EVER published is thesis A3 :1402's spelling; was "whose PUBLISHED version cites d"**
 ```
 
 **Opening only widens. Ruled 2026-09-04.** A decision narrower than OPENED(d) is refused
@@ -1374,8 +1374,8 @@ PUBLISHABLE(m)            evidence A3, composing VERIFIED(d) and CURRENT(d) wher
                           capture's; and DOCUMENT_OPENING_DECIDED (A6) on the version
 ANSWERED(a)               ∃ document of arrival a cited by HEAD(a.thesis) or PUBLISHED(a.thesis)
 ARRIVED(t)                INTAKE arrivals of t with no ArrivalDecision and NOT ANSWERED
-OPENED(d)                 max over DocumentOpeningDecision in force for (t, d) where PUBLISHED(t)
-                          cites d, PASSAGE < CONTENT < BYTES; none → d is not public
+OPENED(d)                 max over DocumentOpeningDecision in force for (t, d) where a version of t EVER published
+                          cites d, PASSAGE < CONTENT < BYTES; none → d is not public — **CONFORMED 2026-09-26 (the researcher, R84 Q2) to §7 :797–:801 and thesis T6 :920–:924, the flows winning (:1226): EVER published = a PublicationAttempt with outcome PUBLISHED (thesis A3 :1402), the spelling of evidence A3 :1051 and thesis A3 :1399; was "where PUBLISHED(t) cites d"**
 PUBLIC(d)                 OPENED(d) is defined — per document, never per page; there is no
                           PUBLIC_PAGE analogue and no "the sender's other documents"
 SHED(d)                   a Shed row exists for d.commitment
@@ -1441,7 +1441,7 @@ describe_document({ commitment })                                     WRITE · p
             AWAITING_DERIVATION (an opinion attaches to a version) · **UNSUPPORTED_TYPE also — RULED 2026-09-23 (the researcher): on a document no model reads — a spreadsheet with no computed text — and the refusal CARRIES THE REASON from its version's provenance (A2 :1300): the reader FAILED (`readFailed`), or it found nothing. Same spelling. A model reads an image or a PDF as its file and a spreadsheet through its computed text.** · **INCOMPLETE_ANSWER — RULED 2026-09-23 (the researcher; `docs/gf-document-step-30-staging-exercise-2026-09-23.md` §9 Q3): the model's answer was cut (the finish reason, or the sentinel absent) — a new spelling, `MALFORMED` being RECOMPUTABLE's (:218) and `INVALID_BODY` a request's. The refusal NAMES the provider's finish reason and says NOTHING WAS WRITTEN — never that nothing was spent: the draw was charged, and the opinion row that records who paid does not exist for it.**
 
 decide_opening({ thesisId, commitment, opening, expectedSequence })          WRITE · ⚠️ to build
-  does      appends DocumentOpeningDecision; in force from the next publish_thesis
+  does      appends DocumentOpeningDecision; in force from the next publish_thesis of a version that cites it — **CONFORMED 2026-09-26 (the researcher, R84 Q14) to §7 :772–:774 ("the version that carries it") and :1459–:1461 (publication brings the openings into force and answers documentsOpened): a decision takes effect at the next publication of a version citing the document, derived through PublicationAttempt at or before which it was made (thesis A3 :1404's shape); no column**
   refuses   NOT_AUTHOR · NOT_CITED (the head does not mention it) · NOT_HELD (BYTES, sealed) ·
             CANNOT_NARROW (below OPENED(d)) · STALE_SEQUENCE
 
