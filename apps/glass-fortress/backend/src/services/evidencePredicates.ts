@@ -5,7 +5,7 @@ import { ON_CHAIN_CHECK_VERSION } from '../lib/onChainVerdict';
 import { recordId, type RecordId, type Record as CorpusRecord } from '../lib/evidenceIdentity';
 import { normaliseForPresence } from '../lib/htmlText';
 import { assessEvidenceInputSoundness } from './evidenceInputSoundness';
-import { documentShedNotBuilt, documentsByCommitment, evidenceCurrentOf } from './documentCitation';
+import { documentShedNotBuilt, documentsByCommitment, evidenceCurrentOf, type CitedDocument } from './documentCitation';
 import { recomputableEvidence } from './documentPredicates';
 
 // ---------------------------------------------------------------------------
@@ -807,6 +807,8 @@ const FLAG_MENTION_SELECT = {
 const FLAG_EVIDENCE_SELECT = {
   fileHash: true,
   status: true,
+  // A DOCUMENT row's key (document §6 :666–:668) — its content arm reads CURRENT(d) through it (#594).
+  documentCommitment: true,
   snapshot: { select: { textHash: true, textExtractionVersion: true } },
   urlVersionDiff: {
     select: {
@@ -830,7 +832,9 @@ type FlagEvidenceRow = Prisma.EvidenceGetPayload<{ select: typeof FLAG_EVIDENCE_
 /**
  * FLAGGED FOR A SET OF MENTIONS — the IMPLEMENTATION, which `flagged` above delegates to.
  *
- * TWO QUERIES, whatever the number of mentions: one for the mention rows, one for the evidence rows they name.
+ * TWO QUERIES, whatever the number of mentions: one for the mention rows, one for the evidence rows they name — and a
+ * THIRD, `documentsByCommitment` (ONE plural read), only when a published mention names a DOCUMENT row, whose content arm
+ * reads CURRENT(d) (#594, document step 34; A3 :1372).
  * As with VERIFIED, the plural lives in the predicate's OWN module because evidence A7 :1302–:1303 gives the
  * predicate one importable symbol and evidence A6 :1219 forbids the checks re-deriving it — a fold written
  * inside `publishedThesis.ts` would be the second spelling those clauses exist to refuse.
@@ -871,15 +875,22 @@ export async function flaggedFor(mentionIds: readonly string[]): Promise<Map<str
           })(onlyEvidence)
         : await prisma.evidence.findMany({ where: { fileHash: { in: names } }, select: FLAG_EVIDENCE_SELECT });
   const byName = new Map(evidence.map((row) => [row.fileHash, row]));
+  const documents = await documentsByCommitment(
+    evidence.flatMap((row) => (row.snapshot === null && row.urlVersionDiff === null && row.documentCommitment !== null ? [row.documentCommitment] : [])),
+  );
 
   for (const mentionId of wanted) {
-    reports.set(mentionId, flaggedFromRows(byId.get(mentionId) ?? null, byName));
+    reports.set(mentionId, flaggedFromRows(byId.get(mentionId) ?? null, byName, documents));
   }
   return reports;
 }
 
 /** One mention's FLAGGED, over rows already read — the singular's exact judgement, unchanged. */
-function flaggedFromRows(mention: FlagMentionRow | null, byName: Map<string, FlagEvidenceRow>): FlagReport {
+function flaggedFromRows(
+  mention: FlagMentionRow | null,
+  byName: Map<string, FlagEvidenceRow>,
+  documents: ReadonlyMap<string, CitedDocument>,
+): FlagReport {
   const unflagged: FlagReport = { flagged: false, armsEvaluated: FLAG_ARMS_EVALUATED, reasons: [] };
   if (mention?.thesisVersion.isPublished == null) return unflagged;
 
@@ -893,14 +904,31 @@ function flaggedFromRows(mention: FlagMentionRow | null, byName: Map<string, Fla
   if (evidence.status === 'WITHDRAWN') reasons.push('WITHDRAWN');
 
   const record = recordContentOf(evidence);
-  if (record !== null) {
-    const current = currentVersionOf(record);
-    const isCurrent = citationCurrent(mention, current);
-    if (!isCurrent.evaluable) reasons.push('AWAITING_DERIVATION');
-    else if (!isCurrent.value) reasons.push('NOT_CITATION_CURRENT');
-  }
+  // THE CONTENT ARM, BY THE RECORD'S FORM: a capture's or a diff's CURRENT, or — document step 34, #594 — CURRENT(d),
+  // handed in evidence's `Current` shape so CITATION_CURRENT is the same predicate, CALLED (A3 :1372). SHED, the third
+  // arm, is step 35's (A3 :1382): a shed document refuses LOUDLY, as `verifiedDocumentRow` does.
+  const current = record === null ? documentCurrentFor(evidence, documents) : currentVersionOf(record);
+  const isCurrent = citationCurrent(mention, current);
+  if (!isCurrent.evaluable) reasons.push('AWAITING_DERIVATION');
+  else if (!isCurrent.value) reasons.push('NOT_CITATION_CURRENT');
 
   return { flagged: reasons.length > 0, armsEvaluated: FLAG_ARMS_EVALUATED, reasons };
+}
+
+/** CURRENT(d) of the document a DOCUMENT row names, in evidence's `Current` shape — or a LOUD guard for a forbidden row. */
+function documentCurrentFor(
+  evidence: { fileHash: string; documentCommitment: string | null },
+  documents: ReadonlyMap<string, CitedDocument>,
+): Current<ContentVersionProvenance> {
+  const cited = evidence.documentCommitment === null ? undefined : documents.get(evidence.documentCommitment);
+  if (cited === undefined) {
+    throw new Error(
+      `evidencePredicates: FLAGGED was asked of ${evidence.fileHash}, a row with no capture, no diff and no document — ` +
+        'Evidence_one_record_key and its foreign key to Document forbid it, so the row was written wrong.',
+    );
+  }
+  if ('shed' in cited.current) throw documentShedNotBuilt(cited.document.commitment);
+  return evidenceCurrentOf(cited.current);
 }
 
 /** The loaded evidence row as CURRENT reads it, or null for a DOCUMENT record. */

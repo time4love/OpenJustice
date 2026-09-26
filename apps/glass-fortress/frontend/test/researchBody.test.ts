@@ -18,6 +18,8 @@ import {
   articleRules,
   captures,
   debateRead,
+  documentEvidenceReviews,
+  documentThesisReviews,
   evidenceReviews,
   framingRead,
   framings,
@@ -375,6 +377,73 @@ describe('research-body — the lists', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// #594 — A DOCUMENT'S REVIEW, document step 34 chunk 5b. evidence A4 :1146 and thesis A4 :1523 as CONFORMED (R85 Q-D; R86
+// Q-R1): "a reader dispatches on the entry's `record` form BEFORE `kind`, so a capture cause is never asked for `record`
+// and a document cause never for `capture`". The page parser `cause` is UNCHANGED; the landed page bodies parse identically.
+// ---------------------------------------------------------------------------
+
+describe('research-body — a DOCUMENT’s review: the record first, then its causes by the record’s form (#594)', () => {
+  it('F3 THE LANDED PAGE BODIES PARSE IDENTICALLY — list_evidence_reviews and list_thesis_reviews, every field, as before the document arm', () => {
+    // THE FLOOR: both bodies carry page causes — four arms on the evidence review, one on the FLAGGED material — so the
+    // equalities are over causes and not over empty lists.
+    expect(requireSubjects('the page causes', evidenceReviews.reviews.flatMap((review): readonly unknown[] => review.cause)).length).toBe(4);
+    expect(parseEvidenceReviews(overTheWire(evidenceReviews))).toEqual(evidenceReviews);
+    expect(parseThesisReviews(overTheWire(thesisReviewsOwed))).toEqual(thesisReviewsOwed);
+  });
+
+  it('F4 a DOCUMENT evidence review and a DOCUMENT FLAGGED material parse — the record `{ commitment, title }`, the EXTRACTOR cause naming it', () => {
+    expect(parseEvidenceReviews(overTheWire(documentEvidenceReviews))).toEqual(documentEvidenceReviews);
+    expect(parseThesisReviews(overTheWire(documentThesisReviews))).toEqual(documentThesisReviews);
+  });
+
+  it('F5 THE PAIRING IS CHECKED — a document record with a capture’s cause fails naming `cause[0].record`; a page record with a document’s cause fails naming `cause[0].capture`', () => {
+    const captureCause = { kind: 'EXTRACTOR', capture: '20211223211940', from: 'v2', to: 'v3', at: '2026-02-09T09:00:00.000Z' };
+    const documentCause = documentEvidenceReviews.reviews[0].cause[0];
+    expect(() => parseEvidenceReviews(overTheWire(withInstead(documentEvidenceReviews, ['reviews', '0', 'cause', '0'], captureCause)))).toThrow(
+      /reviews\[0\]\.cause\[0\]\.record/,
+    );
+    expect(() => parseEvidenceReviews(overTheWire(withInstead(evidenceReviews, ['reviews', '0', 'cause', '1'], documentCause)))).toThrow(
+      /reviews\[0\]\.cause\[1\]\.capture/,
+    );
+    // The same on the thesis list's FLAGGED material — the second door the conformed :1523 names.
+    expect(() => parseThesisReviews(overTheWire(withInstead(documentThesisReviews, ['reviews', '0', 'material', 'cause', '0'], captureCause)))).toThrow(
+      /material\.cause\[0\]\.record/,
+    );
+    expect(() => parseThesisReviews(overTheWire(withInstead(thesisReviewsOwed, ['reviews', '0', 'material', 'cause', '0'], documentCause)))).toThrow(
+      /material\.cause\[0\]\.capture/,
+    );
+    // And a document cause's record must BE a document — a page named inside one is a drift, named.
+    const pageInside = { ...documentCause, record: { url: 'https://example.gov/one/', capture: '20211223211940' } };
+    expect(() => parseEvidenceReviews(overTheWire(withInstead(documentEvidenceReviews, ['reviews', '0', 'cause', '0'], pageInside)))).toThrow(
+      /reviews\[0\]\.cause\[0\]\.record/,
+    );
+  });
+});
+
+describe('research-body — a DOCUMENT cause’s moment is an INSTANT on both doors (#594; REVIEW’s M2, R86 Entry 10)', () => {
+  it('F6 a document cause with a malformed `at` — a number, or none — FAILS naming `cause[0].at`, on the evidence review AND the FLAGGED material', () => {
+    // THE FLOOR: the well-formed bodies parse, so each refusal below is about `at` and not about a body that never parsed.
+    expect(parseEvidenceReviews(overTheWire(documentEvidenceReviews)).reviews).toHaveLength(1);
+    expect(parseThesisReviews(overTheWire(documentThesisReviews)).reviews).toHaveLength(1);
+    for (const malformed of [1758801600000, null]) {
+      expect(() => parseEvidenceReviews(overTheWire(withInstead(documentEvidenceReviews, ['reviews', '0', 'cause', '0', 'at'], malformed)))).toThrow(
+        /reviews\[0\]\.cause\[0\]\.at/,
+      );
+      expect(() =>
+        parseThesisReviews(overTheWire(withInstead(documentThesisReviews, ['reviews', '0', 'material', 'cause', '0', 'at'], malformed))),
+      ).toThrow(/material\.cause\[0\]\.at/);
+    }
+    // And a cause with NO `at` at all — the member GONE, never defaulted.
+    expect(() => parseEvidenceReviews(overTheWire(without(documentEvidenceReviews, ['reviews', '0', 'cause', '0', 'at'])))).toThrow(
+      /reviews\[0\]\.cause\[0\]\.at/,
+    );
+    expect(() => parseThesisReviews(overTheWire(without(documentThesisReviews, ['reviews', '0', 'material', 'cause', '0', 'at'])))).toThrow(
+      /material\.cause\[0\]\.at/,
+    );
+  });
+});
+
 describe('research-body — the walk`s four reads', () => {
   it('RR-15 `list_pages`: a NOT PUBLIC page, a STOP PENDING, seven outcome keys — and `public` is never defaulted', () => {
     const parsed = parsePages(overTheWire(pages));
@@ -507,6 +576,13 @@ describe('research-body — every closed union is CLOSED, and says which one was
       path: /cause\[0\]\.kind/,
     },
     {
+      // DECLARED ADDITION, document step 34 chunk 5b (#594): a document cause's kind is its own closed union — EXTRACTOR
+      // only (evidence A4 :1146 as CONFORMED: "no new kind").
+      what: 'a document cause`s kind',
+      run: () => parseEvidenceReviews(overTheWire(withInstead(documentEvidenceReviews, ['reviews', '0', 'cause', '0', 'kind'], 'DECISION'))),
+      path: /cause\[0\]\.kind/,
+    },
+    {
       what: 'a mention`s kind',
       // A WORD OUTSIDE THE UNION — and `DOCUMENT` is no longer one: it joined at document step 33 (thesis A4 :1476, R81 QC).
       run: () => parseThesisContext(overTheWire(withInstead(thesisContextFull, ['head', 'mentions', '0', 'kind'], 'EXHIBIT'))),
@@ -529,8 +605,9 @@ describe('research-body — every closed union is CLOSED, and says which one was
     },
   ];
 
-  it('RR-19 THERE ARE EIGHTEEN OF THEM, and the table holds every one the parsers narrow', () => {
-    expect(requireSubjects('the closed unions', UNIONS).length).toBe(18);
+  // DECLARED EDIT, document step 34 chunk 5b: EIGHTEEN → NINETEEN — the document cause's kind (#594).
+  it('RR-19 THERE ARE NINETEEN OF THEM, and the table holds every one the parsers narrow', () => {
+    expect(requireSubjects('the closed unions', UNIONS).length).toBe(19);
   });
 
   it.each(UNIONS.map((union) => [union.what, union] as const))('RR-20 %s — a word outside it is REFUSED, naming the path', (_what, union) => {

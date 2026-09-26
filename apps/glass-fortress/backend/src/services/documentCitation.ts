@@ -66,22 +66,6 @@ export function evidenceCurrentOf(current: Exclude<DocumentCurrent, { shed: true
   return { defined: true, kind: 'DOCUMENT', contentVersionHash: current.contentVersionHash };
 }
 
-/**
- * THE LOUD GUARD FOR A MOVED DOCUMENT — RULED (A) 2026-09-25 (the researcher, R82 Entry 8). A promoted document whose
- * CURRENT(d) is not the version a human affirmed — the platform re-read the SAME bytes under a new extractor — is
- * RE-AFFIRMED by a human (document flows §3 :348: CURRENT moves → NEEDS_REVIEW → evidence Flow E3). That review is built
- * at document step 34 (its issue, `gate:document-34`). Until then every surface that meets one refuses LOUDLY here —
- * never a false word, never a silent skip. ONE spelling: the review list, `review_evidence`, and `movedFrom` (which
- * `flaggedReview` reaches) all throw this.
- */
-export function documentReviewNotBuilt(commitment: string): Error {
-  return new Error(
-    `${commitment} is a promoted DOCUMENT, and reviewing it against a moved CURRENT(d) — NEEDS_REVIEW, REAFFIRM and the ` +
-      'material a review shows (document flows §3 :348 → evidence Flow E3) — is built at document step 34 (R82 Entry 8). ' +
-      'This refuses loudly rather than answer a false word.',
-  );
-}
-
 /** A promoted document that was SHED — unreachable until step 35 builds SHED, and named rather than read as awaiting. */
 export function documentShedNotBuilt(commitment: string): Error {
   return new Error(

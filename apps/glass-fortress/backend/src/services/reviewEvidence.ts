@@ -3,7 +3,7 @@ import { isUniqueViolation } from '../lib/uniqueViolation';
 import { WRITE_TRANSACTION } from '../walk/pageLog';
 import { resolveRecordByName } from './corpusReads';
 import { currentVersionOf, needsReview, type Current } from './evidencePredicates';
-import { documentReviewNotBuilt, documentShedNotBuilt, documentsByCommitment, evidenceCurrentOf } from './documentCitation';
+import { documentShedNotBuilt, documentsByCommitment, evidenceCurrentOf } from './documentCitation';
 import { refusal, type EvidenceWriteCode, type Refusal } from '../mcp/tools/evidenceRefusals';
 
 // ---------------------------------------------------------------------------
@@ -173,10 +173,9 @@ export async function reviewEvidence(
   // 6. NOTHING_TO_REVIEW — REAFFIRM only, THROUGH THE PREDICATE, never a hash
   //    comparison spelled here. "WITHDRAW of a current record IS allowed" (§6,
   //    verbatim): a researcher may decide the record never supported the claim.
+  // A DOCUMENT whose CURRENT(d) MOVED is reviewed exactly as a capture is (#594, document §3 :348 → evidence Flow E3,
+  // unchanged): REAFFIRM moves `affirmed` to CURRENT(d) and re-pins no mention; WITHDRAW records the reason.
   const owed = needsReview(row, current);
-  // A DOCUMENT whose CURRENT(d) MOVED — RULED (A) (R82 Entry 8, document §3 :348): re-affirmed by a human, and that
-  // review is document step 34's. Either decision on one refuses LOUDLY until then, never with a false word.
-  if (record === null && owed.evaluable && owed.value) throw documentReviewNotBuilt(input.fileHash);
   if (input.decision === 'REAFFIRM' && owed.evaluable && !owed.value) {
     return refusal(
       'NOTHING_TO_REVIEW',
