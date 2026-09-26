@@ -257,6 +257,8 @@ const DESIGNED_SURFACE: Readonly<Record<string, string>> = {
   read_document: 'document A4 :1424',
   list_documents: 'document A4 :1432',
   describe_document: 'document A4 :1437',
+  // document step 34 — the openings. The surface moves 50 -> 51, declared (R84 chunk 2; this list's own rule, :191–:193).
+  decide_opening: 'document A4 :1443',
   // No tool contract: the environment's identity, which every write is checked against before it is made — CLAUDE.md
   // ("Identify the environment"), named as the acceptance read by evidence flows :670 and :739.
   get_environment: 'CLAUDE.md; evidence flows :670, :739',

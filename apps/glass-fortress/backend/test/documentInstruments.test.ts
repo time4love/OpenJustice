@@ -78,7 +78,7 @@ describe('commitments-owed — forensics:commitments-owed (A7 :1558–:1560 as r
   const minutesAgo = (m: number): Date => new Date(NOW.getTime() - m * 60_000);
   const answering =
     (verdictOf: (commitment: string) => 'ATTRIBUTED' | 'UNREGISTERED' | 'FOREIGN_SUBMITTER') =>
-    (d: { commitment: string }): Promise<{ anchored: boolean; by: 'COMMITMENT' | 'CAPTURE' | null; verdict: 'ATTRIBUTED' | 'UNREGISTERED' | 'FOREIGN_SUBMITTER' | null }> => {
+    (d: { commitment: string }): Promise<{ anchored: boolean; by: 'COMMITMENT' | 'CAPTURE' | null; verdict: 'ATTRIBUTED' | 'UNREGISTERED' | 'FOREIGN_SUBMITTER' }> => {
       const verdict = verdictOf(d.commitment);
       return Promise.resolve({ anchored: verdict === 'ATTRIBUTED', by: verdict === 'ATTRIBUTED' ? 'COMMITMENT' : null, verdict });
     };
@@ -135,7 +135,10 @@ describe('commitments-owed — forensics:commitments-owed (A7 :1558–:1560 as r
 
   it('a document ANCHORED by the capture arm is EXCLUDED and counted on its own line (A7 :1559 as ruled)', async () => {
     heldDocument(PDF.docId);
-    const report = await commitmentsOwed(() => Promise.resolve({ anchored: true, by: 'CAPTURE', verdict: null }), NOW);
+    // DECLARED EDIT, document step 34 chunk 4a round 2 (REVIEW's M3): `verdict: null` → 'UNREGISTERED'. The commitment is now
+    // ALWAYS asked (`anchorDocuments.attestationOf`), so a capture-attested document carries its commitment's own verdict —
+    // here unregistered, which is why the capture is asked at all; "the capture answered first" is a world it no longer creates.
+    const report = await commitmentsOwed(() => Promise.resolve({ anchored: true, by: 'CAPTURE', verdict: 'UNREGISTERED' }), NOW);
     expect([report.owed, report.byCapture]).toEqual([[], 1]);
     expect(formatCommitmentsOwed(report)).toMatch(/^ {2}1 anchored by an equal capture$/m);
   });

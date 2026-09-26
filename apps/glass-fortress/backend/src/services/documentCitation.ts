@@ -1,7 +1,7 @@
-import type { Document, DocumentContentVersion, Shed } from '@prisma/client';
+import type { Document, Shed } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { CURRENT_EXTRACTOR } from '../lib/documentExtractor';
-import { currentVersion, custody, type Custody, type DocumentCurrent } from './documentPredicates';
+import { DERIVED_VERSION, currentVersion, custody, type Custody, type DerivedVersion, type DocumentCurrent } from './documentPredicates';
 import type { Current } from './evidencePredicates';
 
 // ---------------------------------------------------------------------------
@@ -25,7 +25,7 @@ import type { Current } from './evidencePredicates';
 export interface CitedDocument {
   document: Document;
   shed: Shed | null;
-  versions: DocumentContentVersion[];
+  versions: DerivedVersion[];
   custody: Custody;
   current: DocumentCurrent;
 }
@@ -36,7 +36,7 @@ export async function documentsByCommitment(commitments: readonly string[]): Pro
   if (wanted.length === 0) return new Map();
   const rows = await prisma.document.findMany({
     where: { commitment: { in: wanted } },
-    include: { versions: true, shed: true },
+    include: { versions: DERIVED_VERSION, shed: true },
   });
   return new Map(
     rows.map((row): [string, CitedDocument] => {

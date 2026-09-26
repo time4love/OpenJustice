@@ -67,7 +67,9 @@ describe('check_publication_readiness — ONE evaluation, mapped and folded (the
 
     const out = await readiness({ thesisId: THESIS.id });
 
-    expect(evaluate.mock.calls).toEqual([[VERSION.id, null]]);
+    // The third argument since document step 34 (the researcher's Q1): the head cites no document, so the tool ASKED and
+    // the answer is empty — nothing reached the chain.
+    expect(evaluate.mock.calls).toEqual([[VERSION.id, null, { asked: true, byCommitment: new Map() }]]);
     const evaluation = await (evaluate.mock.results.at(0)?.value as ReturnType<typeof publicationEvaluation.evaluatePublication>);
     expect(out).toMatchObject({
       thesisId: THESIS.id,
@@ -100,7 +102,7 @@ describe('check_publication_readiness — paid IFF a rationale, and writes nothi
 
     expect(draw).toHaveBeenCalledTimes(1);
     expect(draw.mock.calls.at(0)?.[0]).toMatchObject({ text: VERSION.text, rationale: 'הנימוק לפרסום' });
-    expect(evaluate.mock.calls).toEqual([[VERSION.id, publicationAssessor.projectionOf(OUTPUT)]]);
+    expect(evaluate.mock.calls).toEqual([[VERSION.id, publicationAssessor.projectionOf(OUTPUT), { asked: true, byCommitment: new Map() }]]);
     expect(out['assessment']).toEqual({ labelled: "the publication assessor's opinion", ...OUTPUT });
     expect([written, tripped]).toEqual([[], []]);
   });

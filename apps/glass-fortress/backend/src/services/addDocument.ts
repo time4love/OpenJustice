@@ -10,7 +10,7 @@ import { openDocumentRegistryWindow } from './anchorSnapshots';
 import { readObject, statObject } from './documentBucket';
 import { capturesEqualTo } from './documentCaptures';
 import { deriveContent, recordContentVersion, type DerivedContent } from './documentContentVersions';
-import { currentVersion } from './documentPredicates';
+import { DERIVED_VERSION, currentVersion } from './documentPredicates';
 import { documentRefusal, NO_RESEARCHER, type DocumentRefusal } from './documentRefusals';
 
 // ---------------------------------------------------------------------------
@@ -160,13 +160,14 @@ async function receive(
   call: Assertions,
   researcherId: string,
 ): Promise<AddDocumentAnswer> {
-  const existing = await prisma.document.findUnique({ where: { docId: key }, include: { versions: true, shed: true } });
+  const existing = await prisma.document.findUnique({ where: { docId: key }, include: { versions: DERIVED_VERSION, shed: true } });
 
   if (existing === null) {
-    // OUTSIDE: derivation (step 29's pure half) and the fresh salt.
-    const derived = await deriveContent(bytes, mimeType, key, 'AT_RECEIPT');
+    // OUTSIDE: the fresh salt, then the derivation (step 29's pure half) — in that order, because a bytes-only version
+    // is named by the COMMITMENT (A1 :1243 as CONFORMED 2026-09-26, R85 Q-G), which the salt makes.
     const salt = randomBytes(32);
     const commitment = commitmentOf(key, salt);
+    const derived = await deriveContent(bytes, mimeType, commitment, 'AT_RECEIPT');
     const version = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.document.create({
         data: {
@@ -202,7 +203,7 @@ async function receive(
   const ignored = ignoredOf(call, stored, mimeType, existing.mimeType);
   const current = currentVersion(existing, existing.versions, CURRENT_EXTRACTOR, existing.shed);
   // Derive only when CURRENT is owed — a document already current under this extractor has nothing to derive.
-  const derived: DerivedContent | null = 'awaiting' in current ? await deriveContent(bytes, existing.mimeType, key, 'HELD_BYTES') : null;
+  const derived: DerivedContent | null = 'awaiting' in current ? await deriveContent(bytes, existing.mimeType, existing.commitment, 'HELD_BYTES') : null;
   const version = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     await arrive(tx, existing.commitment, researcherId);
     return derived === null ? null : recordContentVersion(tx, existing.commitment, derived);

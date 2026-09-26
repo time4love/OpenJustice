@@ -36,6 +36,9 @@ async function seedCitingDocument(sealed = false): Promise<void> {
     ...store.mentions,
     mentionRow({ id: 'mention-doc', versionId: VERSION.id, kind: 'DOCUMENT', name: COMMITMENT, contentVersionHash: HELD_NOW, debateSessionId: null }, false),
   ];
+  // DECLARED EDIT, document step 34: a head citing a document CARRIES its token in the text — the version write parses
+  // mentions from the text (thesis T2), and check 19 reads the paragraph that carries it (`passagesCiting`, loud on none).
+  store.versions = [{ ...VERSION, text: `${VERSION.text}\n\nהמסמך #doc_${COMMITMENT}.` }];
 }
 
 const opening = (sequence: number, value: 'PASSAGE' | 'CONTENT' | 'BYTES'): Row => ({
@@ -92,7 +95,8 @@ describe('check 18 DOCUMENT_OPENING_DECIDED — built at step 33 (plan :255; A6 
   it('it is appended AFTER A6’s first seventeen — the thesis gate’s rows keep their order and count', async () => {
     await seedPublishable();
     const all = await rows();
-    expect([all.length, all.at(-1)?.id]).toEqual([18, 'DOCUMENT_OPENING_DECIDED']);
+    // DECLARED EDIT, document step 34: check 19 DOCUMENT_QUOTES_PRESENT follows 18 (document A6 :1536) — nineteen rows.
+    expect([all.length, all.at(17)?.id, all.at(18)?.id]).toEqual([19, 'DOCUMENT_OPENING_DECIDED', 'DOCUMENT_QUOTES_PRESENT']);
   });
 
   it('PASSES when the opening in force is decided — the highest sequence of the append-only log', async () => {

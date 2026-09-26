@@ -13,6 +13,7 @@ import {
   type TrajectoryCitation,
 } from '../../services/publishedThesis';
 import { verifiedOf } from '../../services/documentStanding';
+import type { DocumentVerified } from '../../services/evidencePredicates';
 import { loadThesisRows, versionOf, type ThesisRows } from '../../services/thesisRows';
 import { voicesOf, type ModelVoice, type Researcher, type Turn, type Voices } from '../../services/thesisTranscript';
 import { answer, refusal, type Refusal } from './thesisRefusals';
@@ -342,7 +343,7 @@ function versionView(
   versionId: string,
   voices: Voices,
   cited: ResolvedCitations,
-  verified: ReadonlyMap<string, boolean>,
+  verified: ReadonlyMap<string, DocumentVerified>,
 ): { view: VersionView; cited: Parameters<typeof unargued>[1] } {
   const version = versionOf(rows, versionId);
   if (version === null) {
@@ -352,11 +353,12 @@ function versionView(
   const mentions = resolved.citations.map((citation): ResolvedMention => {
     if (citation.kind === 'TRAJECTORY') return { ...citation, pin: null, argued: false };
     if (citation.kind === 'DOCUMENT') {
-      const isVerified = verified.get(citation.name);
-      if (isVerified === undefined) {
+      const answer = verified.get(citation.name);
+      if (answer === undefined) {
         throw new Error(`get_thesis_context: no VERIFIED for #doc_${citation.name} — it was computed for every cited document.`);
       }
-      return { ...citation, verified: isVerified };
+      // A chain that could not be read shows FALSE here, as on every read but the gate (document flows §4 :447).
+      return { ...citation, verified: 'unread' in answer ? false : answer.verified };
     }
     return citation;
   });

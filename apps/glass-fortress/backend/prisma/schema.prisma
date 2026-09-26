@@ -2290,24 +2290,21 @@ model DocumentContentVersion {
   commitment         String
   document           Document            @relation(fields: [commitment], references: [commitment], onDelete: Restrict)
   /// NULL when the content IS the bytes — a photograph no engine reads (§3 :284). Then
-  /// `contentVersionHash` EQUALS the docId (A1 :1242-:1243) and every assertion about the
-  /// document is UNCHECKED. NULLED by SHED; this row, its hash and its provenance stay.
+  /// `contentVersionHash` EQUALS the document's COMMITMENT, never its docId (A1 :1243 and
+  /// §3 :323 as CONFORMED 2026-09-26, R85 Q-G: the pin is served at every opening, and a
+  /// DOC_ID below BYTES is a hash of a copy a source held, §7 :765-:770) and every assertion
+  /// about the document is UNCHECKED. NULLED by SHED; this row, its hash and its provenance stay.
   text               String?
   contentVersionHash String
-  /// PROVENANCE: what read the bytes. The COMPUTED register is reproducible from the
-  /// bytes by a named extractor at a pinned version; that is the whole line (§3 :299-:305).
+  /// PROVENANCE: what read the bytes. The COMPUTED CONTENT is reproducible from the bytes
+  /// alone by a named extractor at a pinned version; that is the whole line (§3 :299-:305).
+  /// A bytes-only version's HASH is the commitment, reproduced from the bytes AND the salt
+  /// (§3 :293 as CONFORMED 2026-09-26; A1 :1236-:1237).
   /// `extractorVersion` names the extractor that FIRST produced this text and is NEVER
-  /// overwritten — it is provenance, not a pointer.
+  /// overwritten — it is provenance, not a pointer. Every extractor that produced OR
+  /// reproduced it is a `DocumentContentDerivation` row below (`derivations`).
   extractor          String
   extractorVersion   String
-  /// APPEND-ONLY: every extractor version that REPRODUCED this exact text (A2 :1300,
-  /// §3 :324, RULED 2026-09-23). CURRENT(d) reads MEMBERSHIP of this list and never
-  /// equality on `extractorVersion` (A3 :1368). Without it, a held document whose text a
-  /// new extractor reproduces is trapped: §3 :317 forbids a second row, so no row would
-  /// carry the new version and CURRENT(d) would read AWAITING_DERIVATION forever while
-  /// the pass reported UNCHANGED — and `EVIDENCE_DERIVED` (A6 :1531) is HARD, so the
-  /// document would be permanently uncitable.
-  derivedUnder       String[]
   /// The reader was SELECTED and THREW, as against having found no text (A2 :1300, RULED
   /// 2026-09-23). A corrupt file of an ACCEPTED type is accepted as BYTES-ONLY like any
   /// other bytes no reader can read (§3 :284) and is NEVER refused — a refusal would turn
@@ -2321,9 +2318,39 @@ model DocumentContentVersion {
   /// THE OPINION REGISTER is its own table since document step 30 — `DocumentOpinion`
   /// below, one APPEND-ONLY row per paid reading (A2 :1302 as ruled 2026-09-23).
   opinions           DocumentOpinion[]
+  /// Every extractor version that produced or reproduced this text, ONE ROW EACH — the
+  /// membership CURRENT(d) reads (A3 :1368–:1369, A2 :1300 as CONFORMED 2026-09-26).
+  derivations        DocumentContentDerivation[]
 
   @@unique([commitment, contentVersionHash])
   @@index([commitment, derivedAt])
+}
+
+/// ONE ROW PER DERIVATION — A2 :1300 and A3 :1368–:1369 as CONFORMED 2026-09-26 (the
+/// researcher, R86 Q-R1: "one row per derivation, (versionId, extractorVersion, at), at null
+/// only for rows derived before the table; derivedUnder dropped in the same migration").
+///
+/// A version is NAMED by its text (`@@unique([commitment, contentVersionHash])` above), so an
+/// extractor that REPRODUCES a text the document already holds writes no version: it writes a
+/// row HERE, and CURRENT(d) is the version with a row for `CURRENT_EXTRACTOR` — membership,
+/// never equality on `extractorVersion` (§3 :317 and A6 :1531 made the equality a trap).
+///
+/// `at` IS THE MOMENT OF THAT DERIVATION — the moment the version BECAME current under that
+/// extractor, which the version's own `derivedAt` is not when an older text is re-reached
+/// (A→B→A). It is NULL only for a membership appended BEFORE this table existed, when the
+/// list was the `derivedUnder` column and no moment was kept: "not recorded", never invented.
+/// The one writer (`documentContentVersions.recordContentVersion`) always sets it.
+///
+/// APPEND-ONLY. Nothing updates or deletes a row; `@@unique([versionId, extractorVersion])`
+/// makes a pass run twice write nothing the second time.
+model DocumentContentDerivation {
+  id               String                 @id @default(cuid())
+  versionId        String
+  version          DocumentContentVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  extractorVersion String
+  at               DateTime?
+
+  @@unique([versionId, extractorVersion])
 }
 
 /// THE OPINION REGISTER — A2 :1302-:1303, RULED 2026-09-23: ONE ROW PER PAID READING of a

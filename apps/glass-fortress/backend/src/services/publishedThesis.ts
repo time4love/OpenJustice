@@ -1,14 +1,12 @@
 import type { MentionType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { provisionTitleOf } from '../lib/provisions';
 import type { ChunkSide } from '../lib/diffChunking';
 import { chunksOf, heldTextKey, heldTextsFor, pairName, recordsByName, type ResolvedRecord } from './corpusReads';
-import { argued, EVER_PUBLISHED, flaggedFor, verifiedFor, type FlagReport, type VerifiedReport } from './evidencePredicates';
+import { argued, flaggedFor, verifiedFor, type FlagReport, type VerifiedReport } from './evidencePredicates';
 import { documentsByCommitment, type CitedDocument } from './documentCitation';
 import type { PublicationMaterial } from './publicationAssessor';
 import { decisionsAtPublication, gapList, theCall, theRequests, trajectoryCurrent, type CitedMention } from './thesisPredicates';
 import { resolveTrajectoryCitations, type TrajectoryCurrency } from './trajectoryCitation';
-import { refusal, type Refusal } from '../mcp/tools/thesisRefusals';
 
 // ---------------------------------------------------------------------------
 // WHAT A VERSION PUBLISHES — docs/gf-thesis-flows.md T5 :795–:853, T6 :914–:918, A3 :1399–:1406 as amended, A5
@@ -58,8 +56,9 @@ export async function publishedAppeals(thesisId: string, versionId: string): Pro
 
 /**
  * What the publication assessor is handed for `versionId` (the R49 sketch §d1): the claim, the provision, the text
- * VERBATIM, the appeals as they would publish with it, and the rationale — and nothing of the corpus: no record is
- * resolved, so a citation reaches the assessor as the name the text carries.
+ * VERBATIM, the appeals as they would publish with it, the TITLE of every document the version cites (R84 Q15 — published
+ * with the citation, so examined for names like the text), and the rationale — and nothing of the corpus: no record is
+ * resolved and no document's text is read, so a citation reaches the assessor as the name the text carries.
  */
 export async function assessorMaterial(
   thesis: { id: string; provision: string | null },
@@ -71,7 +70,15 @@ export async function assessorMaterial(
     throw new Error(`publishedThesis: thesis ${thesis.id} points at version ${versionId}, which does not exist.`);
   }
   const { call, requests } = await publishedAppeals(thesis.id, versionId);
-  return { claim: version.claim, provision: thesis.provision, text: version.text, call, requests, rationale };
+  const cited = await prisma.thesisMention.findMany({ where: { versionId, kind: 'DOCUMENT' }, select: { name: true } });
+  const documents = await documentsByCommitment(cited.map((m) => m.name));
+  // Every document a version cites was written with a title (A2, NO_TITLE since 2026-09-23); a cited one without is a
+  // pre-rule row, and it is handed as nothing rather than as an empty title the model would read as "no name here".
+  const titles = cited.flatMap((m) => {
+    const title = documents.get(m.name)?.document.title ?? null;
+    return title === null ? [] : [title];
+  });
+  return { claim: version.claim, provision: thesis.provision, text: version.text, call, requests, titles, rationale };
 }
 
 // ---------------------------------------------------------------------------
@@ -140,22 +147,9 @@ export function handleOf(handles: ReadonlyMap<string, string>, researcherId: str
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/thesis/:id and /:id/versions/:v — T5 :804–:853, T6 :914–:918, A5 :1565–:1570
+// THE CITATION SHAPES AND THE ONE RESOLVER — T5 :811–:818, thesis A4 :1476. The public page's two cores moved to
+// `publicThesisPage.ts` at document step 34 (the researcher's Q-A, R85): a DOCUMENT citation's public block asks the chain.
 // ---------------------------------------------------------------------------
-
-/** The notice where a withdrawn page was: the date alone — never the text, never the reason (T6 :915–:916). */
-interface WithdrawnNotice {
-  thesisId: string;
-  withdrawn: true;
-  withdrawnAt: Date;
-}
-
-/** A citation as the page lists it in the history and on a version: which record, at which pin — no content. */
-interface CitationRef {
-  kind: string;
-  name: string;
-  pin: string | null;
-}
 
 export interface EvidenceCitation {
   kind: 'EVIDENCE';
@@ -200,111 +194,6 @@ export interface DocumentCitationBase {
 export type TrajectoryCitation =
   | { kind: 'TRAJECTORY'; name: string; resolves: true; claimText: string; url: string; transitions: number; current: boolean }
   | { kind: 'TRAJECTORY'; name: string; resolves: false };
-
-type HistoryEntry =
-  | { versionId: string; contentHash: string; publishedAt: Date; citations: CitationRef[] }
-  | { versionId: string; publishedAt: Date; withdrawn: true; withdrawnAt: Date };
-
-interface ThesisPage {
-  thesisId: string;
-  publicInterestStatement: string | null;
-  claim: string;
-  provision: string | null;
-  /** The provision named by its table entry (docs/gf-ui-flows.md §17 :529–:530) — the page never spells a title of its own. */
-  provisionTitle: string | null;
-  version: { versionId: string; text: string; contentHash: string; publishedAt: Date | null; author: string };
-  citations: (EvidenceCitation | TrajectoryCitation)[];
-  appeals: { call: unknown[]; requests: unknown[]; intake: string };
-  rationale: string;
-  overObjection: boolean;
-  analysisRun: boolean;
-  history: HistoryEntry[];
-  /** Each cited page by its id and its url — the id is what the browser composes `/corpus?page=` from (thesis A5 :1569 as amended, UI-3). */
-  pages: { trackedUrlId: string; url: string }[];
-}
-
-interface VersionBody {
-  thesisId: string;
-  versionId: string;
-  text: string;
-  contentHash: string;
-  publishedAt: Date;
-  citations: CitationRef[];
-}
-
-/** What every public read of one thesis starts from: the thesis, its ever-published versions, its PUBLISHED attempts, its withdrawals. */
-async function publicRecordOf(thesisId: string) {
-  // FOUR READS, ONE WAIT. Every one of them keys on `thesisId` — the PARAMETER — so not one needs another's
-  // answer, and awaiting them in turn cost the SUM of four round trips for no reason. Measured 2026-09-21 on
-  // run B: 1291 + 559 + 599 + 520 ms in a strict chain, where the wall should be ~1291.
-  //
-  // THE EARLY RETURNS MOVE BELOW, and they are unchanged in meaning: a thesis that does not exist and a
-  // thesis with no ever-published version both still answer `null`. What changes is that the three cheap
-  // reads are already in flight when we find out — which costs nothing, because a thesis with no versions is
-  // not the case this page is built for.
-  const [thesis, versions, attempts, withdrawals] = await Promise.all([
-    prisma.thesis.findUnique({
-      where: { id: thesisId },
-      select: { id: true, provision: true, createdById: true, publishedVersionId: true, publishedAt: true, publicInterestStatement: true },
-    }),
-    prisma.thesisVersion.findMany({
-      where: { thesisId, ...EVER_PUBLISHED },
-      select: { id: true, text: true, claim: true, contentHash: true },
-    }),
-    prisma.publicationAttempt.findMany({
-      where: { thesisId, outcome: 'PUBLISHED' },
-      select: { versionId: true, rationale: true, verdict: true, createdAt: true },
-    }),
-    prisma.withdrawal.findMany({ where: { thesisId }, select: { versionId: true, createdAt: true } }),
-  ]);
-  if (thesis === null) return null;
-  if (versions.length === 0) return null;
-  // SORTED IN CODE, oldest first (E10 not needed): the double's append-only tables take no `orderBy`, and one sort here
-  // is the order every body below reads.
-  const byTime = <R extends { createdAt: Date }>(rows: R[]): R[] => [...rows].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-  return { thesis, versions, attempts: byTime(attempts), withdrawals: byTime(withdrawals) };
-}
-
-/** The newest withdrawal naming `versionId` — or, with none given, the newest on the thesis. */
-const newestWithdrawal = (withdrawals: readonly { versionId: string; createdAt: Date }[], versionId?: string) =>
-  withdrawals.filter((w) => versionId === undefined || w.versionId === versionId).at(-1);
-
-/** When a version was published: its PUBLISHED attempt — every ever-published version has one by EVER_PUBLISHED's definition. */
-function publishedAtOf(attempts: readonly { versionId: string; createdAt: Date }[], versionId: string): Date {
-  const attempt = attempts.find((a) => a.versionId === versionId);
-  if (attempt === undefined) {
-    throw new Error(`publishedThesis: version ${versionId} is ever published and no PUBLISHED attempt names it — a malformed read.`);
-  }
-  return attempt.createdAt;
-}
-
-/**
- * The citations of EVERY version named, by version id — ONE read for all of them.
- *
- * `historyOf` walks every ever-published version, and asking per version cost one query per version: a thesis
- * published five times paid five round trips for a list one `in` answers. The map has an entry for every id
- * asked for, so a version that cites nothing is an empty list rather than a missing key.
- */
-async function citationRefsByVersion(versionIds: readonly string[]): Promise<Map<string, CitationRef[]>> {
-  const byVersion = new Map<string, CitationRef[]>(versionIds.map((id) => [id, []]));
-  if (versionIds.length === 0) return byVersion;
-  const select = { versionId: true, kind: true, name: true, contentVersionHash: true } as const;
-  // A SET OF ONE BY ITS KEY, as the predicates' plurals do: the same rows under the same columns, and the
-  // query every single-version caller has always made.
-  const only = versionIds.length === 1 ? versionIds[0] : undefined;
-  const mentions =
-    only === undefined
-      ? await prisma.thesisMention.findMany({ where: { versionId: { in: [...versionIds] } }, select })
-      : (await prisma.thesisMention.findMany({ where: { versionId: only }, select })).map((m) => ({ ...m, versionId: only }));
-  for (const m of mentions) {
-    byVersion.get(m.versionId)?.push({ kind: m.kind, name: m.name, pin: m.contentVersionHash });
-  }
-  return byVersion;
-}
-
-async function citationRefsOf(versionId: string): Promise<CitationRef[]> {
-  return (await citationRefsByVersion([versionId])).get(versionId) ?? [];
-}
 
 /** One version's RESOLVED citations, and the rows UNARGUED reads — both off the one read of its mentions. */
 export interface VersionCitations {
@@ -547,115 +436,6 @@ export function requireCitations(resolved: ResolvedCitations, versionId: string)
   return entry;
 }
 
-/**
- * Route 2's body (sketch §e4), decided in order: no thesis or nothing ever published → null (404, one answer for both) ·
- * the pin null with a withdrawal on record → the notice · published → the page.
- */
-async function pageOf(thesisId: string): Promise<ThesisPage | WithdrawnNotice | null> {
-  const loaded = await publicRecordOf(thesisId);
-  if (loaded === null) return null;
-  const { thesis, versions, attempts, withdrawals } = loaded;
-
-  const pin = thesis.publishedVersionId;
-  if (pin === null) {
-    const notice = newestWithdrawal(withdrawals);
-    if (notice === undefined) {
-      // A LOUD GUARD: the pin is nulled only by `unpublish_thesis`, which writes a Withdrawal in the same transaction.
-      throw new Error(`publishedThesis: thesis ${thesis.id} was published and has no pin and no withdrawal — a malformed thesis.`);
-    }
-    return { thesisId: thesis.id, withdrawn: true, withdrawnAt: notice.createdAt };
-  }
-
-  const version = versions.find((v) => v.id === pin);
-  // THE RATIONALE AND ITS VERDICT are the PINNED version's PUBLISHED attempt's — a refused attempt's words are working state.
-  const attempt = attempts.filter((a) => a.versionId === pin).at(-1);
-  if (version === undefined || attempt === undefined) {
-    throw new Error(`publishedThesis: thesis ${thesis.id} is pinned at ${pin} with no PUBLISHED attempt of it — a malformed thesis.`);
-  }
-
-  // FIVE INDEPENDENT READS, AWAITED TOGETHER — and the reason is measured, not stylistic.
-  //
-  // `publicRecordOf` above must land first: every line below needs `thesis` and `pin`. NOTHING below needs
-  // anything else below it. Awaited one after another they cost the SUM of their round trips; awaited
-  // together they cost the SLOWEST.
-  //
-  // MEASURED 2026-09-21 on run B's thesis, before this change: 20 delegate calls, 16,246 ms of database
-  // time inside a 16,258 ms wall — an overlap of TWELVE MILLISECONDS, which is to say none at all. The page
-  // spent its whole life waiting for one query at a time. Deployed beside the database the same shape is
-  // ~2 s; from a laptop one region away it is 16–54 s, and Next's proxy cuts the socket long before it ends.
-  //
-  // THE LATENCY IS NOT THE DEFECT — the SEQUENCE is. A read whose wall is the sum of its parts is fast only
-  // where round trips are free, and it fails the moment they are not. `historyOf` joins them: it needs
-  // `versions`, `attempts` and `withdrawals`, all of which `publicRecordOf` already returned.
-  const [resolvedCitations, handles, analyses, appeals, history] = await Promise.all([
-    // THE ONE RESOLVER, over this page's one version — the same call the gated read makes over two.
-    citationsByVersion(thesis.id, [pin]),
-    handlesOf([thesis.createdById]),
-    prisma.thesisAnalysis.findMany({ where: { versionId: pin }, select: { id: true } }),
-    publishedAppeals(thesis.id, pin),
-    historyOf(versions, attempts, withdrawals),
-  ]);
-  const { call, requests } = appeals;
-
-  return {
-    thesisId: thesis.id,
-    publicInterestStatement: thesis.publicInterestStatement,
-    claim: version.claim,
-    provision: thesis.provision,
-    provisionTitle: provisionTitleOf(thesis.provision),
-    version: { versionId: pin, text: version.text, contentHash: version.contentHash, publishedAt: thesis.publishedAt, author: handleOf(handles, thesis.createdById, thesis.id) },
-    citations: publicCitations(requireCitations(resolvedCitations, pin).citations, thesis.id),
-    appeals: { call, requests, intake: INTAKE },
-    rationale: attempt.rationale,
-    overObjection: attempt.verdict === 'DISPUTES',
-    analysisRun: analyses.length > 0,
-    history,
-    pages: resolvedCitations.pages,
-  };
-}
-
-/**
- * The PUBLIC page's citations — a DOCUMENT citation refused LOUDLY, by name. What the public reads of a document is
- * document flows §7 :848–:860's block, step 34's; check 18 `DOCUMENT_OPENING_DECIDED` refuses publication of any head
- * citing `#doc_` until step 34 builds `decide_opening` (plan :255, R81 Q-2), so this is reachable only by a defect.
- */
-function publicCitations(
-  citations: readonly (EvidenceCitation | TrajectoryCitation | DocumentCitationBase)[],
-  thesisId: string,
-): (EvidenceCitation | TrajectoryCitation)[] {
-  return citations.map((citation) => {
-    if (citation.kind === 'DOCUMENT') {
-      throw new Error(
-        `publishedThesis: the published version of ${thesisId} cites #doc_${citation.name}. The public reading of a ` +
-          'document is document refactor step 34\'s, and check 18 refuses publication before it — a defect, not a state.',
-      );
-    }
-    return citation;
-  });
-}
-
-/** Every ever-published version, oldest first; a version NAMED BY A WITHDRAWAL keeps its dates and nothing of its content (R11). */
-async function historyOf(
-  versions: readonly { id: string; contentHash: string }[],
-  attempts: readonly { versionId: string; createdAt: Date }[],
-  withdrawals: readonly { versionId: string; createdAt: Date }[],
-): Promise<HistoryEntry[]> {
-  const entries: HistoryEntry[] = [];
-  // ONE read for every version's citations — a withdrawn entry shows none, so only the others are asked for.
-  const citing = versions.filter((version) => newestWithdrawal(withdrawals, version.id) === undefined).map((version) => version.id);
-  const refs = await citationRefsByVersion(citing);
-  for (const version of versions) {
-    const publishedAt = publishedAtOf(attempts, version.id);
-    const withdrawal = newestWithdrawal(withdrawals, version.id);
-    entries.push(
-      withdrawal === undefined
-        ? { versionId: version.id, contentHash: version.contentHash, publishedAt, citations: refs.get(version.id) ?? [] }
-        : { versionId: version.id, publishedAt, withdrawn: true, withdrawnAt: withdrawal.createdAt },
-    );
-  }
-  return entries.sort((a, b) => a.publishedAt.getTime() - b.publishedAt.getTime());
-}
-
 /** One EVIDENCE citation resolved as T5 :812–:817 lists it, each fact from its own predicate. */
 /**
  * ONE citation's shape, over answers ALREADY READ — this function makes no query at all.
@@ -780,44 +560,3 @@ function pinnedContent(record: ResolvedRecord, pin: string, held: Map<string, st
   return { kind: 'CAPTURE', text };
 }
 
-/**
- * Route 3's body (sketch §e4, R11), decided in order: `v` not ever published on this thesis → null (404) · the thesis
- * withdrawn now → the thesis's notice, whatever `v` · `v` named by a withdrawal → ITS notice · else the version.
- */
-async function versionPage(thesisId: string, versionId: string): Promise<VersionBody | WithdrawnNotice | null> {
-  const loaded = await publicRecordOf(thesisId);
-  if (loaded === null) return null;
-  const { thesis, versions, attempts, withdrawals } = loaded;
-  const version = versions.find((v) => v.id === versionId);
-  if (version === undefined) return null;
-
-  const notice = thesis.publishedVersionId === null ? newestWithdrawal(withdrawals) : newestWithdrawal(withdrawals, versionId);
-  if (notice !== undefined) return { thesisId: thesis.id, withdrawn: true, withdrawnAt: notice.createdAt };
-
-  return {
-    thesisId: thesis.id,
-    versionId: version.id,
-    text: version.text,
-    contentHash: version.contentHash,
-    publishedAt: publishedAtOf(attempts, version.id),
-    citations: await citationRefsOf(version.id),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// THE TWO PUBLIC THESIS READS AS CORES — UI-3 (the R53 sketch §0h, round 2 M2). "A thesis never published" (docs/gf-ui-
-// flows.md §6's table) is `NOT_PUBLISHED`, the thesis layer's word for "nothing is published", decided HERE and nowhere
-// in a route module — the adapter's one table makes it the one 404.
-// ---------------------------------------------------------------------------
-
-const neverPublished = (thesisId: string): Refusal<'NOT_PUBLISHED'> => refusal('NOT_PUBLISHED', `No published thesis ${thesisId}.`);
-
-/** `GET /api/thesis/:id`'s core: the page, the notice, or NOT_PUBLISHED for a thesis never published. */
-export async function publishedPageOf(thesisId: string): Promise<ThesisPage | WithdrawnNotice | Refusal<'NOT_PUBLISHED'>> {
-  return (await pageOf(thesisId)) ?? neverPublished(thesisId);
-}
-
-/** `GET /api/thesis/:id/versions/:v`'s core: the version, its notice, or NOT_PUBLISHED. */
-export async function publishedVersionOf(thesisId: string, versionId: string): Promise<VersionBody | WithdrawnNotice | Refusal<'NOT_PUBLISHED'>> {
-  return (await versionPage(thesisId, versionId)) ?? neverPublished(thesisId);
-}

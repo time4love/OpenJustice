@@ -13,6 +13,7 @@ import {
   extractIntervals,
   extractQuotedPhrases,
   parseDate,
+  quotedSpans,
   splitSentences,
   UNCHECKABLE_CLASSES,
 } from '../src/lib/thesisAssertions';
@@ -128,5 +129,29 @@ describe('the declared blind spots', () => {
     const joined = UNCHECKABLE_CLASSES.join(' ');
     expect(joined).toContain('שישה שבועות');
     expect(joined).toContain('שבעה תצלומים');
+  });
+});
+
+// DOCUMENT STEP 34 (R84 chunk 3, S6): check 19 examines "every quoted span" (document A6 :1536; A2 :1315), so the span
+// pattern is exported WITHOUT audit_thesis_claims' 12-character floor — ONE pattern, two consumers.
+describe('quotedSpans — every quoted span, no floor; extractQuotedPhrases is it filtered', () => {
+  it('returns a span shorter than the floor, which extractQuotedPhrases drops', () => {
+    const text = 'הוא כתב "קצר" ואז "משפט ארוך בהרבה מהרף".';
+    expect(quotedSpans(text)).toEqual(['קצר', 'משפט ארוך בהרבה מהרף']);
+    expect(extractQuotedPhrases(text)).toEqual(['משפט ארוך בהרבה מהרף']);
+  });
+});
+
+// R84 chunk 3, REVIEW's M11: check 19 is a HARD gate over a HEBREW corpus, so every delimiter the ONE pattern knows is
+// held by a case of its own — the gershayim above all.
+describe('quotedSpans — each delimiter it knows, one case each', () => {
+  it.each([
+    ['straight "…"', 'הוא כתב "שתי מילים" אז', 'שתי מילים'],
+    ['curly “…”', 'הוא כתב “שתי מילים” אז', 'שתי מילים'],
+    ['low-9 „…”', 'הוא כתב „שתי מילים” אז', 'שתי מילים'],
+    ['guillemets «…»', 'הוא כתב «שתי מילים» אז', 'שתי מילים'],
+    ['Hebrew gershayim ״…״', 'הוא כתב ״שתי מילים״ אז', 'שתי מילים'],
+  ])('%s', (_label, text, span) => {
+    expect(quotedSpans(text)).toEqual([span]);
   });
 });

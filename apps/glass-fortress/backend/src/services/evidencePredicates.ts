@@ -5,6 +5,8 @@ import { ON_CHAIN_CHECK_VERSION } from '../lib/onChainVerdict';
 import { recordId, type RecordId, type Record as CorpusRecord } from '../lib/evidenceIdentity';
 import { normaliseForPresence } from '../lib/htmlText';
 import { assessEvidenceInputSoundness } from './evidenceInputSoundness';
+import { documentShedNotBuilt, documentsByCommitment, evidenceCurrentOf } from './documentCitation';
+import { recomputableEvidence } from './documentPredicates';
 
 // ---------------------------------------------------------------------------
 // A3'S DERIVATIONS, AS PREDICATES — docs/gf-evidence-flows.md A3, and the one
@@ -553,13 +555,14 @@ export interface CaptureAttribution {
 }
 
 /**
- * VERIFIED, or the reason it cannot be asked of this row.
+ * VERIFIED, or the reason it cannot be asked of this row — the TWO reasons `resolve_record` serves (evidence A4 :1106 as
+ * CONFORMED 2026-09-26, the researcher's Q12).
  *
- * A DOCUMENT record is not `verified: false` — VERIFIED(d) is document flows §4
- * (RECOMPUTABLE by custody mode AND ANCHORED over the commitment) and needs a
- * `Document` table that document step 28 builds. Answering `false` for a class
- * whose predicate does not exist yet would be this platform asserting something
- * it never checked.
+ * A DOCUMENT ROW NEVER REACHES THIS PREDICATE, and meeting one THROWS (`verifiedFromRow`). VERIFIED(d) is document flows
+ * A3 :1367, RECOMPUTABLE(d) AND ANCHORED(d), and ANCHORED(d) is a CHAIN READ (A3 :1366) this module never makes: it reads
+ * the STORED attribution a capture's anchor-time check wrote, and a document has none (§4 :447). Its two readers cannot
+ * hand it one — `resolve_record` resolves corpus names only (a capture or a pair), and `publishable` routes a DOCUMENT row
+ * to `verifiedDocumentRow`, which grades it from the chain's answer the caller handed in (Q1).
  */
 export type VerifiedReport =
   | {
@@ -569,7 +572,7 @@ export type VerifiedReport =
       expected: RecordId;
       captures: CaptureAttribution[];
     }
-  | { evaluable: false; reason: 'NOT_PROMOTED' | 'MALFORMED_RECORD_KEY' | 'DOCUMENT_CLASS_NOT_BUILT' };
+  | { evaluable: false; reason: 'NOT_PROMOTED' | 'MALFORMED_RECORD_KEY' };
 
 const CAPTURE_IDENTITY = {
   id: true,
@@ -676,7 +679,15 @@ function verifiedFromRow(row: EvidenceIdentityRow | null, attribution: Map<strin
   // NOT_PROMOTED, and it is not `verified: false`: a record nobody selected has
   // not failed a check, it has not been put to one.
   if (row === null) return { evaluable: false, reason: 'NOT_PROMOTED' };
-  if (row.kind === 'DOCUMENT') return { evaluable: false, reason: 'DOCUMENT_CLASS_NOT_BUILT' };
+  if (row.kind === 'DOCUMENT') {
+    // A LOUD GUARD for a world no reader creates (Q12): `resolve_record` resolves corpus names only (resolveRecord.ts
+    // :82), and `publishable` sends a DOCUMENT row to `verifiedDocumentRow`. Answering a reason here would serve a word.
+    throw new Error(
+      `evidencePredicates: VERIFIED was asked of ${row.fileHash}, a DOCUMENT row — unreachable: resolveRecord resolves ` +
+        'corpus names only, and publishable grades a DOCUMENT row through verifiedDocumentRow, from the chain\'s answer ' +
+        'its caller handed in. A document is never graded by the stored-attribution read.',
+    );
+  }
 
   // NAMED, never indexed. A record's endpoints are two distinct roles, and a
   // `[0]`/`[1]` pair is where "before" and "after" get swapped by a later edit
@@ -969,11 +980,12 @@ export type ConjunctReason =
   | 'NO_EVIDENCE_ROW'
   | 'NOT_ARGUED'
   | 'NOT_VERIFIED'
+  | 'CHAIN_UNREADABLE'
   | 'INPUT_UNSOUND'
   // EXAMINED_NONE — why nothing was examined
   | 'NOT_PROMOTED'
   | 'MALFORMED_RECORD_KEY'
-  | 'DOCUMENT_CLASS_NOT_BUILT'
+  | 'CHAIN_NOT_ASKED'
   | 'NOT_DIFF_DERIVED';
 
 export interface Conjunct {
@@ -1006,15 +1018,15 @@ export interface ExaminedMention {
 
 /**
  * A DISCRIMINATED UNION, as `Current`, `Evaluated` and `VerifiedReport` already
- * are in this module: a record whose CLASS has no predicate yet is NOT
+ * are in this module: a document whose VERIFIED(d) the caller did not ask is NOT
  * `publishable: false`.
  *
  * `evaluable: false` IS CONDITIONAL, and the condition is that nothing FAILED:
  *
  *   some conjunct FAILed                    → evaluable: true, publishable: false
- *   no conjunct FAILed, and one examined     → evaluable: false
- *     nothing because its CLASS has no
- *     predicate yet
+ *   no conjunct FAILed, and VERIFIED         → evaluable: false, CHAIN_NOT_ASKED
+ *     examined nothing because the caller
+ *     did not read the chain for it
  *
  * A DOCUMENT record whose debate is OPEN is therefore `evaluable: true` with
  * `publishable: false`: `ARGUED` and `RECORD_PROMOTED` are kind-independent, so
@@ -1031,12 +1043,12 @@ export type PublishableReport =
   | {
       evaluable: false;
       examined: ExaminedMention;
-      reason: 'DOCUMENT_CLASS_NOT_BUILT';
+      reason: 'CHAIN_NOT_ASKED';
       conjuncts: Conjunct[];
     };
 
 /** The word `verified` refuses a class or a broken row with — borrowed, never re-coined. */
-type NotEvaluableReason = 'NOT_PROMOTED' | 'MALFORMED_RECORD_KEY' | 'DOCUMENT_CLASS_NOT_BUILT';
+type NotEvaluableReason = 'NOT_PROMOTED' | 'MALFORMED_RECORD_KEY' | 'CHAIN_NOT_ASKED';
 
 const EXAMINED_NONE_DETAIL: Record<NotEvaluableReason | 'NOT_DIFF_DERIVED' | 'AWAITING_DERIVATION', string> = {
   NOT_PROMOTED:
@@ -1045,9 +1057,9 @@ const EXAMINED_NONE_DETAIL: Record<NotEvaluableReason | 'NOT_DIFF_DERIVED' | 'AW
   MALFORMED_RECORD_KEY:
     'MALFORMED_RECORD_KEY — the row names a record key the corpus cannot resolve. ' +
     'forensics:audit-evidence reports it; it is a write defect, not a verdict about the citation.',
-  DOCUMENT_CLASS_NOT_BUILT:
-    'DOCUMENT_CLASS_NOT_BUILT — VERIFIED, CURRENT and derivation are defined for a document by ' +
-    'document flows §3 and §4, and the class gets its table and its predicates at document step 28.',
+  CHAIN_NOT_ASKED:
+    'CHAIN_NOT_ASKED — VERIFIED(d) needs ANCHORED(d), a chain read (document flows A3 :1366), and this caller did not ' +
+    'read the chain for the document. Not graded — never "not verified"; publish_thesis and check_publication_readiness ask.',
   NOT_DIFF_DERIVED:
     'NOT_DIFF_DERIVED — check 17 judges the chunks of CURRENT(diff), and this record names no diff, ' +
     'so it examined none. A check with no subject, never a check that passed.',
@@ -1055,6 +1067,23 @@ const EXAMINED_NONE_DETAIL: Record<NotEvaluableReason | 'NOT_DIFF_DERIVED' | 'AW
     'AWAITING_DERIVATION — CURRENT is not defined, so a pin cannot be compared against it. The walk ' +
     'owes this diff a version; DERIVED is the conjunct that says so.',
 };
+
+/**
+ * VERIFIED(d) FOR THE DOCUMENTS A VERSION CITES — the chain's answer, read by the CALLER and handed in (the researcher's
+ * Q1, 2026-09-26, `R84-review-state.md` Entry 3). ANCHORED(d) is a chain read (document A3 :1366) and this module reads
+ * no chain; the research acts that load it must reach none either (`test/researchActsReachNoChain.test.ts`). So the TYPE
+ * says whether the caller asked:
+ *
+ *   { asked: false }                     the caller did not read the chain — every DOCUMENT mention is NOT EVALUABLE,
+ *                                         CHAIN_NOT_ASKED, and the fold refuses to call the version publishable
+ *   { asked: true, byCommitment }        per cited commitment: `{ verified }` — VERIFIED(d) as read — or `{ unread }`,
+ *                                         the chain could not be read: a FAIL that NAMES THE OUTAGE (Q1 (ii); §4 :447)
+ *
+ * `documentStanding.verifiedOf` is the one reader; `publish_thesis` and `check_publication_readiness` ask it.
+ */
+export type DocumentVerified = { verified: boolean } | { unread: string };
+export type DocumentVerification = { asked: false } | { asked: true; byCommitment: ReadonlyMap<string, DocumentVerified> };
+export const NOT_ASKED: DocumentVerification = { asked: false };
 
 /**
  * PUBLISHABLE(m) — the report, one `Conjunct` per clause, every one a CALL.
@@ -1071,13 +1100,20 @@ const EXAMINED_NONE_DETAIL: Record<NotEvaluableReason | 'NOT_DIFF_DERIVED' | 'AW
  * rule — "names a diff, NOT typed FORENSIC_DIFF" — lives in that module, and
  * deciding here that a capture need not be asked would put one rule in two files.
  * One query is cheaper than one more copy of a rule.
+ *
+ * A DOCUMENT ROW — DOCUMENT STEP 34 (document A6 :1529–:1534; the non-binding arm FELL, plan :273–:274). RECORD_PROMOTED
+ * and ARGUED are kind-independent, unchanged. VERIFIED is RECOMPUTABLE(e)'s third arm (`recomputableEvidence`, document
+ * A3 :1364–:1365) AND VERIFIED(d) from `verification`. CURRENT is CURRENT(d), loaded through `documentCitation` — the one
+ * loader — and handed to evidence's own `citationCurrent` in evidence's `Current` shape, so DERIVED and CITATION_CURRENT
+ * are these predicates, CALLED. INPUT_SOUND examines none: check 17 judges a diff's chunks (A6 :1533), NOT_DIFF_DERIVED.
  */
-export async function publishable(mentionId: string): Promise<PublishableReport> {
+export async function publishable(mentionId: string, verification: DocumentVerification = NOT_ASKED): Promise<PublishableReport> {
   const mention = await prisma.thesisMention.findUnique({
     where: { id: mentionId },
     select: {
       id: true,
       name: true,
+      versionId: true,
       contentVersionHash: true,
       debateSessionId: true,
       thesisVersion: { select: { thesisId: true } },
@@ -1107,6 +1143,7 @@ export async function publishable(mentionId: string): Promise<PublishableReport>
       fileHash: true,
       kind: true,
       status: true,
+      documentCommitment: true,
       snapshot: { select: { textHash: true, textExtractionVersion: true } },
       urlVersionDiff: {
         select: {
@@ -1182,56 +1219,63 @@ export async function publishable(mentionId: string): Promise<PublishableReport>
     isArgued ? null : 'NOT_ARGUED',
   );
 
-  // VERIFIED — the async predicate, reading the stored attribution verdict. Its
-  // own discriminated union carries the word for a class it cannot answer for,
-  // and that word is borrowed here rather than re-coined.
-  const verification = await verified(mention.name);
-  if (!verification.evaluable) {
-    examinedNone('VERIFIED', verification.reason);
-  } else if (verification.verified) {
-    say('VERIFIED', 'PASS', null, null);
+  // VERIFIED, DERIVED and CITATION_CURRENT — by the row's kind. `current` is the one `Current` both of the last two read,
+  // or null where no record could be resolved, with the word that says why.
+  let current: Current<ContentVersionProvenance> | null = null;
+  let unresolved: NotEvaluableReason = 'NOT_PROMOTED';
+  if (row?.kind === 'DOCUMENT') {
+    current = await verifiedDocumentRow(row, mention, verification, say, examinedNone);
   } else {
-    const unattributed = verification.captures.filter((c) => c.attributed !== true).map((c) => c.capture);
-    const mismatched = verification.captures
-      .filter((c) => !c.anchoredHashMatchesDocumentHash)
-      .map((c) => c.capture);
-    say(
-      'VERIFIED',
-      'FAIL',
-      [
-        verification.recomputable ? null : `the row's name is not the record's: the record names ${verification.expected}`,
-        unattributed.length === 0 ? null : `no stored attribution for ${unattributed.join(', ')}`,
-        mismatched.length === 0 ? null : `the anchored hash is not the document hash for ${mismatched.join(', ')}`,
-      ]
-        .filter((part): part is string => part !== null)
-        .join('; '),
-      'NOT_VERIFIED',
-    );
+    // VERIFIED — the async predicate, reading the stored attribution verdict. Its
+    // own discriminated union carries the word for a class it cannot answer for,
+    // and that word is borrowed here rather than re-coined.
+    const verification = await verified(mention.name);
+    if (!verification.evaluable) {
+      examinedNone('VERIFIED', verification.reason);
+    } else if (verification.verified) {
+      say('VERIFIED', 'PASS', null, null);
+    } else {
+      const unattributed = verification.captures.filter((c) => c.attributed !== true).map((c) => c.capture);
+      const mismatched = verification.captures
+        .filter((c) => !c.anchoredHashMatchesDocumentHash)
+        .map((c) => c.capture);
+      say(
+        'VERIFIED',
+        'FAIL',
+        [
+          verification.recomputable ? null : `the row's name is not the record's: the record names ${verification.expected}`,
+          unattributed.length === 0 ? null : `no stored attribution for ${unattributed.join(', ')}`,
+          mismatched.length === 0 ? null : `the anchored hash is not the document hash for ${mismatched.join(', ')}`,
+        ]
+          .filter((part): part is string => part !== null)
+          .join('; '),
+        'NOT_VERIFIED',
+      );
+    }
+
+    // DERIVED and CITATION_CURRENT — over the SAME `RecordContent` shape `flagged`
+    // builds, through the module's own functions. `recordContentOf` returns null
+    // for a row with no key at all, and `verified` has already named it.
+    const content = row === null ? null : recordContentOf(row);
+    if (content !== null) current = currentVersionOf(content);
+    else if (row !== null) unresolved = verification.evaluable ? 'MALFORMED_RECORD_KEY' : verification.reason;
   }
 
-  // DERIVED and CITATION_CURRENT — over the SAME `RecordContent` shape `flagged`
-  // builds, through the module's own functions. `recordContentOf` returns null
-  // for a DOCUMENT row and for a row with no key at all, and `verified` has
-  // already named which of the two this is: keying both on its word is what
-  // makes the three arms agree by construction rather than by three decisions.
-  const content = row === null ? null : recordContentOf(row);
-  if (row === null) {
-    examinedNone('DERIVED', 'NOT_PROMOTED');
-    examinedNone('CITATION_CURRENT', 'NOT_PROMOTED');
-  } else if (content === null) {
-    const reason: NotEvaluableReason = verification.evaluable ? 'MALFORMED_RECORD_KEY' : verification.reason;
-    examinedNone('DERIVED', reason);
-    examinedNone('CITATION_CURRENT', reason);
+  if (current === null) {
+    examinedNone('DERIVED', unresolved);
+    examinedNone('CITATION_CURRENT', unresolved);
   } else {
-    const current = currentVersionOf(content);
     if (current.defined) {
       say('DERIVED', 'PASS', null, null);
     } else {
       say(
         'DERIVED',
         'FAIL',
-        `CURRENT is not defined for record ${row.fileHash}: the walk owes this diff a version, and ` +
-          'until it has one there is no content for a citation to name.',
+        row?.kind === 'DOCUMENT'
+          ? `CURRENT(d) is not defined for document ${mention.name}: the derivation pass owes it a version under the ` +
+              'current extractor, and until it has one there is no content for a citation to name.'
+          : `CURRENT is not defined for record ${mention.name}: the walk owes this diff a version, and ` +
+              'until it has one there is no content for a citation to name.',
         current.reason,
       );
     }
@@ -1258,12 +1302,13 @@ export async function publishable(mentionId: string): Promise<PublishableReport>
   // The scope decision is read from what that module returned, never re-made
   // here: a record it did not judge has `urlVersionDiffId` null on its own row,
   // and a hash it holds no row for is one its rule at :185-:188 leaves to check 5.
+  // A DOCUMENT names no diff: NOT_DIFF_DERIVED, "a check with no subject, never a pass" (document A6 :1533).
   const soundness = await assessEvidenceInputSoundness([mention.name]);
   const judged = soundness.rows.find((r) => r.fileHash === mention.name);
   if (judged === undefined) {
     examinedNone('INPUT_SOUND', 'NOT_PROMOTED');
   } else if (judged.urlVersionDiffId === null) {
-    examinedNone('INPUT_SOUND', row?.kind === 'DOCUMENT' ? 'DOCUMENT_CLASS_NOT_BUILT' : 'NOT_DIFF_DERIVED');
+    examinedNone('INPUT_SOUND', 'NOT_DIFF_DERIVED');
   } else if (judged.unsoundReason !== undefined) {
     say(
       'INPUT_SOUND',
@@ -1284,13 +1329,67 @@ export async function publishable(mentionId: string): Promise<PublishableReport>
   });
 
   const failed = conjuncts.some((c) => c.verdict === 'FAIL');
-  const classNotBuilt = conjuncts.some(
-    (c) => c.verdict === 'EXAMINED_NONE' && c.reason === 'DOCUMENT_CLASS_NOT_BUILT',
-  );
-  if (!failed && classNotBuilt) {
-    return { evaluable: false, examined, reason: 'DOCUMENT_CLASS_NOT_BUILT', conjuncts };
+  const notAsked = conjuncts.some((c) => c.verdict === 'EXAMINED_NONE' && c.reason === 'CHAIN_NOT_ASKED');
+  if (!failed && notAsked) {
+    return { evaluable: false, examined, reason: 'CHAIN_NOT_ASKED', conjuncts };
   }
   return { evaluable: true, examined, publishable: !failed, conjuncts };
+}
+
+/**
+ * VERIFIED over a DOCUMENT row, said through the caller's `say` — and CURRENT(d) in evidence's `Current` shape for the
+ * two conjuncts that read it. RECOMPUTABLE(e)'s third arm first (a row whose name is not its document's commitment is
+ * malformed whatever the chain says), then the handed-in VERIFIED(d).
+ *
+ * TWO LOUD GUARDS, each a world no clause creates: a DOCUMENT row naming no document (`Evidence_one_record_key` and its
+ * foreign key to `Document` forbid it — the message names the version, so an operational run exits on it naming what to
+ * look at), and a caller that ASKED but handed no answer for a commitment its own head cites (the tools ask with exactly
+ * the head's documents). A SHED document is step 35's (`documentShedNotBuilt`).
+ */
+async function verifiedDocumentRow(
+  row: { fileHash: string; documentCommitment: string | null },
+  mention: { id: string; versionId: string },
+  verification: DocumentVerification,
+  say: (id: ConjunctId, verdict: Conjunct['verdict'], detail: string | null, reason: ConjunctReason | null) => void,
+  examinedNone: (id: ConjunctId, reason: keyof typeof EXAMINED_NONE_DETAIL) => void,
+): Promise<Current<ContentVersionProvenance>> {
+  const commitment = row.documentCommitment;
+  const cited = commitment === null ? undefined : (await documentsByCommitment([commitment])).get(commitment);
+  if (commitment === null || cited === undefined) {
+    throw new Error(
+      `evidencePredicates: mention ${mention.id} of version ${mention.versionId} cites ${row.fileHash}, a DOCUMENT ` +
+        'row naming no document — Evidence_one_record_key and its foreign key to Document forbid it, so the row was written wrong.',
+    );
+  }
+  if ('shed' in cited.current) throw documentShedNotBuilt(commitment);
+
+  if (!recomputableEvidence(row.fileHash, cited.document)) {
+    say('VERIFIED', 'FAIL', `the row's name is not the document's commitment (${commitment}) — RECOMPUTABLE(e) fails`, 'NOT_VERIFIED');
+  } else if (!verification.asked) {
+    examinedNone('VERIFIED', 'CHAIN_NOT_ASKED');
+  } else {
+    const answer = verification.byCommitment.get(commitment);
+    if (answer === undefined) {
+      throw new Error(
+        `evidencePredicates: the caller asked the chain for the version's documents and handed no answer for ${commitment}, ` +
+          `which mention ${mention.id} cites — the tools ask with exactly the head's documents, so the set is malformed.`,
+      );
+    }
+    if ('unread' in answer) {
+      say(
+        'VERIFIED',
+        'FAIL',
+        `the chain could not be read for document ${commitment}: ${answer.unread}. This is an outage, not a verdict — ` +
+          'ANCHORED(d) reads false until the chain answers (document flows §4 :447); ask again when it does.',
+        'CHAIN_UNREADABLE',
+      );
+    } else if (answer.verified) {
+      say('VERIFIED', 'PASS', null, null);
+    } else {
+      say('VERIFIED', 'FAIL', `VERIFIED(d) is false for document ${commitment}: RECOMPUTABLE(d) AND ANCHORED(d) (document A3 :1367)`, 'NOT_VERIFIED');
+    }
+  }
+  return evidenceCurrentOf(cited.current);
 }
 
 /**
@@ -1311,12 +1410,10 @@ export async function publishable(mentionId: string): Promise<PublishableReport>
  * assigns that failure to `CITES_EVIDENCE`, which is thesis A6's check 3 and
  * thesis step 23's, so this fold does not steal it.
  *
- * IT FOLDS OVER `EVIDENCE` MENTIONS TODAY AND OVER `EVIDENCE`-OR-`DOCUMENT` FROM
- * DOCUMENT STEP 28, when document A6 amends `CITES_EVIDENCE`. A fold that
- * silently skipped DOCUMENT mentions would report a version publishable while a
- * document citation went ungraded — not a wrong answer, an unasked question
- * presented as an answer — so the line is named here rather than left to be
- * found.
+ * IT FOLDS OVER `EVIDENCE` AND `DOCUMENT` MENTIONS SINCE DOCUMENT STEP 34 (document A6 :1524–:1525: "Evidence A6's six
+ * checks bind on a DOCUMENT mention"). Before it the fold read EVIDENCE only, so a document citation went ungraded by
+ * rows 5–10 — an unasked question presented as an answer. `verification` is the chain's answer for the cited documents,
+ * handed to each mention's `publishable` (Q1).
  */
 export type VersionPublishableReport =
   | {
@@ -1330,20 +1427,23 @@ export type VersionPublishableReport =
       evaluable: false;
       versionId: string;
       mentionsExamined: number;
-      reason: 'DOCUMENT_CLASS_NOT_BUILT';
+      reason: 'CHAIN_NOT_ASKED';
       notEvaluable: ExaminedMention[];
       mentions: PublishableReport[];
     };
 
-export async function publishableEvidence(versionId: string): Promise<VersionPublishableReport> {
+export async function publishableEvidence(
+  versionId: string,
+  verification: DocumentVerification = NOT_ASKED,
+): Promise<VersionPublishableReport> {
   const mentions = await prisma.thesisMention.findMany({
-    where: { versionId, kind: 'EVIDENCE' },
+    where: { versionId, kind: { in: ['EVIDENCE', 'DOCUMENT'] } },
     select: { id: true },
     orderBy: { id: 'asc' },
   });
 
   const reports: PublishableReport[] = [];
-  for (const mention of mentions) reports.push(await publishable(mention.id));
+  for (const mention of mentions) reports.push(await publishable(mention.id, verification));
 
   const notEvaluable = reports.filter((r) => !r.evaluable).map((r) => r.examined);
   if (notEvaluable.length > 0) {
@@ -1354,7 +1454,7 @@ export async function publishableEvidence(versionId: string): Promise<VersionPub
       evaluable: false,
       versionId,
       mentionsExamined: mentions.length,
-      reason: 'DOCUMENT_CLASS_NOT_BUILT',
+      reason: 'CHAIN_NOT_ASKED',
       notEvaluable,
       mentions: reports,
     };

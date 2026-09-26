@@ -157,7 +157,7 @@ beforeEach(() => {
     byteLength: PDF.byteLength, title: 'the circular', assertedUrl: 'https://surveyed.example/p',
   });
   seedArrival('res_1', HELD_COMMITMENT);
-  seedVersion({ commitment: HELD_COMMITMENT, text: 'Ministry of Health - circular 4/2026', contentVersionHash: '0x' + 'e1'.repeat(32), derivedUnder: [CURRENT] });
+  seedVersion({ commitment: HELD_COMMITMENT, text: 'Ministry of Health - circular 4/2026', contentVersionHash: '0x' + 'e1'.repeat(32) }, [CURRENT]);
   // A HELD document with NO version under the current extractor — A3 :1368's AWAITING world,
   // reachable whenever CURRENT_EXTRACTOR moves before the derivation pass has run.
   seedDocument({ docId: '0x' + 'd4'.repeat(32), commitment: AWAITING_COMMITMENT, bytes: '0x' + 'd4'.repeat(32), title: 'awaiting' });
@@ -166,11 +166,13 @@ beforeEach(() => {
   seedObject(AUDIO.docId, AUDIO.bytes);
   seedDocument({ docId: AUDIO.docId, commitment: AUDIO_COMMITMENT, bytes: AUDIO.docId, mimeType: AUDIO.mimeType, byteLength: AUDIO.byteLength, title: 'the interview' });
   seedArrival('res_1', AUDIO_COMMITMENT, new Date(Date.UTC(2026, 8, 22)));
-  seedVersion({ commitment: AUDIO_COMMITMENT, text: null, contentVersionHash: AUDIO.docId, derivedUnder: [CURRENT] });
+  // DECLARED EDIT, document step 34 (R85 Q-G; A1 :1243 as CONFORMED 2026-09-26): every bytes-only version this file
+  // seeds is named by its document's COMMITMENT — five seeds, written under the retired "= DOC_ID" rule.
+  seedVersion({ commitment: AUDIO_COMMITMENT, text: null, contentVersionHash: AUDIO_COMMITMENT }, [CURRENT]);
   // A SPREADSHEET whose reader FAILED — the corrupt-file world ruled 2026-09-23 (A2 :1300): accepted as bytes-only.
   seedDocument({ docId: '0x' + 'd6'.repeat(32), commitment: BROKEN_SHEET_COMMITMENT, bytes: '0x' + 'd6'.repeat(32), mimeType: SHEET.mimeType, title: 'the broken sheet' });
   seedArrival('res_1', BROKEN_SHEET_COMMITMENT, new Date(Date.UTC(2026, 8, 22, 1)));
-  seedVersion({ commitment: BROKEN_SHEET_COMMITMENT, text: null, contentVersionHash: '0x' + 'd6'.repeat(32), derivedUnder: [CURRENT], readFailed: true });
+  seedVersion({ commitment: BROKEN_SHEET_COMMITMENT, text: null, contentVersionHash: '0x' + 'd6'.repeat(32), readFailed: true }, [CURRENT]);
 });
 
 describe('A4 :1424-:1430 — read_document, and its THREE shapes by custody', () => {
@@ -245,7 +247,7 @@ describe('A4 :1424-:1430 — read_document, and its THREE shapes by custody', ()
       assertedUrl: 'https://surveyed.example/p', assertedAt: new Date(Date.UTC(2026, 8, 3)),
     });
     seedArrival('res_1', commitment);
-    seedVersion({ commitment, text: 'dated', contentVersionHash: '0x' + 'e9'.repeat(32), derivedUnder: [CURRENT] });
+    seedVersion({ commitment, text: 'dated', contentVersionHash: '0x' + 'e9'.repeat(32) }, [CURRENT]);
     const { readDocument } = await reads();
     const answer = await readDocument(commitment, 'res_1');
     if (isRefusal(answer)) throw new Error(`expected a document, got ${answer.code}`);
@@ -326,7 +328,7 @@ describe('A4 :1425-:1426 as ruled 2026-09-23 (F1 ruling 2, §9 Q2) — TEXT LAST
     const long = 'א'.repeat(112_602);
     seedDocument({ docId: '0x' + 'df'.repeat(32), commitment, bytes: '0x' + 'df'.repeat(32), mimeType: SHEET.mimeType, title: 'the sheet' });
     seedArrival('res_1', commitment);
-    seedVersion({ commitment, text: long, contentVersionHash: '0x' + 'ef'.repeat(32), derivedUnder: [CURRENT] });
+    seedVersion({ commitment, text: long, contentVersionHash: '0x' + 'ef'.repeat(32) }, [CURRENT]);
     const answer = await read(commitment);
     expect(answer.textTruncated).toBe(true);
     expect(answer.text).toBe(long.slice(0, 80_000));
@@ -339,7 +341,7 @@ describe('A4 :1425-:1426 as ruled 2026-09-23 (F1 ruling 2, §9 Q2) — TEXT LAST
     const astral = '𝔸'.repeat(80_001);
     seedDocument({ docId: '0x' + 'db'.repeat(32), commitment, bytes: '0x' + 'db'.repeat(32), title: 'astral' });
     seedArrival('res_1', commitment);
-    seedVersion({ commitment, text: astral, contentVersionHash: '0x' + 'eb'.repeat(32), derivedUnder: [CURRENT] });
+    seedVersion({ commitment, text: astral, contentVersionHash: '0x' + 'eb'.repeat(32) }, [CURRENT]);
     const answer = await read(commitment);
     expect([...(answer.text ?? '')]).toHaveLength(80_000);
     expect(answer.textTruncated).toBe(true);
@@ -360,7 +362,7 @@ describe('A4 :1425-:1426 as ruled 2026-09-23 (F1 ruling 2, §9 Q2) — TEXT LAST
     seedObject(scan.docId, scan.bytes);
     seedDocument({ docId: scan.docId, commitment, bytes: scan.docId, mimeType: scan.mimeType, byteLength: scan.byteLength, title: 'the photograph' });
     seedArrival('res_1', commitment);
-    seedVersion({ commitment, text: null, contentVersionHash: scan.docId, derivedUnder: [CURRENT] });
+    seedVersion({ commitment, text: null, contentVersionHash: commitment }, [CURRENT]);
     const { readDocument, imageFor } = (await reads()) as unknown as Reads & { imageFor: (answer: unknown) => Promise<{ mimeType: string } | null> };
     const held = await readDocument(commitment, 'res_1');
     const withText = await readDocument(HELD_COMMITMENT, 'res_1');
@@ -370,7 +372,7 @@ describe('A4 :1425-:1426 as ruled 2026-09-23 (F1 ruling 2, §9 Q2) — TEXT LAST
   });
 
   it('EACH VERSION’S OWN textUrl names ITS hash — an older version’s text stays reachable (§3 :348, :350; §9 Q2)', async () => {
-    seedVersion({ commitment: HELD_COMMITMENT, text: 'the older text', contentVersionHash: '0x' + 'e0'.repeat(32), derivedUnder: ['older'], derivedAt: new Date(Date.UTC(2026, 8, 10)) });
+    seedVersion({ commitment: HELD_COMMITMENT, text: 'the older text', contentVersionHash: '0x' + 'e0'.repeat(32), derivedAt: new Date(Date.UTC(2026, 8, 10)) }, ['older']);
     const answer = await read(HELD_COMMITMENT);
     // THE FLOOR: two versions, so a link naming CURRENT on both would fail here.
     expect(answer.versions.map((v) => v.contentVersionHash)).toEqual(['0x' + 'e0'.repeat(32), '0x' + 'e1'.repeat(32)]);
@@ -455,13 +457,21 @@ describe('A4 :1432-:1435 — list_documents, GATED, oldest first', () => {
     expect([...LIST_DOCUMENTS_REFUSALS].sort()).toEqual(['NOT_SURVEYED', 'NO_RESEARCHER']);
   });
 
-  it('an OPENING row is a world step 34 creates — list_documents THROWS naming it, never answers `opening: null` over it', async () => {
-    // WORLD: `decide_opening` (document step 34) is the only writer of DocumentOpeningDecision, so
-    // no row exists at step 30 — and the list's `opening: null` is true only while none does. A row
-    // appearing before this read learns OPENED(d) is a row it would silently misreport.
-    store.openings.push({ id: 'opening-1', thesisId: 'thesis-1', commitment: HELD_COMMITMENT, sequence: 1, opening: 'CONTENT', researcherId: 'res_1' });
+  // DECLARED EDIT, document step 34 (R84 chunk 2): the step-30 guard this case held — an opening row THROWS, "OPENED(d) is
+  // step 34's" — is replaced by OPENED(d) itself (A4 :1434; A3 :1377–:1378 as CONFORMED 2026-09-26).
+  it('`opening` is OPENED(d) — null while no publication has put a decision in force, the decision once one has', async () => {
+    store.openings.push({ id: 'opening-1', thesisId: 'thesis-1', commitment: HELD_COMMITMENT, sequence: 1, opening: 'CONTENT', researcherId: 'res_1', createdAt: new Date(Date.UTC(2026, 8, 21)) });
+    store.mentions.push({ versionId: 'version-1', kind: 'DOCUMENT', name: HELD_COMMITMENT, thesisVersion: { thesisId: 'thesis-1', thesis: { publishedVersionId: null } } });
     const { listDocuments } = await reads();
-    await expect(listDocuments({}, 'res_1')).rejects.toThrow(/document step 34/);
+    const rowOf = async (): Promise<unknown> => {
+      const answer = await listDocuments({ scope: 'all' }, 'res_1');
+      if (!('documents' in answer)) throw new Error(`list_documents refused: ${JSON.stringify(answer)}`);
+      return answer.documents.find((d) => d.commitment === HELD_COMMITMENT)?.opening;
+    };
+
+    expect(await rowOf()).toBeNull();
+    store.attempts.push({ id: 'attempt-1', thesisId: 'thesis-1', versionId: 'version-1', outcome: 'PUBLISHED', createdAt: new Date(Date.UTC(2026, 8, 22)) });
+    expect(await rowOf()).toBe('CONTENT');
   });
 
   it('THE DIALOG’S LINK RIDES THIS ENVELOPE, so A4 GAINS NO TOOL (§9 :998)', async () => {
@@ -552,7 +562,7 @@ describe('A4 :1437-:1441 — describe_document, PAID, on the researcher’s word
     seedObject(docId, bytes);
     seedDocument({ docId, commitment: scan, bytes: docId, mimeType: 'application/pdf', byteLength: bytes.length, title: 'the scan' });
     seedArrival('res_1', scan);
-    seedVersion({ commitment: scan, text: null, contentVersionHash: docId, derivedUnder: [CURRENT] });
+    seedVersion({ commitment: scan, text: null, contentVersionHash: scan }, [CURRENT]);
     const { describeDocument } = await describe_();
     modelAnswer.value = { summary: 'a page', wholeAnswer: 'END' };
     await describeDocument(HELD_COMMITMENT, 'res_1');
@@ -622,7 +632,7 @@ describe('A4 :1440 as ruled 2026-09-23 — describe_document refuses TOO_LARGE a
       byteLength: 50_000_001, title: 'the large report',
     });
     seedArrival('res_1', OVERSIZE_COMMITMENT);
-    seedVersion({ commitment: OVERSIZE_COMMITMENT, text, contentVersionHash: '0x' + 'e7'.repeat(32), derivedUnder: [CURRENT] });
+    seedVersion({ commitment: OVERSIZE_COMMITMENT, text, contentVersionHash: '0x' + 'e7'.repeat(32) }, [CURRENT]);
   }
 
   it('a PDF one byte over the bound is refused TOO_LARGE, and the model is NEVER called and the bucket never read', async () => {
@@ -654,7 +664,7 @@ describe('A4 :1440 as ruled 2026-09-23 — describe_document refuses TOO_LARGE a
     seedObject(docId, bytes);
     seedDocument({ docId, commitment, bytes: docId, mimeType: 'application/pdf', byteLength: bytes.length, title: 'the bound' });
     seedArrival('res_1', commitment);
-    seedVersion({ commitment, text: null, contentVersionHash: docId, derivedUnder: [CURRENT] });
+    seedVersion({ commitment, text: null, contentVersionHash: commitment }, [CURRENT]);
     const { describeDocument } = await describe_();
     modelAnswer.value = { summary: 'at the bound', wholeAnswer: 'END' };
     const answer = await describeDocument(commitment, 'res_1');
@@ -673,7 +683,7 @@ describe('A4 :1440 as ruled 2026-09-23 — describe_document refuses TOO_LARGE a
     // No bucket object is seeded: the refusal comes BEFORE the bucket read.
     seedDocument({ docId, commitment, bytes: docId, mimeType: 'image/png', byteLength: 50_000_001, title: 'the large photograph' });
     seedArrival('res_1', commitment);
-    seedVersion({ commitment, text: null, contentVersionHash: docId, derivedUnder: [CURRENT] });
+    seedVersion({ commitment, text: null, contentVersionHash: commitment }, [CURRENT]);
     const { describeDocument } = await describe_();
     modelAnswer.value = { summary: 'must not be reached', wholeAnswer: 'END' };
     const answer = await describeDocument(commitment, 'res_1');
@@ -688,7 +698,7 @@ describe('A4 :1440 as ruled 2026-09-23 — describe_document refuses TOO_LARGE a
     const docId = '0x' + 'db'.repeat(32);
     seedDocument({ docId, commitment, bytes: docId, mimeType: SHEET.mimeType, byteLength: 50_000_001, title: 'the large workbook' });
     seedArrival('res_1', commitment);
-    seedVersion({ commitment, text: '# sheet1\nthe cells of the large workbook', contentVersionHash: '0x' + 'eb'.repeat(32), derivedUnder: [CURRENT] });
+    seedVersion({ commitment, text: '# sheet1\nthe cells of the large workbook', contentVersionHash: '0x' + 'eb'.repeat(32) }, [CURRENT]);
     const { describeDocument } = await describe_();
     modelAnswer.value = { summary: 'a large workbook', wholeAnswer: 'END' };
     const answer = await describeDocument(commitment, 'res_1');

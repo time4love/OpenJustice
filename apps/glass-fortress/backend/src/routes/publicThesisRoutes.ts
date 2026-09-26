@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { whistleblowerCallOf } from '../mcp/tools/getWhistleblowerCall';
-import { publishedEntries, publishedPageOf, publishedVersionOf } from '../services/publishedThesis';
+import { publishedPageOf, publishedVersionOf } from '../services/publicThesisPage';
+import { publishedEntries } from '../services/publishedThesis';
 import { param, publicRoute, reader } from './toolRoute';
 
 // ---------------------------------------------------------------------------
@@ -9,7 +10,8 @@ import { param, publicRoute, reader } from './toolRoute';
 //
 // PUBLIC AND IDENTITY-FREE (A4 :1420; A5 :1561): no `identifyResearcher`, no researcher context, no bearer read — the
 // same bytes for everyone, so no answer can tell a researcher's view from the public's. Each route is its core's answer
-// through the public door, which maps every status; the bodies are `services/publishedThesis.ts`' and the tools'.
+// through the public door, which maps every status; the bodies are `services/publicThesisPage.ts`' (the two cores, moved
+// there at document step 34 — R85 Q-A), `services/publishedThesis.ts`' and the tools'.
 //
 // ONE 404 BODY for a thesis that does not exist and one never published (A5 :1569): the core refuses NOT_PUBLISHED for
 // both, and the door's table answers the one body. A withdrawn thesis is a 200 notice, never a 404 (T6 :914). The call

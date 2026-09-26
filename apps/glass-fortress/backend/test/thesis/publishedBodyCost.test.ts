@@ -3,7 +3,23 @@ jest.mock('../../src/lib/prisma', () => ({
 }));
 jest.mock('../../src/context/researcherContext', () => (require('./tools') as typeof import('./tools')).researcherContextDouble);
 jest.mock('../../src/factories/LLMFactory', () => (require('./tools') as typeof import('./tools')).llmFactoryTripwire);
+// THE CHAIN AND THE BUCKET, AT THEIR BOUNDARY (DECLARED, document step 34 chunk 4a — R85 M1): a DOCUMENT citation's public
+// block asks both per document (Q-A's recorded LOW). Neither is a Prisma delegate, so the counter below counts the
+// DATABASE reads alone, which is what "flat" is asserted of.
+jest.mock('../../src/services/Web3Service', () => {
+  const actual = jest.requireActual<typeof import('../../src/services/Web3Service')>('../../src/services/Web3Service');
+  return { ...actual, Web3Service: jest.fn() };
+});
+jest.mock('../../src/services/documentBucket', () => ({
+  ...jest.requireActual<typeof import('../../src/services/documentBucket')>('../../src/services/documentBucket'),
+  readObject: jest.fn(),
+}));
 
+import { DOCUMENT_COMMITMENT } from '../../src/lib/anchoredCaptureHash';
+import { commitment as commitmentOf, contentVersionHashOf, docId as docIdOf } from '../../src/lib/documentIdentity';
+import { readObject } from '../../src/services/documentBucket';
+import { documentRow, versionRow } from '../document/citationWorld';
+import { chain } from '../document/publicWorld';
 import { resetDouble, store } from '../helpers/evidenceDouble';
 import {
   AFTER,
@@ -131,14 +147,42 @@ function seedPublishedCiting(count: number): void {
  * The COMPLETE number of delegate calls `publishedPageOf` makes, as a DIFFERENCE read before and after — never
  * a reset, so no other module's mocks are disturbed (the `throughTransaction` marker shape).
  */
-async function callsFor(citations: number): Promise<number> {
+async function callsFor(citations: number, documents = 0): Promise<number> {
   seedPublishedCiting(citations);
+  seedDocumentsCited(documents);
   // The service itself, imported: `built()` names the modules the acceptance suite waits for, and this one is
-  // landed — what is being held here is its COST, not its existence.
-  const { publishedPageOf } = await import('../../src/services/publishedThesis');
+  // landed — what is being held here is its COST, not its existence. DECLARED EDIT, document step 34 (R85 Q-A, M1): the
+  // core moved to `publicThesisPage.ts` (a DOCUMENT citation's block asks the chain); here and at P4 below.
+  const { publishedPageOf } = await import('../../src/services/publicThesisPage');
   const before = delegateCalls();
   await publishedPageOf(THESIS.id);
   return delegateCalls() - before;
+}
+
+/**
+ * `count` HELD documents cited by the published version, each opened to CONTENT before its publication and quoted once —
+ * the public block's whole world (document §7 :848–:858): its row, its version, its mention, its opening, its verdict,
+ * and a registrar attributing every commitment (R85 M1).
+ */
+function seedDocumentsCited(count: number): void {
+  const held = new Map<string, Uint8Array>();
+  const commitments: string[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const bytes = new TextEncoder().encode(`the document numbered ${String(index)}`);
+    const docId = docIdOf(bytes);
+    const commitment = commitmentOf(docId, Buffer.alloc(32, index + 1));
+    const text = `the text of document ${String(index)}`;
+    const pin = contentVersionHashOf(text, commitment);
+    held.set(docId, bytes);
+    commitments.push(commitment);
+    store.documents.push(documentRow({ docId, commitment, salt: Buffer.alloc(32, index + 1), bytes: docId }));
+    store.documentContentVersions.push(versionRow(pin, { id: `dcv-${String(index)}`, commitment, text }));
+    store.mentions.push(mentionRow({ ...MENTION, id: `doc-mention-${String(index)}`, kind: 'DOCUMENT', name: commitment, contentVersionHash: pin }, true));
+    store.documentOpeningDecisions.push({ id: `opening-${String(index)}`, thesisId: THESIS.id, commitment, sequence: 1, opening: 'CONTENT', researcherId: THESIS.createdById, createdAt: new Date(ATTEMPT.createdAt.getTime() - 60_000) });
+    store.passageVerdicts.push({ id: `verdict-${String(index)}`, versionId: VERSION.id, mentionId: `doc-mention-${String(index)}`, phrase: 'the text', verdict: 'PRESENT', at: ATTEMPT.createdAt });
+  }
+  chain(commitments.map((c) => ({ fileHash: c, submitter: '0xus', category: DOCUMENT_COMMITMENT })));
+  (readObject as jest.Mock).mockImplementation((key: string) => Promise.resolve(held.get(key) ?? null));
 }
 
 describe('the public thesis body costs the same whatever it cites', () => {
@@ -156,6 +200,17 @@ describe('the public thesis body costs the same whatever it cites', () => {
   it('P1 — the count does not grow with the number of DISTINCT records cited (one query per KIND, never one per mention)', async () => {
     const two = await callsFor(2);
     const six = await callsFor(6);
+    expect({ two, six, grew: six - two }).toEqual({ two, six: two, grew: 0 });
+  });
+
+  // DOCUMENT STEP 34 chunk 4a (DECLARED — R85 M1; thesis A5 :1565–:1566): the public page's DOCUMENT citations carry §7's
+  // block, and its database reads are PLURAL — one per kind, whatever the number of documents. The floor first: the
+  // document path RUNS, so a count that stays flat is not a count of a path nobody took.
+  it('P1b — the count does not grow with the number of DOCUMENTS cited: two cost what six do, and more than none', async () => {
+    const none = await callsFor(2, 0);
+    const two = await callsFor(2, 2);
+    const six = await callsFor(2, 6);
+    expect(two).toBeGreaterThan(none);
     expect({ two, six, grew: six - two }).toEqual({ two, six: two, grew: 0 });
   });
 
@@ -187,7 +242,7 @@ describe('the public thesis body costs the same whatever it cites', () => {
       ),
     ];
 
-    const { publishedPageOf } = await import('../../src/services/publishedThesis');
+    const { publishedPageOf } = await import('../../src/services/publicThesisPage');
     const before = delegateCalls();
     await publishedPageOf(THESIS.id);
     const two = delegateCalls() - before;

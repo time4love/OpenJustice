@@ -1,10 +1,13 @@
 import type { DocumentOpening } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { quotedSpans } from '../lib/thesisAssertions';
+import type { Verdict } from '../lib/verdict';
 import { headFingerprint, type HeadFingerprint } from './criticMaterial';
-import { documentsByCommitment } from './documentCitation';
-import type { Custody } from './documentPredicates';
+import { passagesCiting } from './debatePassage';
+import { documentShedNotBuilt, documentsByCommitment, type CitedDocument } from './documentCitation';
+import { verdict as documentVerdict, type Custody } from './documentPredicates';
 import { checksOf, type EvidenceCheck } from './evidenceChecks';
-import { publishableEvidence, type VersionPublishableReport } from './evidencePredicates';
+import { NOT_ASKED, publishableEvidence, type DocumentVerification, type VersionPublishableReport } from './evidencePredicates';
 import { claimFramed, currentAnalysis, gapsDecided, trajectoryCurrent, type GapEntry } from './thesisPredicates';
 import { resolveTrajectoryCitations, type TrajectoryCurrency } from './trajectoryCitation';
 
@@ -16,6 +19,11 @@ import { resolveTrajectoryCitations, type TrajectoryCurrency } from './trajector
 // rows 5–10 are `checksOf` over the same report), the trajectories `resolveTrajectoryCitations` and
 // `trajectoryCurrent`, FINGERPRINT the ONE loader `headFingerprint` with `currentAnalysis`, GAP_LIST as that loader
 // computed it with `gapsDecided`. The publication assessor's answer is an INPUT, so nothing here asks a model.
+//
+// VERIFIED(d) IS AN INPUT TOO — document step 34, the researcher's Q1 (`R84-review-state.md` Entry 3). ANCHORED(d) is a
+// chain read (document A3 :1366) and this module reaches no chain; `publish_thesis` and `check_publication_readiness`
+// ask `documentStanding.verifiedOf` and hand the answer in as `verification`. A caller that does not ask gets its DOCUMENT
+// citations NOT EVALUABLE (`evidencePredicates.DocumentVerification`), and the fold refuses a version it cannot grade.
 //
 // THE MAP AND THE FOLD LIVE HERE, TOGETHER (the R49 sketch §6 R9, the researcher's §9-1 (ii)): `rowsOf` renders A6's first
 // seventeen rows and `publishabilityOf` folds THOSE rows, so the gate's rows and the predicate's verdict are one spelling
@@ -53,9 +61,10 @@ type ThesisCheckId =
   | 'RATIONALE_SUBSTANCE'
   | 'NAMES_NO_PERSON'
   | 'ALLEGATIONS_FRAMED'
-  // Document A6 :1535's first added check — BUILT AT DOCUMENT STEP 33 (plan :255, R81 Q-2), by addition after the
-  // seventeen; check 19 `DOCUMENT_QUOTES_PRESENT` is step 34's.
-  | 'DOCUMENT_OPENING_DECIDED';
+  // Document A6 :1535–:1536's two added checks, by addition after the seventeen: 18 BUILT AT DOCUMENT STEP 33 (plan :255,
+  // R81 Q-2), 19 at step 34.
+  | 'DOCUMENT_OPENING_DECIDED'
+  | 'DOCUMENT_QUOTES_PRESENT';
 
 /** One row of the gate — `EvidenceCheck`'s shape, so rows 5–10 are evidence's own rows, deep-equal. No binding flag. */
 export type ThesisCheck =
@@ -77,7 +86,8 @@ export interface PublicationEvaluation {
   framingIds: string[];
   claimFramed: boolean;
   report: VersionPublishableReport;
-  evidenceNames: string[];
+  /** The corpus records the version cites — its EVIDENCE and DOCUMENT names, CITES_EVIDENCE's subjects (document A6 :1534). */
+  citedRecords: string[];
   trajectoryIds: string[];
   currencies: { id: string; currency: TrajectoryCurrency }[];
   missingTrajectoryIds: string[];
@@ -90,8 +100,34 @@ export interface PublicationEvaluation {
    * and then nothing was read for it.
    */
   documents: { name: string; custody: Custody | null; opening: DocumentOpening | null }[];
+  /**
+   * The TITLE of every cited document — what NAMES_NO_PERSON examined of them (document A6 :1537; thesis :757 as CONFORMED,
+   * R84 Q15): the assessor was handed each, and row 16 names each. Empty when the version cites no document.
+   */
+  titles: string[];
+  /**
+   * Check 19's subjects — per DOCUMENT mention of the version, every quoted span of every paragraph carrying its token,
+   * each with VERDICT(span, d) (document A6 :1536; A2 :1315). `mentionId` rides so `publish_thesis` writes the SAME
+   * verdicts as PassageVerdict rows — derived here once, never recomputed at the write. Empty when the version cites no
+   * document, and then nothing was read for it.
+   */
+  quotes: DocumentQuotes[];
   assessment: PublicationAssessment | null;
 }
+
+/** One DOCUMENT mention's quoted spans, each with the ONE verdict rule's answer over CURRENT(d). */
+export interface DocumentQuotes {
+  mentionId: string;
+  name: string;
+  spans: QuotedSpan[];
+}
+
+/**
+ * One quoted span and VERDICT(span, d). UNCHECKED CARRIES ITS REASON (document A3 :1386, A6 :1539): the content is the
+ * bytes, or CURRENT(d) is not yet derived — a reader of the row is told which. The PassageVerdict row stores the value
+ * alone (A2 :1314); the reason is the readiness row's.
+ */
+export type QuotedSpan = { span: string; verdict: Exclude<Verdict, 'UNCHECKED'> } | { span: string; verdict: 'UNCHECKED'; reason: string };
 
 /** The loud guard every loader here shares: a row the write guaranteed and the database does not hold is malformed. */
 function required<T>(row: T | null, what: string): T {
@@ -103,6 +139,7 @@ function required<T>(row: T | null, what: string): T {
 export async function evaluatePublication(
   versionId: string,
   assessment: PublicationAssessment | null,
+  verification: DocumentVerification = NOT_ASKED,
 ): Promise<PublicationEvaluation> {
   const version = required(
     await prisma.thesisVersion.findUnique({ where: { id: versionId }, select: { id: true, thesisId: true, claim: true } }),
@@ -121,11 +158,15 @@ export async function evaluatePublication(
   const rounds =
     framings.length === 0 ? [] : await prisma.framingRound.findMany({ where: { framingId: { in: framings.map((f) => f.id) } } });
 
-  const report = await publishableEvidence(versionId);
+  const report = await publishableEvidence(versionId, verification);
   const headed = await headFingerprint(thesis.id, versionId);
   const { resolved, missing } = await resolveTrajectoryCitations(headed.head.trajectoryIds);
   const analyses = headed.defined ? await prisma.thesisAnalysis.findMany({ where: { versionId } }) : [];
-  const documents = await documentOpeningsOf(thesis.id, headed.head.documentNames);
+  // ONE read of the cited documents for checks 18 and 19 — and none at all when the version cites no document.
+  const names = headed.head.documentNames;
+  const cited = names.length === 0 ? new Map<string, CitedDocument>() : await documentsByCommitment(names);
+  const documents = await documentOpeningsOf(thesis.id, names, cited);
+  const quotes = await documentQuotesOf(headed.head.version, names, cited);
 
   return {
     versionId,
@@ -144,7 +185,7 @@ export async function evaluatePublication(
       rounds,
     }),
     report,
-    evidenceNames: headed.head.records.map((r) => r.name),
+    citedRecords: [...headed.head.records.map((r) => r.name), ...headed.head.documentNames],
     trajectoryIds: [...new Set(headed.head.trajectoryIds)],
     currencies: resolved.map((t) => ({ id: t.id, currency: t.currency })),
     missingTrajectoryIds: missing,
@@ -152,6 +193,11 @@ export async function evaluatePublication(
     analysisCurrent: headed.defined && currentAnalysis(versionId, analyses, headed.fingerprint) !== null,
     list: headed.head.list,
     documents,
+    quotes,
+    titles: names.flatMap((name) => {
+      const title = cited.get(name)?.document.title ?? null;
+      return title === null ? [] : [title];
+    }),
     assessment,
   };
 }
@@ -165,15 +211,13 @@ export async function evaluatePublication(
 async function documentOpeningsOf(
   thesisId: string,
   names: readonly string[],
+  documents: ReadonlyMap<string, CitedDocument>,
 ): Promise<{ name: string; custody: Custody | null; opening: DocumentOpening | null }[]> {
   if (names.length === 0) return [];
-  const [documents, decisions] = await Promise.all([
-    documentsByCommitment(names),
-    prisma.documentOpeningDecision.findMany({
-      where: { thesisId, commitment: { in: [...names] } },
-      select: { commitment: true, sequence: true, opening: true },
-    }),
-  ]);
+  const decisions = await prisma.documentOpeningDecision.findMany({
+    where: { thesisId, commitment: { in: [...names] } },
+    select: { commitment: true, sequence: true, opening: true },
+  });
   return names.map((name) => {
     const inForce = decisions
       .filter((d) => d.commitment === name)
@@ -182,6 +226,48 @@ async function documentOpeningsOf(
         null,
       );
     return { name, custody: documents.get(name)?.custody ?? null, opening: inForce?.opening ?? null };
+  });
+}
+
+/**
+ * CHECK 19's SUBJECTS — document A6 :1536, A2 :1315: per DOCUMENT mention, the paragraphs carrying its token
+ * (`passagesCiting`, the debate's PASSAGE rule — T3), every quoted span in them (`quotedSpans`, no floor — S6), each
+ * judged by VERDICT(span, d) over CURRENT(d) (`documentPredicates.verdict`, the ONE rule, CALLED): PRESENT · ABSENT ·
+ * UNCHECKED where the content is bytes or not yet derived. A span quoted twice is one subject. TO THE LETTER on two
+ * documents in one paragraph (#590, gated on the live run): each span is judged against EACH document the paragraph cites.
+ * A cited document no row holds is a malformed version (the write resolves every token) — loud; SHED is step 35's.
+ */
+async function documentQuotesOf(
+  version: { id: string; text: string },
+  names: readonly string[],
+  documents: ReadonlyMap<string, CitedDocument>,
+): Promise<DocumentQuotes[]> {
+  if (names.length === 0) return [];
+  const mentions = await prisma.thesisMention.findMany({
+    where: { versionId: version.id, kind: 'DOCUMENT' },
+    select: { id: true, name: true },
+  });
+  return mentions.map(({ id, name }) => {
+    const cited = documents.get(name);
+    if (cited === undefined) {
+      throw new Error(`publicationEvaluation: version ${version.id} cites #doc_${name}, which no document holds — a malformed version.`);
+    }
+    if ('shed' in cited.current) throw documentShedNotBuilt(name);
+    const current = 'awaiting' in cited.current ? null : cited.current;
+    // WHY a span cannot be checked, when it cannot — the reason UNCHECKED carries (A3 :1386).
+    const unchecked =
+      current === null
+        ? 'AWAITING_DERIVATION — the document has no content version under the current extractor, so there is no text to search yet'
+        : 'the content is the bytes (document flows §3 :359–:365) — there is no computed text to search';
+    const spans = [...new Set(passagesCiting(version, name, 'DOCUMENT').flatMap(quotedSpans))];
+    return {
+      mentionId: id,
+      name,
+      spans: spans.map((span): QuotedSpan => {
+        const value = documentVerdict(span, current);
+        return value === 'UNCHECKED' ? { span, verdict: value, reason: unchecked } : { span, verdict: value };
+      }),
+    };
   });
 }
 
@@ -213,8 +299,9 @@ const row = (
  * A6's FIRST SEVENTEEN ROWS, in A6's order (:1591–:1601), each naming what it examined and each failure its subject; an
  * empty scope is EXAMINED_NONE with `examined` present at zero — then check 18, DOCUMENT_OPENING_DECIDED (document A6
  * :1535), BY ADDITION AT DOCUMENT STEP 33 (plan :255): a hard row over the version's `#doc_` citations, EXAMINED_NONE on
- * a version citing none. Nothing writes an opening before step 34's `decide_opening`, so it fails every `#doc_` head
- * until then — exact, not a stub. Check 19 is step 34's.
+ * a version citing none. Then check 19, DOCUMENT_QUOTES_PRESENT (document A6 :1536), BY ADDITION AT DOCUMENT STEP 34: a
+ * hard row naming every quoted span it examined with its verdict, failing on each ABSENT one; EXAMINED_NONE with
+ * `examined: []` on a version citing no document (plan :270–:272).
  */
 export function rowsOf(e: PublicationEvaluation): ThesisCheck[] {
   const { versionId, thesis, assessment } = e;
@@ -261,8 +348,8 @@ export function rowsOf(e: PublicationEvaluation): ThesisCheck[] {
     row(
       'CITES_EVIDENCE',
       'hard',
-      e.evidenceNames.map((name) => ({ name })),
-      e.evidenceNames.length === 0 ? [{ versionId, detail: 'the version cites no record the corpus holds' }] : [],
+      e.citedRecords.map((name) => ({ name })),
+      e.citedRecords.length === 0 ? [{ versionId, detail: 'the version cites no record the corpus holds' }] : [],
     ),
     row(
       'PUBLIC_INTEREST_STATEMENT',
@@ -317,7 +404,8 @@ export function rowsOf(e: PublicationEvaluation): ThesisCheck[] {
     row(
       'NAMES_NO_PERSON',
       'hard',
-      assessment === null ? [] : [...assessment.names],
+      // The names the assessor listed, and each cited document's TITLE it was handed to examine (A6 :1537; Q15).
+      assessment === null ? [] : [...assessment.names, ...e.titles.map((title) => ({ title }))],
       assessment === null ? [] : assessment.names.map((name) => ({ name })),
       assessment === null,
     ),
@@ -337,6 +425,17 @@ export function rowsOf(e: PublicationEvaluation): ThesisCheck[] {
         return failure === null ? [] : [failure];
       }),
       e.documents.length === 0,
+    ),
+    row(
+      'DOCUMENT_QUOTES_PRESENT',
+      'hard',
+      e.quotes.map(({ name, spans }) => ({ name, spans })),
+      e.quotes.flatMap(({ name, spans }) =>
+        spans
+          .filter((s) => s.verdict === 'ABSENT')
+          .map(({ span }) => ({ name, span, detail: 'the version quotes a phrase the document does not contain, in the content the platform holds' })),
+      ),
+      e.quotes.length === 0,
     ),
   ];
 }

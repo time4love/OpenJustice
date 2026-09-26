@@ -74,7 +74,7 @@ export function seedDocumentDebate(): void {
   store.researchers = [{ id: AUTHOR, handle: 'חוקר_א' }];
   store.documents = [documentRow()];
   store.documentContentVersions = [
-    versionRow(HELD_BEFORE, { derivedUnder: ['v0-an-older-extractor'], extractorVersion: 'v0-an-older-extractor', text: 'נוסח ישן' }),
+    versionRow(HELD_BEFORE, { extractorVersion: 'v0-an-older-extractor', text: 'נוסח ישן' }),
     versionRow(HELD_NOW, { text: CURRENT_TEXT }),
   ];
 }

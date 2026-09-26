@@ -2,10 +2,10 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { Link } from '@/i18n/navigation';
 import { readUnfiltered } from '@/lib/api';
-import { parseResolvedRecord } from '@/lib/corpusBody';
+import { parseRecordAnswer } from '@/lib/corpusBody';
 import { domainOf, formatCaptureDate } from '@/lib/format';
 import { ResearcherProse } from '@/components/thesis/ResearcherProse';
-import type { RecordNames, ResolvedRecord } from '@/types/corpus';
+import type { RecordNames, ReservedDocument, ResolvedRecord } from '@/types/corpus';
 
 // ---------------------------------------------------------------------------
 // WHAT A STRANGER HOLDING A CITATION NEEDS — docs/gf-ui-flows.md §26 :858–:861; A1 :1125; A4 :1106; UI plan
@@ -21,9 +21,10 @@ import type { RecordNames, ResolvedRecord } from '@/types/corpus';
 // as the REASON it is and never as a failure (§18 :574) — "not asked" and "asked and failed" are different
 // statements and this page may not merge them.
 //
-// A `#doc_` NAME RENDERS THE RESERVED SENTENCE AND NOTHING ELSE. Document flows §7 :848–:860's block is
-// owed by the document plan's step 34; until it exists, a document commitment has no record to resolve to
-// and this page says so rather than drawing an empty one.
+// A `#doc_` NAME RENDERS THE RESERVED SENTENCE AND NOTHING ELSE — and so does a bare COMMITMENT, which the backend
+// answers with document flows §7 :848–:860's block since document step 34 (R85 Q-C). Drawing that block is the
+// frontend's own change (document plan :280–:282); until it lands this page says the name is reserved rather than
+// drawing any of it, and a document body is never a 500.
 //
 // NO DISCLAIMER (§26 :820, „דף רשומה הוא לא דף תזה"), no anchor to any door, and no chain control — the
 // chain is a check on a CAPTURE (A4 :1111–:1114) and lives on the capture page, one link away.
@@ -50,8 +51,8 @@ function endpointDates(record: RecordNames, locale: string): string {
     : `${formatCaptureDate(record.before, locale)} – ${formatCaptureDate(record.after, locale)}`;
 }
 
-async function read(fileHash: string): Promise<ResolvedRecord> {
-  const answer = await readUnfiltered(`/api/records/${fileHash}`, parseResolvedRecord);
+async function read(fileHash: string): Promise<ResolvedRecord | ReservedDocument> {
+  const answer = await readUnfiltered(`/api/records/${fileHash}`, parseRecordAnswer);
   // NOT_A_RECORD and NOT_PUBLIC arrive as the public door's ONE 404 body (§6 :266).
   if (answer.status === 404) notFound();
   return answer.body;
@@ -64,15 +65,15 @@ export default async function RecordPage({ params }: PageParams) {
   const anchor = await getTranslations('corpus.anchor');
   const record = await getTranslations('record');
 
-  if (DOCUMENT_NAME.test(fileHash)) {
-    return (
-      <main className="page-column reading space-y-4 py-8" data-document-reserved>
-        <p className="record-meta">{t('documentReserved')}</p>
-      </main>
-    );
-  }
+  const reserved = (
+    <main className="page-column reading space-y-4 py-8" data-document-reserved>
+      <p className="record-meta">{t('documentReserved')}</p>
+    </main>
+  );
+  if (DOCUMENT_NAME.test(fileHash)) return reserved;
 
   const body = await read(fileHash);
+  if (body.kind === 'DOCUMENT') return reserved;
   const verified = body.verified;
 
   return (

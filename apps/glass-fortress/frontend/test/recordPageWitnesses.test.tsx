@@ -750,6 +750,21 @@ describe('record-page-witnesses — the records page', () => {
     );
   });
 
+  // DOCUMENT STEP 34 chunk 4a (R85 Q-C, ruled): once `resolve_record` answers a document's COMMITMENT with §7's public
+  // block, a BARE `0x` commitment typed into this route reaches the read — and a parser that knew only CAPTURE and DIFF
+  // threw on the kind, which is a 500 on a public page. The block is drawn by the frontend's own change (document plan
+  // :280–:282); until then this page renders the RESERVED sentence for it, exactly as for a `doc_` name (ui §26 :860–:861).
+  it('W-15b A BARE COMMITMENT answered with §7’s block renders the RESERVED sentence — never a 500, never the block', async () => {
+    const commitment = `0x${'c1'.repeat(32)}`;
+    const block = { kind: 'DOCUMENT', commitment, title: 'חוזר', custody: 'HELD', opening: 'CONTENT', citedBy: [] };
+    const rendered = await renderRecord(commitment, { status: 200, body: block });
+    if (rendered.notFound) throw new Error('W-15b: a document block answered the one 404 instead of the reserved sentence');
+    expect(rendered.container.querySelector('[data-document-reserved]')?.textContent).toBe(FROZEN.documentReserved);
+    // NOTHING OF THE BLOCK IS DRAWN — its title least of all, until the frontend's change draws it by design.
+    expect(rendered.container.textContent).not.toContain('חוזר');
+    expect(rendered.container.querySelector('[data-recomputable-mark]')).toBeNull();
+  });
+
   it('W-15 A `#doc_` NAME RENDERS THE RESERVED SENTENCE ALONE — no record, no marks, and no read at all', async () => {
     setPublicBodies({});
     const page = (await recordsPage()).default;

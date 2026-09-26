@@ -575,7 +575,7 @@ describe('list_evidence_reviews — what is NOT owed, and what cannot be judged'
     // LOW 6: one state, one word, on both surfaces. A second code for the same
     // state is the "one state, two codes" defect step 13 removed.
     store.documents = [documentRow()];
-    store.documentContentVersions = [versionRow(HELD_BEFORE, { derivedUnder: ['v0-an-older-extractor'] })];
+    store.documentContentVersions = [versionRow(HELD_BEFORE, { extractorVersion: 'v0-an-older-extractor' })];
     store.evidenceRows = [
       { fileHash: COMMITMENT, kind: 'DOCUMENT', documentCommitment: COMMITMENT, status: 'PROMOTED', affirmedContentVersionHash: HELD_BEFORE, snapshot: null, urlVersionDiff: null },
     ];
@@ -613,7 +613,11 @@ describe('list_evidence_reviews — what is NOT owed, and what cannot be judged'
 });
 
 describe('list_evidence_reviews — the citations, one row per MENTION', () => {
+  // DECLARED EDIT, document step 34 (R85 chunk 4a): `kind` ADDED. `ThesisMention.kind` is a REQUIRED column
+  // (schema.prisma :669), so a mention with none is a row no writer creates; the double answered it only because it
+  // ignored every filter without a `versionId` (LOW-l), and `citationsOf` asks `kind: 'EVIDENCE'`.
   const mention = (over: Row = {}): Row => ({
+    kind: 'EVIDENCE',
     name: DIFF_NAME,
     debateSessionId: null,
     thesisVersion: { id: 'version-head', thesisId: 'thesis-1', isPublished: null },

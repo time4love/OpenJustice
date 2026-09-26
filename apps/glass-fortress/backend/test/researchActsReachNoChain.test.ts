@@ -169,13 +169,37 @@ describe('no research act reaches the chain, through ANY chain of imports (evide
     expect([reach?.chain.at(-1), reach?.nonLiteral]).toEqual([expect.stringMatching(TARGET), false]);
   });
 
+  // DECLARED EDIT, document step 34 (the researcher's Q1 (iii), `R84-review-state.md` Entry 3): the two publication tools
+  // ask VERIFIED(d) through `documentStanding` and hand it to the gate, so its importers are THREE — every one a tool,
+  // none a subject. The walker above still holds that no subject reaches it by any chain of imports.
   it('THE SECOND CONTROL — documentStanding.ts, V’s `verified`, reaches the chain, and no subject imports it', () => {
     expect(chainToTarget(onDisk, 'services/documentStanding.ts')?.chain.at(-1)).toMatch(TARGET);
     const all = listSources(SRC);
     const importers = all.filter((path) =>
       specifiersOf(onDisk(path) ?? '').some((s) => resolveSpecifier(onDisk, path, s) === 'services/documentStanding.ts'),
     );
-    expect(importers).toEqual(['mcp/tools/getThesisContext.ts']);
+    // DECLARED EDIT, document step 34 chunk 4a (the researcher's Q-A, R85): FOUR — `documentPublicRead.ts`, the ONE composer
+    // of document §7's public block, asks VERIFIED(d) and the commitment's entry through it.
+    expect(importers.sort()).toEqual([
+      'mcp/tools/checkPublicationReadiness.ts',
+      'mcp/tools/getThesisContext.ts',
+      'mcp/tools/publishThesis.ts',
+      'services/documentPublicRead.ts',
+    ]);
+    expect(importers.filter((path) => (SUBJECTS as readonly string[]).includes(path))).toEqual([]);
+  });
+
+  // DOCUMENT STEP 34 chunk 4a (the researcher's Q-A, R85): THE THIRD CONTROL. `documentPublicRead.ts` is the one PUBLIC
+  // module that reaches the chain — §7's block names its registry entry and VERIFIED(d) — so its importers are the three
+  // public doors and no research act: `resolve_record`, `list_findings`' register, and the public thesis page's core,
+  // moved out of `publishedThesis.ts` (which `debateState.ts` imports) for exactly this reason.
+  it('THE THIRD CONTROL — documentPublicRead.ts, the public block, reaches the chain, and only the three public doors import it', () => {
+    expect(chainToTarget(onDisk, 'services/documentPublicRead.ts')?.chain.at(-1)).toMatch(TARGET);
+    const importers = listSources(SRC).filter((path) =>
+      specifiersOf(onDisk(path) ?? '').some((s) => resolveSpecifier(onDisk, path, s) === 'services/documentPublicRead.ts'),
+    );
+    expect(importers.sort()).toEqual(['mcp/tools/listFindings.ts', 'mcp/tools/resolveRecord.ts', 'services/publicThesisPage.ts']);
+    expect(importers.filter((path) => (SUBJECTS as readonly string[]).includes(path))).toEqual([]);
   });
 });
 

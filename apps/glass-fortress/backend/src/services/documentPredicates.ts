@@ -1,4 +1,4 @@
-import type { Arrival, Document, DocumentContentVersion, Shed } from '@prisma/client';
+import type { Arrival, Document, DocumentContentVersion, DocumentOpening, DocumentOpeningDecision, Prisma, Shed } from '@prisma/client';
 import { commitment, docId } from '../lib/documentIdentity';
 import { verdict as verdictOverText, type Verdict } from '../lib/verdict';
 import type { Evaluated } from './evidencePredicates';
@@ -53,6 +53,19 @@ type AwaitingReason = Extract<Evaluated<never>, { evaluable: false }>['reason'];
 export const AWAITING_DERIVATION: AwaitingReason = 'AWAITING_DERIVATION';
 
 /**
+ * A CONTENT VERSION WITH ITS DERIVATIONS — the shape CURRENT(d) reads, and the ONE spelling of the include that loads
+ * it (A2 :1300 and A3 :1368–:1369 as CONFORMED 2026-09-26, R86 Q-R1: one `DocumentContentDerivation` row per extractor
+ * version that produced or reproduced the text, with its moment). Every loader of a document's versions includes
+ * `{ versions: DERIVED_VERSION }`, so the type and the query cannot disagree about what a version carries. A plain value
+ * and a type-only import: this module gains no dependency.
+ */
+export const DERIVED_VERSION = {
+  include: { derivations: { select: { extractorVersion: true, at: true } } },
+} as const satisfies Prisma.DocumentContentVersionDefaultArgs;
+
+export type DerivedVersion = Prisma.DocumentContentVersionGetPayload<typeof DERIVED_VERSION>;
+
+/**
  * CURRENT(d), as a union whose arms cannot be confused for one another.
  *
  * A3 :1371 makes SHED and AWAITING different answers on purpose: `EVIDENCE_DERIVED`
@@ -61,7 +74,7 @@ export const AWAITING_DERIVATION: AwaitingReason = 'AWAITING_DERIVATION';
  * would let a caller collapse the two.
  */
 export type DocumentCurrent =
-  | DocumentContentVersion
+  | DerivedVersion
   | { awaiting: true }
   | { shed: true };
 
@@ -189,23 +202,24 @@ export function verifiedDocument(
 /**
  * CURRENT(d) — A3 :1368-:1371, by custody mode.
  *
- *   HELD    the version whose `derivedUnder` CONTAINS `CURRENT_EXTRACTOR` (below, and A3
- *           :1368 as ruled 2026-09-23); none → AWAITING_DERIVATION, and the platform owes it.
+ *   HELD    the version with a derivation row for `CURRENT_EXTRACTOR` (below, and A3 :1368 as
+ *           ruled 2026-09-23 and CONFORMED 2026-09-26); none → AWAITING_DERIVATION, and the platform owes it.
  *   SEALED  the version derived AT_RECEIPT, FOREVER. A sealed document's plaintext
  *           existed once (§2), so nothing can derive another and a HELD_BYTES row
  *           against one is ignored rather than preferred. It never reads AWAITING:
  *           there are no bytes to derive from, so nothing is owed.
  *   NONE    SHED — undefined, and the failure names SHED and never AWAITING.
  *
- * IT READS MEMBERSHIP OF `derivedUnder`, NEVER EQUALITY ON `extractorVersion` — RULED
- * BY THE RESEARCHER 2026-09-23 (A3 :1368, A2 :1300, §3 :324). §3 :317 forbids a second
- * row for a re-derivation that yields identical text, and the old rule asked for a row
- * whose `extractorVersion` EQUALS today's — so a held document whose text a new extractor
- * REPRODUCES had no row that could answer, read AWAITING_DERIVATION forever while the pass
- * reported UNCHANGED, and became permanently uncitable under A6 :1531's hard check.
- * `derivedUnder` is the append-only list of every extractor version that reproduced this
- * text; `extractorVersion` still names the one that produced it FIRST and is never
- * overwritten, because it is provenance and not a pointer.
+ * IT READS MEMBERSHIP, NEVER EQUALITY ON `extractorVersion` — RULED BY THE RESEARCHER
+ * 2026-09-23 (A3 :1368, A2 :1300, §3 :324). §3 :317 forbids a second row for a re-derivation
+ * that yields identical text, and the old rule asked for a row whose `extractorVersion`
+ * EQUALS today's — so a held document whose text a new extractor REPRODUCES had no row that
+ * could answer, read AWAITING_DERIVATION forever while the pass reported UNCHANGED, and
+ * became permanently uncitable under A6 :1531's hard check. The membership is the version's
+ * `derivations` — one `DocumentContentDerivation` row per extractor version that produced or
+ * reproduced the text (CONFORMED 2026-09-26, R86 Q-R1; it was the `derivedUnder` column);
+ * `extractorVersion` still names the one that produced it FIRST and is never overwritten,
+ * because it is provenance and not a pointer.
  *
  * `currentExtractor` IS A PARAMETER, AND IT STILL TAKES NULL — BUT THE TREE'S
  * `CURRENT_EXTRACTOR` IS NOT NULL. The researcher ruled the extractor on 2026-09-23
@@ -218,7 +232,7 @@ export function verifiedDocument(
  */
 export function currentVersion(
   document: Document,
-  versions: readonly DocumentContentVersion[],
+  versions: readonly DerivedVersion[],
   currentExtractor: string | null,
   shed: Shed | null,
 ): DocumentCurrent {
@@ -235,7 +249,7 @@ export function currentVersion(
     return receipt;
   }
   if (currentExtractor === null) return awaiting;
-  return versions.find((version) => version.derivedUnder.includes(currentExtractor)) ?? awaiting;
+  return versions.find((version) => version.derivations.some((row) => row.extractorVersion === currentExtractor)) ?? awaiting;
 }
 
 /**
@@ -291,4 +305,58 @@ export function digestOf(hash: string): string {
 export function answered(arrival: Pick<Arrival, 'thesisId'>, cited: readonly string[], documents: readonly string[]): boolean {
   if (arrival.thesisId === null) return false;
   return documents.some((commitment) => cited.includes(commitment));
+}
+
+/**
+ * THE WIDENING ORDER — §7 :777–:789: PASSAGE < CONTENT < BYTES. Compared by POSITION, never by name, so "wider" has one
+ * spelling: `decide_opening`'s CANNOT_NARROW and OPENED(d)'s widest are both read off this list.
+ */
+export const OPENING_ORDER: readonly DocumentOpening[] = ['PASSAGE', 'CONTENT', 'BYTES'];
+
+/** An opening's place in `OPENING_ORDER` — the one comparison "narrower" and "wider" are made by. */
+export function openingRank(opening: DocumentOpening): number {
+  return OPENING_ORDER.indexOf(opening);
+}
+
+/**
+ * OPENED(d) — A3 :1377–:1378 as CONFORMED 2026-09-26 (the researcher, R84 Q2; Q9): per thesis, its LATEST decision by
+ * sequence among those IN FORCE; over every thesis a version of which EVER published cites d; the WIDEST of them. None →
+ * null, which is "not public" and never a default of PASSAGE.
+ *
+ * PURE. `decisions` are the decisions IN FORCE, grouped by `keyOf` — REQUIRED, with no default: the grouping IS the rule
+ * (per thesis before Q14, per publication since), so a caller states which it means; `keys` the keys that count. The loader (`documentOpenings.ts`) keys each decision by the PUBLICATION that put it in force — a PUBLISHED
+ * attempt of a version citing d (A4 :1444 as CONFORMED 2026-09-26, Q14) — so "latest per key" is the decision in force at
+ * that publication and "widest across keys" is OPENED(d). A decision under a key not in the list opens nothing.
+ */
+export function opened<D extends Pick<DocumentOpeningDecision, 'thesisId' | 'commitment' | 'sequence' | 'opening'>>(
+  commitment: string,
+  decisions: readonly D[],
+  keys: readonly string[],
+  keyOf: (decision: D) => string,
+): DocumentOpening | null {
+  const latest = new Map<string, Pick<DocumentOpeningDecision, 'sequence' | 'opening'>>();
+  for (const decision of decisions) {
+    const key = keyOf(decision);
+    if (decision.commitment !== commitment || !keys.includes(key)) continue;
+    const held = latest.get(key);
+    if (held === undefined || decision.sequence > held.sequence) latest.set(key, decision);
+  }
+  let widest: DocumentOpening | null = null;
+  for (const { opening } of latest.values()) {
+    if (widest === null || openingRank(opening) > openingRank(widest)) widest = opening;
+  }
+  return widest;
+}
+
+/**
+ * PUBLIC(d) — A3 :1379–:1380: OPENED(d) is defined. PER DOCUMENT, never per page: there is no PUBLIC_PAGE analogue and no
+ * "the sender's other documents" — another document of the same arrival is public only by its own opening.
+ */
+export function publicDocument<D extends Pick<DocumentOpeningDecision, 'thesisId' | 'commitment' | 'sequence' | 'opening'>>(
+  commitment: string,
+  decisions: readonly D[],
+  keys: readonly string[],
+  keyOf: (decision: D) => string,
+): boolean {
+  return opened(commitment, decisions, keys, keyOf) !== null;
 }

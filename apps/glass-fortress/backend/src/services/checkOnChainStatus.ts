@@ -1,12 +1,13 @@
 import { getResearcherId } from '../context/researcherContext';
 import { normaliseAddress } from '../lib/anchoringTarget';
-import { toBytes32 } from '../lib/bytes32';
 import { readChainIdentity } from '../lib/chainIdentity';
 import { prisma } from '../lib/prisma';
 import { refusal, type Refusal } from '../mcp/tools/evidenceRefusals';
-import { capturesEqualTo } from './documentCaptures';
-import { anchored, custody, digestOf } from './documentPredicates';
-import { attributeClaim, entryFromChain, RegistryReadError, type ClaimAttribution } from './registryState';
+import { openingsOf } from './documentOpenings';
+import type { Document, Shed } from '@prisma/client';
+import { attestationOf } from './anchorDocuments';
+import { custody, digestOf } from './documentPredicates';
+import { entryFromChain, RegistryReadError, type ClaimAttribution } from './registryState';
 import { Web3Service } from './Web3Service';
 
 // ---------------------------------------------------------------------------
@@ -23,8 +24,9 @@ import { Web3Service } from './Web3Service';
 // and a decision appearing early THROWS naming the step (`readDocument.ts` :280–:289's pattern).
 //
 // THE COMMITMENT'S OWN ENTRY IS ANSWERED FIRST: "a commitment written before the equality appeared stands" (A3 :1366).
-// Only an UNREGISTERED commitment of a HELD document is answered by an equal capture's entry. Which arm attests is
-// decided by the pure `anchored` — CALLED, never re-spelled.
+// Only a commitment that does NOT attest — unregistered, or registered by another submitter — of a HELD document is
+// answered by an equal, attributed capture's entry. Which arm attests is `anchorDocuments.attestationOf`'s — the ONE
+// reading of ANCHORED's chain half, shared with the anchoring write and the publication gate (R85 chunk 4a round 2).
 //
 // CHAIN STATE, NEVER A RECEIPT; the registry is OBSERVED, never configured; a chain that would not answer is
 // CHAIN_UNAVAILABLE — "a verdict about the CHECK" (evidence A4 :1115).
@@ -71,13 +73,52 @@ export function chainUnavailable(err: unknown): Refusal<'CHAIN_UNAVAILABLE'> {
   );
 }
 
-/** PUBLIC(d) = OPENED(d) is defined — step 34's. Before it, false; an opening that exists early is a world this cannot answer. */
+/** PUBLIC(d) = OPENED(d) is defined (A3 :1379) — through the ONE loader, so this gate and the public serves agree. */
 async function publicDocument(commitment: string): Promise<boolean> {
-  const opened = (await prisma.documentOpeningDecision.findMany({ where: { commitment }, select: { commitment: true } })).at(0);
-  if (opened !== undefined) {
-    throw new Error(`check_on_chain_status: ${opened.commitment} has an opening decision, and PUBLIC(d) is document step 34's to read — nothing before it writes one`);
+  return (await openingsOf([commitment])).get(commitment)?.public ?? false;
+}
+
+/** Which entry attests a document, that entry, and — iff a capture attests — the page and capture. */
+export interface CommitmentAttestation {
+  attestedBy: 'COMMITMENT' | 'CAPTURE' | null;
+  entry: CommitmentEntry;
+  capture: { url: string; capture: string; documentHash: string } | null;
+}
+
+/**
+ * THE ONE SPELLING OF "A COMMITMENT'S ENTRY" — asked of the chain for `check_on_chain_status`'s commitment arm and for
+ * document §7's public block (`documentPublicRead`, through `documentStanding.publicStandingOf`), so the two can never
+ * report a document's anchor differently. WHICH ARM ATTESTS is `anchorDocuments.attestationOf`'s — the ONE reading of
+ * ANCHORED's chain half the anchoring write and the publication gate read too (R85 chunk 4a round 2, REVIEW's M3): the
+ * commitment first, and where it attests it stands; else a HELD document's equal capture, attributed, attests (A3 :1366;
+ * A4 :1469). This adds only the ENTRY — the attesting claim's index, block time and category, read at its index. THROWS on
+ * a chain failure — each caller names it.
+ */
+export async function commitmentEntryOf(document: Document, shed: Shed | null): Promise<CommitmentAttestation> {
+  const web3 = new Web3Service();
+  const entryAt = entryFromChain(web3);
+  const entryOf = async (claim: ClaimAttribution): Promise<CommitmentEntry> => {
+    const record = claim.index === null ? undefined : await entryAt(claim.index);
+    return {
+      hash: claim.hash,
+      isRegistered: claim.verdict !== 'UNREGISTERED',
+      registryIndex: claim.index,
+      submitter: claim.submitter,
+      attributed: claim.verdict === 'ATTRIBUTED',
+      blockTime: record === undefined ? null : new Date(record.timestamp * 1000).toISOString(),
+      category: record === undefined ? null : record.category,
+    };
+  };
+  const held = custody(document, shed) === 'HELD';
+  const read = await attestationOf(web3, { commitment: document.commitment, docId: document.docId, held });
+  if (read.by === 'CAPTURE' && read.capture !== null) {
+    return {
+      attestedBy: 'CAPTURE',
+      entry: await entryOf(read.capture.claim),
+      capture: { url: read.capture.url, capture: read.capture.capture, documentHash: digestOf(document.docId) },
+    };
   }
-  return false;
+  return { attestedBy: read.by, entry: await entryOf(read.commitment), capture: null };
 }
 
 export async function commitmentOnChain(commitment: string): Promise<CommitmentStatus | Refusal<'NOT_PUBLIC' | 'CHAIN_UNAVAILABLE'>> {
@@ -92,47 +133,8 @@ export async function commitmentOnChain(commitment: string): Promise<CommitmentS
   };
 
   try {
-    const web3 = new Web3Service();
-    const entryAt = entryFromChain(web3);
-    const entryOf = async (claim: ClaimAttribution): Promise<CommitmentEntry> => {
-      const record = claim.index === null ? undefined : await entryAt(claim.index);
-      return {
-        hash: claim.hash,
-        isRegistered: claim.verdict !== 'UNREGISTERED',
-        registryIndex: claim.index,
-        submitter: claim.submitter,
-        attributed: claim.verdict === 'ATTRIBUTED',
-        blockTime: record === undefined ? null : new Date(record.timestamp * 1000).toISOString(),
-        category: record === undefined ? null : record.category,
-      };
-    };
-    const attributedHashes = new Set<string>();
-    const ask = async (hash: string): Promise<ClaimAttribution> => {
-      const claim = await attributeClaim(web3, entryAt, hash);
-      if (claim.verdict === 'ATTRIBUTED') attributedHashes.add(claim.hash);
-      return claim;
-    };
-    const isAttributed = (hash: string): boolean => attributedHashes.has(toBytes32(hash).toLowerCase());
-
-    const own = await ask(commitment);
-    if (own.verdict !== 'UNREGISTERED') {
-      return { commitment, attestedBy: anchored(commitment, isAttributed) ? 'COMMITMENT' : null, entry: await entryOf(own), capture: null, registry };
-    }
-    const equal = custody(document, document.shed) === 'HELD' ? await capturesEqualTo(document.docId) : null;
-    if (equal !== null) {
-      const captureHash = toBytes32(digestOf(document.docId));
-      const theirs = await ask(captureHash);
-      if (anchored(commitment, isAttributed, captureHash)) {
-        return {
-          commitment,
-          attestedBy: 'CAPTURE',
-          entry: await entryOf(theirs),
-          capture: { url: equal.url, capture: equal.capture, documentHash: digestOf(document.docId) },
-          registry,
-        };
-      }
-    }
-    return { commitment, attestedBy: null, entry: await entryOf(own), capture: null, registry };
+    const { shed, ...row } = document;
+    return { commitment, ...(await commitmentEntryOf(row, shed)), registry };
   } catch (err) {
     return chainUnavailable(err);
   }

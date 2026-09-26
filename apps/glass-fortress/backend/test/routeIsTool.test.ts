@@ -29,6 +29,7 @@ jest.mock('../src/lib/chainIdentity', () => ({
 import { join } from 'node:path';
 import express, { type Request, type RequestHandler } from 'express';
 import request from 'supertest';
+import { documentRow } from './document/citationWorld';
 import { checkOnChainStatusHandler } from '../src/mcp/tools/checkOnChainStatus';
 import { getDebateHandler } from '../src/mcp/tools/getDebate';
 import { getDiffInputHandler } from '../src/mcp/tools/getDiffInput';
@@ -129,9 +130,13 @@ interface ToolRoute {
 const toolRoute = (): Promise<ToolRoute> =>
   load<ToolRoute>('routes/toolRoute', 0, { statusOf: fn, ROUTED_CODES: table, publicRoute: fn, researchRoute: fn, pageById: fn }, 'UI-3');
 
-/** The two thesis cores `services/publishedThesis.ts` gains (sketch §0h, round 2 M2). */
+/**
+ * The two thesis cores (sketch §0h, round 2 M2) — `services/publicThesisPage.ts` since document step 34. DECLARED EDIT
+ * (R85 Q-A, M1): they moved out of `services/publishedThesis.ts`, which a research act imports, because a DOCUMENT
+ * citation's public block asks the chain.
+ */
 const thesisCores = (): Promise<{ publishedPageOf: (id: string) => Promise<unknown>; publishedVersionOf: (id: string, v: string) => Promise<unknown> }> =>
-  load('services/publishedThesis', 0, { publishedPageOf: fn, publishedVersionOf: fn }, 'UI-3');
+  load('services/publicThesisPage', 0, { publishedPageOf: fn, publishedVersionOf: fn }, 'UI-3');
 
 const enc = encodeURIComponent;
 
@@ -228,7 +233,9 @@ function composes(code: string): string[] {
   const found: string[] = [];
   for (const specifier of importSpecifiers(code)) {
     if (/(?:^|\/)lib\/prisma$/.test(specifier)) found.push(`imports ${specifier}`);
-    if (/(?:^|\/)services\//.test(specifier) && !/(?:^|\/)services\/publishedThesis$/.test(specifier)) found.push(`imports ${specifier}`);
+    // The thesis cores' TWO modules and no wider (DECLARED EDIT, document step 34 — R85 Q-A, M1: `publicThesisPage` holds the
+    // two cores since they moved; a RE-EXPORT through `publishedThesis` would put the chain back in a research act's reach).
+    if (/(?:^|\/)services\//.test(specifier) && !/(?:^|\/)services\/(?:publishedThesis|publicThesisPage)$/.test(specifier)) found.push(`imports ${specifier}`);
     if (/Refusals$/.test(specifier)) found.push(`imports ${specifier}`);
   }
   if (/\bres\.(?:status|json)\s*\(/.test(code)) found.push('composes a status');
@@ -410,7 +417,10 @@ describe('public-identical — every public route the same bytes for everyone; t
     expect(signedIn).toEqual(anonymous);
   });
 
-  it('P2 public-identical — the 404s are one body: a draft thesis, a made-up thesis, a draft\'s version, a private page\'s findings, a made-up page id, a made-up record, a private record, a private page\'s chain', async () => {
+  /** A held document's commitment that no published version opened. */
+  const UNOPENED_COMMITMENT = `0x${'c9'.repeat(32)}`;
+
+  it('P2 public-identical — the 404s are one body: a draft thesis, a made-up thesis, a draft\'s version, a private page\'s findings, a made-up page id, a made-up record, a private record, a private page\'s chain, an unopened document\'s commitment', async () => {
     const rows: readonly { path: string; seed: () => void }[] = [
       { path: `/api/thesis/${DRAFT_ID}`, seed: draftWorld },
       { path: `/api/thesis/${MISSING_THESIS_ID}`, seed: thesisWorld },
@@ -420,6 +430,16 @@ describe('public-identical — every public route the same bytes for everyone; t
       { path: `/api/records/${NAMELESS}`, seed: corpusWorld },
       { path: `/api/records/${P2_DIFF_NAME}`, seed: corpusWorld },
       { path: `/api/pages/${PAGE_2.id}/captures/${P2A.waybackTimestamp}/chain`, seed: corpusWorld },
+      // DECLARED EDIT, document step 34 chunk 4a (R85 [R1] H5): a HELD document's commitment that no published version
+      // opened — `resolve_record`'s NOT_PUBLIC (document §7 :864) — is the public door's ONE 404 body, the same as a
+      // made-up name's (evidence A4 :1106; ui §6 :266), so the route never says which commitments the platform holds.
+      {
+        path: `/api/records/${UNOPENED_COMMITMENT}`,
+        seed: () => {
+          corpusWorld();
+          store.documents = [documentRow({ commitment: UNOPENED_COMMITMENT })];
+        },
+      },
     ];
     const answers: [string, number, string][] = [];
     for (const row of rows) {

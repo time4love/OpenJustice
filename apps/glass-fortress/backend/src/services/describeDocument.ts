@@ -7,7 +7,7 @@ import { WRITE_TRANSACTION } from '../walk/pageLog';
 import { readObject } from './documentBucket';
 import { recordOpinion } from './documentContentVersions';
 import { describe } from './documentDescriber';
-import { currentVersion, custody } from './documentPredicates';
+import { DERIVED_VERSION, currentVersion, custody } from './documentPredicates';
 import { documentRefusal, NO_RESEARCHER, type DocumentRefusal } from './documentRefusals';
 import type { OpinionRow } from './readDocument';
 
@@ -50,7 +50,7 @@ export async function describeDocument(
   researcherId: string | null,
 ): Promise<DescribedDocument | DocumentRefusal> {
   if (researcherId === null) return NO_RESEARCHER();
-  const document = await prisma.document.findUnique({ where: { commitment }, include: { versions: true, shed: true } });
+  const document = await prisma.document.findUnique({ where: { commitment }, include: { versions: DERIVED_VERSION, shed: true } });
   if (document === null) return documentRefusal('NOT_A_DOCUMENT', `No document is named ${commitment}.`);
   const mode = custody(document, document.shed);
   if (mode === 'SEALED') return documentRefusal('NOT_HELD', 'A sealed document was read once, at receipt, and is never read again.');

@@ -12,7 +12,8 @@ import type { Citation } from '@/types/thesis';
 import debateDocument from './fixtures/research/debate-document.json';
 import { DOC_COMMITMENT, DOC_PIN, DOC_TITLE, documentMention, thesisContextDocument } from './fixtures/research/documentContext';
 import { evidenceReviews, thesisReviewsOwed } from './fixtures/research/reads';
-import { renderResearchThesis, renderWithIntl } from './render';
+import { renderPage, renderResearchThesis, renderWithIntl, setAuthState, setPathname, setPublicBodies } from './render';
+import published from './fixtures/thesis/published.json';
 
 // ---------------------------------------------------------------------------
 // THE `#doc_` CITATION ON THE PAGE — document step 33 chunk 6: every wire arm step 33 added, PARSED; the chip of board
@@ -268,5 +269,61 @@ describe('THE WORKING VIEW, WHOLE — the chip in the centre, the strip, the owe
     const page = await renderResearchThesis('he', { context: thesisContextDocument, withPane: true });
     const version = page.querySelector('[data-turn="VERSION"] [data-turn-composed]');
     expect(version?.textContent).toBe('+2 ציטוטים, 2 לא נטענו');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE PUBLIC PAGE, ONCE A PUBLISHED VERSION CITES A DOCUMENT — document step 34 chunk 4a (R85 [R1] H2; Q7's production
+// hold). The backend's public body carries thesis A4 :1476's V arm — `verified` REQUIRED — PLUS `document`, §7's block
+// ("adds §7's public fields to this arm and reshapes nothing"). This frontend does not draw the block yet (document plan
+// :280–:282): the page must PARSE the arm and draw the chip as a statement, and never throw on the new field.
+// ---------------------------------------------------------------------------
+
+describe('THE PUBLIC PAGE — a DOCUMENT citation carrying §7’s block (document step 34, R85 H2)', () => {
+  const block = {
+    kind: 'DOCUMENT',
+    commitment: DOC_COMMITMENT,
+    title: DOC_TITLE,
+    custody: 'HELD',
+    registry: { attestedBy: 'COMMITMENT', registryIndex: 3, blockTime: '2026-09-20T10:00:00.000Z', capture: null },
+    verification: {
+      mode: 'HELD',
+      verified: true,
+      at: '2026-09-26T10:00:00.000Z',
+      says: 'the bytes the platform holds hash to the name, now; a third party timestamped a commitment to it',
+      doesNotSay: ['that the bytes are authentic, complete, unaltered, or from whom'],
+    },
+    secondWitness: { code: 'NONE', words: 'none — the archive is absent, and the flag reads so' },
+    opening: 'CONTENT',
+    citedBy: [],
+  };
+  const arm = { ...documentMention({ verified: true }), document: block };
+
+  afterEach(() => {
+    setPublicBodies(undefined);
+    setAuthState(undefined);
+    setPathname(undefined);
+  });
+
+  it('F2 the arm PARSES with `document` beside it — the nine fields read, the block not narrowed and not refused', () => {
+    const parsed = citation(overTheWire(arm), 'citation');
+    expect(Object.keys(parsed).sort()).toEqual(['argued', 'custody', 'flag', 'kind', 'name', 'overObjection', 'pin', 'title', 'verified']);
+  });
+
+  it('F2 the PUBLIC thesis page renders it — the document chip drawn, the page not a 500, and none of the block’s words drawn yet', async () => {
+    setAuthState('anonymous');
+    setPathname(`/he/theses/${published.thesisId}`);
+    const body = {
+      ...published,
+      version: { ...published.version, text: `${published.version.text}\n\nהחוזר קובע זאת #doc_${DOC_COMMITMENT}` },
+      citations: [...published.citations, arm],
+    };
+    setPublicBodies({ [`/api/thesis/${published.thesisId}`]: { status: 200, body: overTheWire(body) } });
+    const page = (await import('../src/app/[locale]/theses/[id]/page')).default;
+    const rendered = await renderPage(page, { locale: 'he', id: published.thesisId }, { locale: 'he' });
+    if (rendered.notFound) throw new Error('F2: the public page answered the one 404, not a body');
+    expect(rendered.container.querySelector(`[data-chip="${DOC_COMMITMENT}"][data-chip-kind="document"]`)).not.toBeNull();
+    expect(rendered.container.textContent).toContain(FIRST_FOUR);
+    expect(rendered.container.textContent).not.toContain(block.verification.says);
   });
 });

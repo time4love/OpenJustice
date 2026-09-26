@@ -3,6 +3,16 @@ jest.mock('../../src/lib/prisma', () => ({
 }));
 jest.mock('../../src/context/researcherContext', () => (require('../thesis/tools') as typeof import('../thesis/tools')).researcherContextDouble);
 jest.mock('../../src/factories/LLMFactory', () => (require('../thesis/tools') as typeof import('../thesis/tools')).llmFactoryTripwire);
+// THE CHAIN AND THE BUCKET, AT THEIR BOUNDARY (document step 34 chunk 4a, declared): invariant 2 asks the public reads
+// themselves, and `./publicWorld` answers both.
+jest.mock('../../src/services/Web3Service', () => {
+  const actual = jest.requireActual<typeof import('../../src/services/Web3Service')>('../../src/services/Web3Service');
+  return { ...actual, Web3Service: jest.fn() };
+});
+jest.mock('../../src/services/documentBucket', () => ({
+  ...jest.requireActual<typeof import('../../src/services/documentBucket')>('../../src/services/documentBucket'),
+  readObject: jest.fn(),
+}));
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -14,6 +24,13 @@ import { resetDouble } from '../helpers/evidenceDouble';
 import { AUTHOR } from '../thesis/fixtures';
 import { ON_THE_FIXTURE, call, resetTools, seedThesis, textCiting } from '../thesis/tools';
 import { COMMITMENT, HELD_NOW, seedHeld, seedPromoted } from './citationWorld';
+import { resolvedRecordOf } from '../../src/mcp/tools/resolveRecord';
+import { listFindingsHandler } from '../../src/mcp/tools/listFindings';
+import { publishedPageOf } from '../../src/services/publicThesisPage';
+import { serveDocumentContent } from '../../src/services/documentContentServe';
+import { PAGE } from '../helpers/corpusFixture';
+import { THESIS as GATE_THESIS } from '../thesis/fixtures';
+import { DOC as OPENED_DOC, DOC_ID as OPENED_DOC_ID, SALT_HEX as OPENED_SALT_HEX, world as publicWorld } from './publicWorld';
 
 // ---------------------------------------------------------------------------
 // THE FOURTEEN INVARIANTS, NAMED INDIVIDUALLY: A7's closing list (:1595-:1608), SIX, and
@@ -86,13 +103,14 @@ describe('A7 invariant 5 — NOTHING DELETES a Document, Arrival, version or dec
     await anchor();
     // NINE SINCE STEP 30 — `documentOpinion` joined when the OPINION register became a table
     // (A2 :1302 as ruled 2026-09-23): append-only, and SHED nulls its body and removes no row
-    // (A2 :1305 as conformed). Ruled the researcher's Q-H, R76.
+    // (A2 :1305 as conformed). Ruled the researcher's Q-H, R76. TEN SINCE STEP 34 chunk 5-0 (DECLARED) —
+    // `documentContentDerivation`, one APPEND-ONLY row per derivation (A2 :1300 as CONFORMED, the researcher's Q-R1).
     const tables = [
       'document', 'arrival', 'arrivalDocument', 'arrivalDecision',
-      'documentContentVersion', 'documentOpinion', 'documentOpeningDecision', 'passageVerdict', 'shed',
+      'documentContentVersion', 'documentContentDerivation', 'documentOpinion', 'documentOpeningDecision', 'passageVerdict', 'shed',
     ];
-    // THE FLOOR: nine tables named, so a shortened list cannot pass.
-    expect(tables).toHaveLength(9);
+    // THE FLOOR: ten tables named, so a shortened list cannot pass.
+    expect(tables).toHaveLength(10);
     const { readdirSync } = await import('node:fs');
     for (const file of readdirSync(join(SRC, 'services')).filter((f) => f.endsWith('.ts'))) {
       const source = readFileSync(join(SRC, 'services', file), 'utf8');
@@ -131,9 +149,25 @@ describe('§11.7 invariant 1 — the public door is SEALED, the researcher’s i
 });
 
 describe('§11.7 invariant 2 — identity is the plaintext hash; the public name is the commitment', () => {
+  // BEHAVIOURAL SINCE DOCUMENT STEP 34 chunk 4a (DECLARED; S5, R85 [R1]): this scanned `services/resolveRecord.ts` — a path
+  // that does not exist — for the word `docId`, which says nothing about what is SERVED. It now ASKS every public read of
+  // an opened document — `resolve_record`'s block, the public page's body, `list_findings`' register — at CONTENT and at
+  // BYTES, and finds neither the DOC_ID nor the salt as a VALUE in any (Q10: not even at BYTES; they ride `/bytes` alone).
+  // `/content`'s public branch joined at chunk 4b, which built it.
   it('DOC_ID is served ONLY with the bytes (§7 :765-:770), so no public read carries it', async () => {
-    const source = await sourceOf('services/resolveRecord.ts');
-    expect(source).not.toMatch(/\bdocId\b/);
+    for (const opening of ['CONTENT', 'BYTES'] as const) {
+      resetDouble();
+      publicWorld({ opening });
+      const block = JSON.parse(JSON.stringify(await resolvedRecordOf({ fileHash: OPENED_DOC }))) as Record<string, unknown>;
+      // THE FLOOR: the block IS a block — a refusal carries no DOC_ID either, and would pass this case holding nothing.
+      expect(block['kind']).toBe('DOCUMENT');
+      const content = await serveDocumentContent({ commitment: OPENED_DOC });
+      // THE FLOOR for `/content`: it SERVES at both openings — a refusal carries no DOC_ID either.
+      expect('text' in content).toBe(true);
+      for (const read of [JSON.stringify(block), JSON.stringify(await publishedPageOf(GATE_THESIS.id)), await listFindingsHandler({ url: PAGE.url }), JSON.stringify(content)]) {
+        expect([read.includes(OPENED_DOC_ID.slice(2)), read.includes(OPENED_SALT_HEX)]).toEqual([false, false]);
+      }
+    }
   });
 });
 

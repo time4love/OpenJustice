@@ -129,17 +129,21 @@ export function shedRow(over: Partial<ShedRow> = {}): ShedRow {
   };
 }
 
+/** A version as CURRENT(d) reads it — the row and its derivations (`documentPredicates.DerivedVersion`'s shape). */
+export type VersionWithDerivations = DocumentContentVersionRow & { derivations: { extractorVersion: string; at: Date | null }[] };
+
 /**
- * A content version. `text: null` is the bytes-only arm, where the hash EQUALS the docId
- * (A1 :1242-:1243).
+ * A content version. `text: null` is the bytes-only arm, where the hash EQUALS the document's COMMITMENT
+ * (A1 :1243 as CONFORMED 2026-09-26, R85 Q-G — never the docId).
  *
- * `derivedUnder` DEFAULTS TO THE ROW'S OWN `extractorVersion`, so a caller overriding one
- * gets a coherent row without naming the other — A2 :1300 (RULED 2026-09-23): the list is
- * every extractor version that REPRODUCED this text, and the version that produced it is
- * the first that reproduced it, by construction. A fixture whose list disagreed with its
- * own provenance would make CURRENT(d) read something no writer could ever create.
+ * `derivations` DEFAULT TO THE ROW'S OWN `extractorVersion`, so a caller overriding one
+ * gets a coherent row without naming the other — A2 :1300 (RULED 2026-09-23; ROWS since
+ * 2026-09-26, R86 Q-R1): one `DocumentContentDerivation` per extractor version that produced
+ * or reproduced this text, and the version that produced it is the first, by construction.
+ * A fixture whose rows disagreed with its own provenance would make CURRENT(d) read something
+ * no writer could ever create — and the migration refuses it.
  */
-export function version(over: Partial<DocumentContentVersionRow> = {}): DocumentContentVersionRow {
+export function version(over: Partial<VersionWithDerivations> = {}): VersionWithDerivations {
   const extractorVersion = over.extractorVersion ?? 'v1';
   return {
     id: 'dcv_1',
@@ -148,7 +152,7 @@ export function version(over: Partial<DocumentContentVersionRow> = {}): Document
     contentVersionHash: '0x' + 'b1'.repeat(32),
     extractor: 'illustrative-pdf-reader',
     extractorVersion,
-    derivedUnder: [extractorVersion],
+    derivations: [{ extractorVersion, at: new Date('2026-09-20T09:00:01.000Z') }],
     readFailed: false,
     derivedAt: new Date('2026-09-20T09:00:01.000Z'),
     derivedFrom: 'AT_RECEIPT',

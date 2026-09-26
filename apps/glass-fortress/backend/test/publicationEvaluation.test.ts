@@ -75,7 +75,8 @@ describe('the one evaluation — the gate maps it and the predicate folds it', (
     await world();
     const half = jest.mocked(evidencePredicates.publishableEvidence);
     await thesisChecks(VERSION.id, PASSING);
-    expect(half.mock.calls).toEqual([[VERSION.id]]);
+    // The second argument since document step 34 (the researcher's Q1): `thesisChecks` asked nothing of the chain.
+    expect(half.mock.calls).toEqual([[VERSION.id, { asked: false }]]);
     expect(tripped).toEqual([]);
   });
 

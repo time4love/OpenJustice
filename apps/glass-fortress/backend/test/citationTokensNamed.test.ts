@@ -63,12 +63,10 @@ const sentencesOf = (text: string): string[] => text.split(/(?<=[.!?])\s+/);
  * RULE 1's ALLOW-LIST — a sentence naming `#ev_` beside the word citation that is TRUE without `#doc_`, each with why. A
  * row that no longer stands in the copy fails the floor below, so the list cannot outlive its sentence.
  */
-const RULE_1_TRUE = new Map<string, string>([
-  [
-    'WHAT A CITATION POINTS AT — the record behind an #ev_ name, and who cites it.',
-    'resolve_record resolves an #ev_ name; a commitment resolving to §7’s public block is step 34’s (document A4 :1466–:1467)',
-  ],
-]);
+// EMPTY SINCE DOCUMENT STEP 34 chunk 4a (DECLARED, R85): its one row — resolve_record's first sentence — was true without
+// `#doc_` only while a commitment did not resolve (its own reason said "step 34's"). resolve_record now answers §7's
+// block, and the sentence names `#doc_`. The map stays, empty, so a future true sentence has one place to be recorded.
+const RULE_1_TRUE = new Map<string, string>([]);
 
 /**
  * RULE 1 — a sentence that names `#ev_` AS A CITATION TOKEN names `#doc_` too. A sentence names `#ev_` as a token when it

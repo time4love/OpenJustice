@@ -1,6 +1,8 @@
 import {
+  NOT_ASKED,
   publishableEvidence,
   type Conjunct,
+  type DocumentVerification,
   type ConjunctId,
   type ExaminedMention,
   type VersionPublishableReport,
@@ -31,11 +33,11 @@ import {
 //
 // THE SEAM THIS MODULE DOES NOT CROSS: IT RENDERS ROWS, AND EVALUABILITY IS
 // `publishableEvidence`'s. That function answers a DISCRIMINATED UNION — a
-// version citing a DOCUMENT record that failed nothing is `evaluable: false`,
-// because four of six conjuncts examined nothing and no conjunct failed — and
-// THE SIX ROWS CANNOT CARRY THAT. Mapped alone they read as two PASSes, four
-// EXAMINED_NONEs and no failure, which is a clean bill over a version the
-// predicate has just said it cannot grade.
+// version citing a DOCUMENT whose VERIFIED(d) the caller did not ask, and that
+// failed nothing, is `evaluable: false` (CHAIN_NOT_ASKED; document step 34, the
+// researcher's Q1) — and THE SIX ROWS CANNOT CARRY THAT. Mapped alone they read
+// as PASSes and an EXAMINED_NONE with no failure, which is a clean bill over a
+// version the predicate has just said it cannot grade.
 //
 // The rows are not wrong: each says exactly what it examined, which is what A6
 // :1201-:1202 asks of a check. What they cannot say is the thing one level up,
@@ -152,7 +154,7 @@ const CHECKS: readonly { id: CheckId; conjunct: ConjunctId; why: string }[] = [
  * The six checks for one thesis version.
  *
  * ONE CALL, SIX ROWS. `publishableEvidence` does every read — including loading
- * the version's EVIDENCE mentions — and this maps its per-mention reports onto
+ * the version's EVIDENCE and DOCUMENT mentions — and this maps its per-mention reports onto
  * the check rows. It is called ONCE for a version with three mentions, not three
  * times.
  *
@@ -162,8 +164,8 @@ const CHECKS: readonly { id: CheckId; conjunct: ConjunctId; why: string }[] = [
  * arm is the one a boolean cannot express, and it is why the verdict is
  * three-valued (§0b).
  */
-export async function evidenceChecks(versionId: string): Promise<EvidenceCheck[]> {
-  return checksOf(await publishableEvidence(versionId));
+export async function evidenceChecks(versionId: string, verification: DocumentVerification = NOT_ASKED): Promise<EvidenceCheck[]> {
+  return checksOf(await publishableEvidence(versionId, verification));
 }
 
 /**

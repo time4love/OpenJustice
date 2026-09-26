@@ -142,18 +142,18 @@ describe('open_debate over a document — its FIVE refusals, in order (§6 :701�
   });
 
   it('AWAITING_DERIVATION — HELD, and no version under the current extractor', async () => {
-    store.documentContentVersions = [versionRow(HELD_BEFORE, { derivedUnder: ['v0-an-older-extractor'] })];
+    store.documentContentVersions = [versionRow(HELD_BEFORE, { extractorVersion: 'v0-an-older-extractor' })];
     expect((await refusedWith())['code']).toBe('AWAITING_DERIVATION');
   });
 
   it('NOTHING_TO_PROMOTE — SEALED, and CURRENT(d).text is null; a SEALED document WITH text opens', async () => {
     store.documents = [documentRow(SEALED)];
-    store.documentContentVersions = [versionRow(RECEIPT, { derivedFrom: 'AT_RECEIPT', derivedUnder: ['v0-the-receipt-extractor'], text: null })];
+    store.documentContentVersions = [versionRow(RECEIPT, { derivedFrom: 'AT_RECEIPT', extractorVersion: 'v0-the-receipt-extractor', text: null })];
     expect((await refusedWith())['code']).toBe('NOTHING_TO_PROMOTE');
 
     world();
     store.documents = [documentRow(SEALED)];
-    store.documentContentVersions = [versionRow(RECEIPT, { derivedFrom: 'AT_RECEIPT', derivedUnder: ['v0-the-receipt-extractor'] })];
+    store.documentContentVersions = [versionRow(RECEIPT, { derivedFrom: 'AT_RECEIPT', extractorVersion: 'v0-the-receipt-extractor' })];
     store.mentions = [{ ...store.mentions[0], contentVersionHash: RECEIPT }];
     expect(parse(await open())['code']).toBeUndefined();
   });
@@ -172,10 +172,10 @@ describe('open_debate over a document — its FIVE refusals, in order (§6 :701�
     const worlds: (() => void)[] = [
       () => undefined,
       () => { store.documents = [documentRow({ mimeType: 'image/png' })]; store.documentContentVersions = [versionRow(HELD_NOW, { text: null })]; },
-      () => { store.documents = [documentRow(SEALED)]; store.documentContentVersions = [versionRow(RECEIPT, { derivedFrom: 'AT_RECEIPT', derivedUnder: ['v0'] })]; },
-      () => { store.documents = [documentRow(SEALED)]; store.documentContentVersions = [versionRow(RECEIPT, { derivedFrom: 'AT_RECEIPT', derivedUnder: ['v0'], text: null })]; },
+      () => { store.documents = [documentRow(SEALED)]; store.documentContentVersions = [versionRow(RECEIPT, { derivedFrom: 'AT_RECEIPT', extractorVersion: 'v0' })]; },
+      () => { store.documents = [documentRow(SEALED)]; store.documentContentVersions = [versionRow(RECEIPT, { derivedFrom: 'AT_RECEIPT', extractorVersion: 'v0', text: null })]; },
       () => { store.documents = [documentRow({ bytes: null })]; store.sheds = [{ commitment: COMMITMENT, cause: 'SENDER', researcherId: null, reason: null, at: new Date() }]; },
-      () => { store.documentContentVersions = [versionRow(HELD_BEFORE, { derivedUnder: ['v0'] })]; },
+      () => { store.documentContentVersions = [versionRow(HELD_BEFORE, { extractorVersion: 'v0' })]; },
       () => { store.documents = []; },
       () => { store.mentions = []; },
     ];

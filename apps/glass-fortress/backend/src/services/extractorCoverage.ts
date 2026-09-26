@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { CURRENT_EXTRACTOR, extract } from '../lib/documentExtractor';
 import { prisma } from '../lib/prisma';
-import { AWAITING_DERIVATION, currentVersion } from './documentPredicates';
+import { AWAITING_DERIVATION, DERIVED_VERSION, currentVersion } from './documentPredicates';
 
 // ---------------------------------------------------------------------------
 // `extractor-coverage` — docs/gf-document-flows.md A7 :1591, §12 :1207.
@@ -131,7 +131,7 @@ export async function measureFixtures(directory: string): Promise<FixtureCoverag
 export async function measureCorpus(): Promise<{ rows: CorpusCoverage[]; documents: number }> {
   const documents = await prisma.document.findMany({
     include: {
-      versions: true,
+      versions: DERIVED_VERSION,
       shed: true,
       arrivals: { include: { arrival: true } },
     },

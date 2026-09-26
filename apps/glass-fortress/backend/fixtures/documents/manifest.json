@@ -35,7 +35,7 @@
       "byteLength": 444,
       "docId": "0x1982a788e562789c95cbda5d56ad359f2ed28e38fd66fb524c85253cfb970971",
       "groundTruth": "",
-      "proves": "§3 :284's fourth row, and the ONLY fixture that reaches NO_READER_FOR_TYPE: a type outside the reader table, text null, contentVersionHash EQUALS docId, every assertion UNCHECKED — counted as bytes-only, NEVER as a failure"
+      "proves": "§3 :284's fourth row, and the ONLY fixture that reaches NO_READER_FOR_TYPE: a type outside the reader table, text null, contentVersionHash EQUALS the commitment, every assertion UNCHECKED — counted as bytes-only, NEVER as a failure"
     }
   ]
 }

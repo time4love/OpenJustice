@@ -191,7 +191,7 @@ describe('review_evidence — the refusals, in the contract’s order', () => {
   // 28. The reachable world: a promoted document whose CURRENT(d) awaits derivation.
   it('a DOCUMENT row whose CURRENT(d) awaits derivation refuses THE SAME CODE — one state, one word, on both surfaces', async () => {
     store.documents = [documentRow()];
-    store.documentContentVersions = [versionRow(HELD_BEFORE, { derivedUnder: ['v0-an-older-extractor'] })];
+    store.documentContentVersions = [versionRow(HELD_BEFORE, { extractorVersion: 'v0-an-older-extractor' })];
     store.evidence = { fileHash: COMMITMENT, kind: 'DOCUMENT', documentCommitment: COMMITMENT, status: 'PROMOTED', affirmedContentVersionHash: HELD_BEFORE, snapshot: null, urlVersionDiff: null };
     const refused = await review({ fileHash: COMMITMENT });
     expect(codeOf(refused)).toBe('AWAITING_DERIVATION');

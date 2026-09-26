@@ -12,7 +12,7 @@ import { built } from './built';
 interface Identity {
   docId: (bytes: Uint8Array) => string;
   commitment: (docId: string, salt: Uint8Array) => string;
-  contentVersionHashOf: (text: string | null, docId: string) => string;
+  contentVersionHashOf: (text: string | null, commitment: string) => string;
   HASH_VECTOR: { bytes: string; docId: string };
 }
 
@@ -69,10 +69,16 @@ describe('A1 — contentVersionHash, and the arm where the content IS the bytes'
     expect(contentVersionHashOf(text, '0x' + '0'.repeat(64))).toBe(sha256(new TextEncoder().encode(text)));
   });
 
-  it('EQUALS DOC_ID when the content is the bytes — text null (A1 :1243, §3 :284)', async () => {
-    const { contentVersionHashOf } = await identity();
-    const name = '0x' + 'ab'.repeat(32);
-    expect(contentVersionHashOf(null, name)).toBe(name);
+  // DECLARED EDIT, document step 34 (R85 Q-G; A1 :1243 and §3 :323 as CONFORMED 2026-09-26). This case asserted
+  // "EQUALS DOC_ID" over an arbitrary string, and the function returns what it is handed — so it would pass under any
+  // rename and held nothing. STRENGTHENED: a REAL commitment of a REAL docId is handed, and the answer is that
+  // commitment and NEVER the DOC_ID, which the pin would publish below BYTES (§7 :765-:770).
+  it('EQUALS the COMMITMENT when the content is the bytes — text null — and NEVER the DOC_ID (A1 :1243 as CONFORMED, §3 :284)', async () => {
+    const { contentVersionHashOf, commitment, docId } = await identity();
+    const name = docId(new Uint8Array([9, 8, 7, 6]));
+    const publicName = commitment(name, new Uint8Array(32).fill(3));
+    expect(contentVersionHashOf(null, publicName)).toBe(publicName);
+    expect(contentVersionHashOf(null, publicName)).not.toBe(name);
   });
 });
 

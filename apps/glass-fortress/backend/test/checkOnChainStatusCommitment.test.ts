@@ -112,12 +112,19 @@ describe('the gate — NOT_PUBLIC unless PUBLIC(d); a researcher reads through; 
     expect(await commitmentOnChain('0x' + '77'.repeat(32))).toMatchObject({ code: 'NOT_PUBLIC' });
   });
 
-  it('PUBLIC(d) is step 34’s: an opening decision appearing before it THROWS naming the step, never answers', async () => {
+  // DECLARED EDIT, document step 34 (R84 chunk 2): the step-31 guard this case held — an opening row THROWS, "PUBLIC(d) is
+  // step 34's" — is replaced by PUBLIC(d) itself (A3 :1379; A4 :1469): an anonymous caller is answered once a publication
+  // has put an opening in force, and refused NOT_PUBLIC while none has.
+  it('PUBLIC(d) — an anonymous caller is refused while the decision waits for a publication, and answered once one puts it in force', async () => {
     heldDocument();
     chain([FILLER, COMMITMENT_ENTRY]);
     mockResearcher.mockReturnValue(null);
-    store.openings.push({ commitment: name, opening: 'BYTES' });
-    await expect(commitmentOnChain(name)).rejects.toThrow(/step 34/);
+    store.openings.push({ thesisId: 'thesis-1', commitment: name, sequence: 1, opening: 'BYTES', createdAt: new Date(Date.UTC(2026, 8, 21)) });
+    store.mentions.push({ versionId: 'version-1', kind: 'DOCUMENT', name, thesisVersion: { thesisId: 'thesis-1' } });
+    expect(await commitmentOnChain(name)).toMatchObject({ code: 'NOT_PUBLIC' });
+
+    store.attempts.push({ id: 'attempt-1', thesisId: 'thesis-1', versionId: 'version-1', outcome: 'PUBLISHED', createdAt: new Date(Date.UTC(2026, 8, 22)) });
+    expect(await commitmentOnChain(name)).toMatchObject({ attestedBy: 'COMMITMENT', entry: { hash: name, isRegistered: true } });
   });
 });
 

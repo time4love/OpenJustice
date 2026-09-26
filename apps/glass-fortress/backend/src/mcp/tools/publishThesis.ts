@@ -4,6 +4,8 @@ import { asJsonColumn } from '../../lib/jsonColumn';
 import { publicPage } from '../../services/evidencePredicates';
 import { assess, projectionOf } from '../../services/publicationAssessor';
 import { evaluatePublication, publishabilityOf, rowsOf, type PublicationEvaluation } from '../../services/publicationEvaluation';
+import { openingsOf } from '../../services/documentOpenings';
+import { documentVerificationOf } from '../../services/documentStanding';
 import { assessorMaterial } from '../../services/publishedThesis';
 import { WRITE_TRANSACTION } from '../../walk/pageLog';
 import { requireResearcher } from './openFraming';
@@ -26,12 +28,18 @@ import { answer, refusal, type Refusal } from './thesisRefusals';
 // refused attempt keeps the approved words — and a draw that throws leaves them stored (D4).
 //
 // EVERY CALL PAST THE FIVE SPENDS ONCE AND WRITES ONE ATTEMPT (§12 :1141; FOUND 2026-09-14). The draw sits outside any
-// transaction; ONE evaluation decides the rows and the verdict (R9); `opened` is read BEFORE the write (D13). Then THE WRITE,
+// transaction; ONE evaluation decides the rows and the verdict (R9); `opened` is read BEFORE the write (D13). VERIFIED(d)
+// for the head's documents is read from the chain FIRST — past the five refusals and before the statement and the draw
+// (document step 34, the researcher's Q1; REVIEW's M3): it is free, and it can THROW (a bucket read, `documentBucket`),
+// so a failure there costs no draw and writes nothing; outside any transaction, so the 5 s window never waits on an
+// RPC. Its answer is handed to the evaluation. Then THE WRITE,
 // ONE transaction, ALWAYS (the researcher's §9-4 (c), R10):
 //
-//   the gate refused      → ONE REFUSED attempt, `refusedBy` the HARD failures in A6's order
+//   the gate refused      → ONE REFUSED attempt, `refusedBy` the HARD failures in A6's order — and NO PassageVerdict
 //   publishable           → the pin's COMPARE-AND-SET FIRST, on the head AND the pin as this call read them
-//       matched             → ONE PUBLISHED attempt beside the pin, `publishedAt`, `publishedById`
+//       matched             → ONE PUBLISHED attempt beside the pin, `publishedAt`, `publishedById`, and the PassageVerdict
+//                             rows (document A2 :1313, A4 :1459–:1460) — one per (mention, span), DERIVED from the same
+//                             evaluation's check 19 before the transaction, written in ONE bulk call inside it
 //       matched nothing     → ONE REFUSED attempt, `refusedBy: ['HEAD_VERSION']` — the premise the race broke
 //
 // The callback RETURNS on every arm, so every arm COMMITS its attempt: a lost race is a refusal that writes its record,
@@ -61,6 +69,8 @@ interface Published {
   publishedAt: Date;
   overObjection: boolean;
   opened: string[];
+  /** Document A4 :1461 — the documents this act made PUBLIC(d): OPENED(d) undefined before it and defined after it. */
+  documentsOpened: string[];
 }
 
 type Outcome = 'PUBLISHED' | 'REFUSED_BY_THE_GATE' | 'LOST_THE_RACE';
@@ -99,6 +109,9 @@ export async function publishThesisHandler(input: PublishThesisInput): Promise<s
       );
     }
 
+    // VERIFIED(d) FOR THE HEAD'S DOCUMENTS — the free read, before anything is written or spent (see the header).
+    const verification = await documentVerificationOf(head);
+
     // A BLANK STATEMENT IS NOT GIVEN (the ruling on R49 chunk 3, M3): it never overwrites the approved words stored.
     const statement = input.publicInterestStatement;
     if (statement !== undefined && statement.trim() !== '' && statement !== thesis.publicInterestStatement) {
@@ -108,9 +121,16 @@ export async function publishThesisHandler(input: PublishThesisInput): Promise<s
     // THE PAID DRAW — once, outside any transaction, after every refusal that spends nothing.
     const assessed = await assess(await assessorMaterial(thesis, head, input.rationale));
 
-    const evaluation = await evaluatePublication(head, projectionOf(assessed));
+    const evaluation = await evaluatePublication(head, projectionOf(assessed), verification);
     const { publishable, failed } = publishabilityOf(evaluation);
     const opened = publishable ? await pagesOpenedBy(evaluation) : [];
+    // OPENED(d) BEFORE the write, for `documentsOpened` (D13's shape for pages); and the verdicts to write, from the SAME
+    // evaluation's check 19 — derived here, outside the 5 s window, never recomputed inside it.
+    const documentNames = evaluation.headed.head.documentNames;
+    const openedBefore = publishable ? await openingsOf(documentNames) : new Map<string, { opened: string | null }>();
+    const verdicts = evaluation.quotes.flatMap(({ mentionId, spans }) =>
+      spans.map(({ span, verdict: value }) => ({ versionId: head, mentionId, phrase: span, verdict: value })),
+    );
 
     const now = new Date();
     const verdict = assessed.verdict === 'NOT_REACHED' ? null : assessed.verdict;
@@ -136,6 +156,7 @@ export async function publishThesisHandler(input: PublishThesisInput): Promise<s
       });
       if (count === 1) {
         await tx.publicationAttempt.create({ data: { ...attempt, outcome: 'PUBLISHED', refusedBy: [] }, select: { id: true } });
+        if (verdicts.length > 0) await tx.passageVerdict.createMany({ data: verdicts });
         return 'PUBLISHED';
       }
       await tx.publicationAttempt.create({
@@ -148,6 +169,12 @@ export async function publishThesisHandler(input: PublishThesisInput): Promise<s
     if (outcome === 'REFUSED_BY_THE_GATE') return refusal('NOT_PUBLISHABLE', gateRefusal(evaluation, failed));
     if (outcome === 'LOST_THE_RACE') return refusal('NOT_PUBLISHABLE', await raceRefusal(thesis.id, head));
 
+    // OPENED(d) AFTER the commit — the publication is what put the decisions in force (A4 :1444 as CONFORMED, Q14).
+    const openedAfter = await openingsOf(documentNames);
+    const documentsOpened = documentNames.filter(
+      (name) => (openedBefore.get(name)?.opened ?? null) === null && (openedAfter.get(name)?.opened ?? null) !== null,
+    );
+
     return {
       thesisId: thesis.id,
       publishedVersionId: head,
@@ -155,6 +182,7 @@ export async function publishThesisHandler(input: PublishThesisInput): Promise<s
       publishedAt: now,
       overObjection: verdict === 'DISPUTES',
       opened,
+      documentsOpened,
     };
   });
 }

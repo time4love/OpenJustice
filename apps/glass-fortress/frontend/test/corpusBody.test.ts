@@ -290,10 +290,18 @@ describe('corpus-body — the record pages\' bodies', () => {
     const bitFlagged = resolvedCaptureRecord.citedBy.map((one) => ({ ...one, flagged: false }));
     expect(() => parseResolvedRecord({ ...resolvedCaptureRecord, citedBy: bitFlagged })).toThrow('citedBy[0].flagged');
 
-    // `notEvaluable` NARROWS to `evidencePredicates.ts` :566's three reasons — the opposite call from
-    // `armsEvaluated`/`reasons`, which stay open. A fourth reason is a body this page cannot render, so it
+    // `notEvaluable` NARROWS to `evidencePredicates.ts`' TWO served reasons — the opposite call from
+    // `armsEvaluated`/`reasons`, which stay open. A third reason is a body this page cannot render, so it
     // fails by name rather than arriving as an unshown string.
     expect(() => parseResolvedRecord({ ...resolvedDiffRecord, verified: { notEvaluable: 'SOMETHING_ELSE' } })).toThrow('verified.notEvaluable');
+    // DOCUMENT STEP 34, the researcher's Q12 (evidence A4 :1106 as CONFORMED 2026-09-26): no DOCUMENT row reaches this
+    // read, so neither the retired word nor the gate's own conjunct reason is a served `notEvaluable` — both fail loudly.
+    for (const retired of ['DOCUMENT_CLASS_NOT_BUILT', 'CHAIN_NOT_ASKED']) {
+      expect(() => parseResolvedRecord({ ...resolvedDiffRecord, verified: { notEvaluable: retired } })).toThrow('verified.notEvaluable');
+    }
+    for (const served of ['NOT_PROMOTED', 'MALFORMED_RECORD_KEY']) {
+      expect(parseResolvedRecord({ ...resolvedDiffRecord, verified: { notEvaluable: served } }).verified).toEqual({ notEvaluable: served });
+    }
 
     // A CAPTURE NOTHING HAS CHECKED IS NOT A CAPTURE THAT FAILED: every stored-verdict field may be null and
     // each parses as null, never as "no".

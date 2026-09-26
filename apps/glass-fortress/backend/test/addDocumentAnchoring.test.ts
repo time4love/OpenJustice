@@ -11,7 +11,7 @@ import type { Document } from '@prisma/client';
 import { ANCHOR_SCHEME, DOCUMENT_COMMITMENT } from '../src/lib/anchoredCaptureHash';
 import { toBytes32 } from '../src/lib/bytes32';
 import { addDocument, type AddDocumentAnswer } from '../src/services/addDocument';
-import { anchoredOf } from '../src/services/anchorDocuments';
+import { anchoredOf, standingsOf } from '../src/services/anchorDocuments';
 import { openDocumentRegistryWindow } from '../src/services/anchorSnapshots';
 import { verifiedDocument } from '../src/services/documentPredicates';
 import { listDocuments, readDocument } from '../src/services/readDocument';
@@ -263,6 +263,47 @@ describe('[1] — a SEALED document NEVER takes the capture arm (§4 :441, "a HE
     const standing = await anchoredOf(openDocumentRegistryWindow(), [{ commitment: SEALED.commitment, docId: DOC_ID, held: false }]);
     expect(standing.get(SEALED.commitment)).toEqual({ anchored: false, by: null });
     expect(registrar.isHashRegistered).not.toHaveBeenCalledWith(captureHash);
+  });
+});
+
+// DOCUMENT STEP 34, R84 chunk 1 (REVIEW's M7): the registrar ANSWERS, and the read for ONE document throws. The gate's
+// read names that document's outage and keeps the other's real answer; the every-other-read view owes the failed one.
+describe('standingsOf — one document the chain cannot answer for, beside one it can (the researcher\'s Q1 (ii); §4 :447)', () => {
+  const ANSWERED = toBytes32('0x' + 'a1'.repeat(32)).toLowerCase();
+  const FAILED = toBytes32('0x' + 'f1'.repeat(32)).toLowerCase();
+  const DOCUMENTS = [
+    { commitment: ANSWERED, docId: '0x' + 'd1'.repeat(32), held: false },
+    { commitment: FAILED, docId: '0x' + 'd2'.repeat(32), held: false },
+  ];
+
+  /** The chain holds ANSWERED, attributed to us; the read for FAILED is refused by the RPC. */
+  function oneReadFails(): void {
+    const { registrar } = chain([{ fileHash: ANSWERED, submitter: REGISTRAR, category: DOCUMENT_COMMITMENT }]);
+    const answer = registrar.isHashRegistered.getMockImplementation();
+    registrar.isHashRegistered.mockImplementation((hash: string) =>
+      hash.toLowerCase() === FAILED ? Promise.reject(new Error('the RPC dropped the request')) : (answer?.(hash) ?? Promise.reject(new Error('no double'))),
+    );
+  }
+
+  it('the failed one is { unread } naming ITS commitment and the message; the other carries its real answer', async () => {
+    oneReadFails();
+    const answers = await standingsOf(openDocumentRegistryWindow(), DOCUMENTS);
+
+    expect(answers.get(ANSWERED)).toEqual({ anchored: true, by: 'COMMITMENT' });
+    const failed = answers.get(FAILED);
+    expect(failed !== undefined && 'unread' in failed && failed.unread).toContain(FAILED);
+    expect(failed !== undefined && 'unread' in failed && failed.unread).toContain('the RPC dropped the request');
+  });
+
+  it('anchoredOf over the same chain: the answered one as read, the failed one OWED', async () => {
+    oneReadFails();
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const answers = await anchoredOf(openDocumentRegistryWindow(), DOCUMENTS);
+
+    expect([...answers]).toEqual([
+      [ANSWERED, { anchored: true, by: 'COMMITMENT' }],
+      [FAILED, { anchored: false, by: null }],
+    ]);
   });
 });
 

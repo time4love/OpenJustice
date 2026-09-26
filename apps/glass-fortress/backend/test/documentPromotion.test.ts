@@ -101,7 +101,7 @@ describe('promote_from_debate over a document — the first Evidence row of kind
 
   it('a SEALED document is promoted at its AT_RECEIPT version — CURRENT(d), forever (A3 :1370)', async () => {
     store.documents = [documentRow(SEALED)];
-    store.documentContentVersions = [versionRow(RECEIPT, { derivedFrom: 'AT_RECEIPT', derivedUnder: ['v0-the-receipt-extractor'] })];
+    store.documentContentVersions = [versionRow(RECEIPT, { derivedFrom: 'AT_RECEIPT', extractorVersion: 'v0-the-receipt-extractor' })];
     store.mentions = [{ ...store.mentions[0], contentVersionHash: RECEIPT }];
     expect((await promote())['affirmedContentVersionHash']).toBe(RECEIPT);
     expect(writes('evidence', 'create').at(0)?.['affirmedContentVersionHash']).toBe(RECEIPT);

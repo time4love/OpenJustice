@@ -19,11 +19,28 @@ jest.mock('../../src/lib/prisma', () => ({
 import { asked, resetDouble, store, written, type Row } from '../helpers/evidenceDouble';
 import { AFTER, BEFORE, CAPTURE_NAME, CURRENT_VERSION, DIFF_NAME, URL, anchorCheck } from '../helpers/corpusFixture';
 import { evidenceChecks, type EvidenceCheck } from '../../src/services/evidenceChecks';
+import { CURRENT_EXTRACTOR } from '../../src/lib/documentExtractor';
+import { commitment } from '../../src/lib/documentIdentity';
 
 const withPage = (c: Record<string, unknown>): Row => ({ ...c, trackedUrl: { url: URL } });
 const BEFORE_ROW = withPage(BEFORE);
 const AFTER_ROW = withPage(AFTER);
-const DOCUMENT_NAME = `0x${'dc'.repeat(32)}`;
+// DOCUMENT STEP 34 — the non-binding arm FELL (document plan :273–:274; DECLARED edit). A DOCUMENT citation is graded
+// over its Document — named by the commitment its row reproduces (document A3 :1364), CURRENT(d) derived today — and its
+// VERIFIED(d) NOT ASKED: this suite reads no chain (the researcher's Q1).
+const DOCUMENT_ID = `0x${'dd'.repeat(32)}`;
+const DOCUMENT_NAME = commitment(DOCUMENT_ID, Buffer.alloc(32));
+const DOCUMENT_VERSION = `0x${'de'.repeat(32)}`;
+
+/** The Document a DOCUMENT row names, and its one current version. */
+function seedDocument(): void {
+  store.documents = [
+    { docId: DOCUMENT_ID, commitment: DOCUMENT_NAME, salt: Buffer.alloc(32), cid: null, bytes: DOCUMENT_ID, mimeType: 'application/pdf', byteLength: 1024, verifiedAtReceipt: null, title: null },
+  ];
+  store.documentContentVersions = [
+    { commitment: DOCUMENT_NAME, contentVersionHash: DOCUMENT_VERSION, text: 'the text', derivations: [{ extractorVersion: CURRENT_EXTRACTOR, at: new Date(0) }], extractorVersion: CURRENT_EXTRACTOR, derivedFrom: 'HELD_BYTES' },
+  ];
+}
 
 /** Thesis A6 :1592-:1597, ids 5 to 10 — the order the gate renders. */
 const A6_ORDER = [
@@ -155,7 +172,7 @@ describe('the gate MAPS and does not LOAD', () => {
     const versionQueries = asked.filter((a) => a.model === 'thesisMention' && a.op === 'findMany');
     expect(versionQueries).toHaveLength(1);
     expect(versionQueries[0]?.args).toMatchObject({
-      where: { versionId: 'version-1', kind: 'EVIDENCE' },
+      where: { versionId: 'version-1', kind: { in: ['EVIDENCE', 'DOCUMENT'] } },
     });
   });
 
@@ -227,19 +244,16 @@ describe('each check names what it examined, and an empty scope says so', () => 
     );
   });
 
-  it('a DOCUMENT mention makes FOUR checks EXAMINED_NONE and leaves the other two answering', async () => {
-    given([mentionRow('mention-1', DOCUMENT_NAME)], [documentRow()], []);
+  it('a DOCUMENT mention NOT ASKED makes TWO checks EXAMINED_NONE — VERIFIED and check 17 — and the other four answer (document A6 :1529–:1533)', async () => {
+    given([mentionRow('mention-1', DOCUMENT_NAME, { contentVersionHash: DOCUMENT_VERSION })], [documentRow()], []);
+    seedDocument();
     const checks = await evidenceChecks('version-1');
 
     const none = checks.filter((c) => c.verdict === 'EXAMINED_NONE').map((c) => c.id);
-    expect(none).toEqual([
-      'EVIDENCE_VERIFIED',
-      'EVIDENCE_PINNED_CURRENT',
-      'EVIDENCE_DERIVED',
-      'EVIDENCE_DIFF_INPUT_SOUND',
-    ]);
-    expect(check(checks, 'EVIDENCE_ARGUED').verdict).toBe('PASS');
-    expect(check(checks, 'EVIDENCE_NOT_WITHDRAWN').verdict).toBe('PASS');
+    expect(none).toEqual(['EVIDENCE_VERIFIED', 'EVIDENCE_DIFF_INPUT_SOUND']);
+    for (const id of ['EVIDENCE_PINNED_CURRENT', 'EVIDENCE_ARGUED', 'EVIDENCE_NOT_WITHDRAWN', 'EVIDENCE_DERIVED']) {
+      expect(check(checks, id).verdict).toBe('PASS');
+    }
   });
 
   it('ONE subject examined and one that examined nothing: the check still PASSES', async () => {
@@ -284,23 +298,26 @@ describe('a failure names the subject and the sentence', () => {
 
   it('THE ROWS ALONE READ AS A CLEAN BILL over a version the predicate cannot grade', async () => {
     // THE SEAM, ASSERTED AS WHAT THE OUTPUT DOES NOT CLAIM. `publishableEvidence`
-    // answers `evaluable: false` for this version — four conjuncts examined
-    // nothing because the DOCUMENT class has no predicates, and none failed — and
-    // the six rows have no field that can carry it. Mapped alone they are two
-    // PASSes, four EXAMINED_NONEs and NO failure.
+    // answers `evaluable: false` for this version — VERIFIED examined nothing
+    // because the caller did not read the chain for the document (CHAIN_NOT_ASKED),
+    // and none failed — and the six rows have no field that can carry it. Mapped
+    // alone they are four PASSes, two EXAMINED_NONEs and NO failure.
     //
     // The rows are not wrong; they say exactly what they examined. What they
     // cannot say is the thing one level up, so thesis step 23's consumer must ask
     // for BOTH, and §4c's instrument routes `evaluable: false` to exit 1 under
     // NOT_ANSWERABLE rather than reading these rows as a pass. Without this case
     // the drop is invisible: every assertion above it passes.
-    given([mentionRow('mention-1', DOCUMENT_NAME)], [documentRow()], []);
+    given([mentionRow('mention-1', DOCUMENT_NAME, { contentVersionHash: DOCUMENT_VERSION })], [documentRow()], []);
+    seedDocument();
     const checks = await evidenceChecks('version-1');
 
     expect(checks.filter((c) => c.verdict === 'FAIL')).toEqual([]);
     expect(checks.filter((c) => c.verdict === 'PASS').map((c) => c.id)).toEqual([
+      'EVIDENCE_PINNED_CURRENT',
       'EVIDENCE_ARGUED',
       'EVIDENCE_NOT_WITHDRAWN',
+      'EVIDENCE_DERIVED',
     ]);
     // AND NOTHING IN THE SHAPE SAYS THE VERSION COULD NOT BE ANSWERED FOR.
     const keys = new Set(checks.flatMap((c) => Object.keys(c)));
@@ -310,10 +327,11 @@ describe('a failure names the subject and the sentence', () => {
 
   it('a version whose report is NOT EVALUABLE still renders six rows', async () => {
     // `publishableEvidence` returns the non-evaluable shape for a version citing
-    // a DOCUMENT record that failed nothing, and the gate maps its per-mention
-    // reports either way: a version the gate could not answer for is not a
-    // version with no checks.
-    given([mentionRow('mention-1', DOCUMENT_NAME)], [documentRow()], []);
+    // a DOCUMENT record that failed nothing and was not asked, and the gate maps its
+    // per-mention reports either way: a version the gate could not answer for is not
+    // a version with no checks.
+    given([mentionRow('mention-1', DOCUMENT_NAME, { contentVersionHash: DOCUMENT_VERSION })], [documentRow()], []);
+    seedDocument();
     const checks = await evidenceChecks('version-1');
 
     expect(checks.map((c) => c.id)).toEqual(A6_ORDER);

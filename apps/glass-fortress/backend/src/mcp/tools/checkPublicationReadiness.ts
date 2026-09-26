@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { assess, projectionOf, type PublicationAssessorOutput } from '../../services/publicationAssessor';
 import { evaluatePublication, publishabilityOf, rowsOf, type ThesisCheck } from '../../services/publicationEvaluation';
+import { documentVerificationOf } from '../../services/documentStanding';
 import { assessorMaterial } from '../../services/publishedThesis';
 import { flaggedCitations, staleTrajectories } from '../../services/thesisPredicates';
 import type { TrajectoryCurrency } from '../../services/trajectoryCitation';
@@ -16,7 +17,8 @@ import { answer, refusal, type Refusal } from './thesisRefusals';
 // read answers without an identity (interaction A5 :1037–:1038).
 //
 // ONE EVALUATION (the R49 sketch §b1, R9): `evaluatePublication` once, and the rows and the verdict are `rowsOf` and
-// `publishabilityOf` over that one value — never `thesisChecks` beside a second evaluation.
+// `publishabilityOf` over that one value — never `thesisChecks` beside a second evaluation. VERIFIED(d) for the head's
+// documents is read from the chain and handed in (document step 34, the researcher's Q1) — a read, free.
 //
 // THE DRAW, ONLY WITH A RATIONALE: the assessor is asked once, outside any transaction, and its answer is returned
 // LABELLED as its opinion (GATED, D15). The spend is UNATTRIBUTED — a paid read writes no row (the researcher's ruling,
@@ -76,7 +78,11 @@ export async function checkPublicationReadinessHandler(input: CheckPublicationRe
     const assessed =
       rationale === undefined || rationale.trim() === '' ? null : await assess(await assessorMaterial(thesis, head, rationale));
 
-    const evaluation = await evaluatePublication(head, assessed === null ? null : projectionOf(assessed));
+    const evaluation = await evaluatePublication(
+      head,
+      assessed === null ? null : projectionOf(assessed),
+      await documentVerificationOf(head),
+    );
 
     return {
       thesisId: thesis.id,
