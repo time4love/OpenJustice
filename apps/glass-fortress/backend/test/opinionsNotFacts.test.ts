@@ -6,6 +6,9 @@ jest.mock('../src/lib/prisma', () => ({
     evidence: { findMany: jest.fn() },
     thesisMention: { count: jest.fn(), findMany: jest.fn() },
     integrityCheck: { findMany: jest.fn() },
+    // DECLARED, document step 34 chunk 4a (R85): list_findings reads its `documents` register (§9 :1031–:1034), so the
+    // world gains the table every database holds — here holding no document asserting the page: an empty register.
+    document: { findMany: jest.fn(() => Promise.resolve([])) },
   },
 }));
 
@@ -50,6 +53,12 @@ import {
 // table") but has no importer since `start_tutorial` was unregistered in
 // 11a-thesis; the tutorial's chapters are rewritten against the flows before
 // they are served (the 2026-09-04 triage, decision 1), and that change owns it.
+//
+// EXTENDED OVER EVERY PUBLIC READ OF A DOCUMENT at document step 34 (A7 :1571–:1573; plan :284–:285) — IN
+// `test/documentPublicBlock.test.ts`, the "opinions-not-facts, EXTENDED" group: resolve_record's block, the public page's
+// DOCUMENT citation and list_findings' `documents` register, the property computed from `DocumentOpinion`'s own fields,
+// and OBSERVED TO FAIL on a planted opinion field (R85 chunk 4a, decoy D1). There and not here because jest's module
+// mocks are per file, and this file's hand-built `prisma` double models the timeline and no document table. (DECLARED.)
 // ---------------------------------------------------------------------------
 
 const page = prisma.trackedUrl.findUnique as jest.Mock;

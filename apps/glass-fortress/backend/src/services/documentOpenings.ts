@@ -76,3 +76,42 @@ export async function openingsOf(commitments: readonly string[]): Promise<Map<st
   }
   return answers;
 }
+
+/**
+ * THE PINS OF AN OPENED DOCUMENT — what `/content` may serve (A5 :1505–:1506 as CONFORMED 2026-09-26, the researcher's
+ * Q-H, R85): EXACTLY the pins of the DOCUMENT citations on versions EVER published citing d (`EVER_PUBLISHED`, CALLED —
+ * A3 :1377's spelling, the set OPENED(d) is read over), each with the moment its version was last PUBLISHED, NEWEST FIRST.
+ * "Opened" is what a publication made public, and a publication made public the version its citation PINNED — so a newer
+ * derivation of the same bytes is announced by the FLAG (§7 :855) and never served in the pin's place.
+ *
+ * TWO READS, beside the loader above and over the same rows: the citing mentions with their pins, and the PUBLISHED
+ * attempts of their versions. It writes nothing.
+ */
+export async function pinsOf(commitment: string): Promise<{ pin: string; publishedAt: Date }[]> {
+  const citing = await prisma.thesisMention.findMany({
+    where: { kind: 'DOCUMENT', name: { in: [commitment] }, thesisVersion: EVER_PUBLISHED },
+    select: { versionId: true, contentVersionHash: true },
+  });
+  if (citing.length === 0) return [];
+  const publications = await prisma.publicationAttempt.findMany({
+    where: { versionId: { in: [...new Set(citing.map((m) => m.versionId))] }, outcome: 'PUBLISHED' },
+    select: { versionId: true, createdAt: true },
+  });
+  const latest = new Map<string, Date>();
+  for (const { versionId, createdAt } of publications) {
+    const held = latest.get(versionId);
+    if (held === undefined || createdAt.getTime() > held.getTime()) latest.set(versionId, createdAt);
+  }
+  const pins = new Map<string, Date>();
+  for (const mention of citing) {
+    const publishedAt = latest.get(mention.versionId);
+    if (mention.contentVersionHash === null || publishedAt === undefined) {
+      // The version write pins every document mention, and EVER_PUBLISHED is a PUBLISHED attempt of the version — either
+      // missing is a malformed load, never a pin to guess at.
+      throw new Error(`documentOpenings: the citation of ${commitment} on version ${mention.versionId} carries no pin or no PUBLISHED attempt — a malformed row.`);
+    }
+    const held = pins.get(mention.contentVersionHash);
+    if (held === undefined || publishedAt.getTime() > held.getTime()) pins.set(mention.contentVersionHash, publishedAt);
+  }
+  return [...pins].map(([pin, publishedAt]) => ({ pin, publishedAt })).sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
+}

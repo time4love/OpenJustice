@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import express from 'express';
 import request from 'supertest';
+import { CURRENT_EXTRACTOR } from '../src/lib/documentExtractor';
 import { mintTextLink, TEXT_LINK_SECONDS, verifyTextLink } from '../src/lib/documentTextLink';
 import { documentContentRouter } from '../src/routes/documentContentRoutes';
 import { serveDocumentContent } from '../src/services/documentContentServe';
@@ -15,13 +16,13 @@ import { SRC } from './walk/scan';
 
 // ---------------------------------------------------------------------------
 // A5 :1504-:1506 AS RULED 2026-09-24 (Q1 of step 30's close) — `GET /api/documents/:commitment/content`, THE SIGNED
-// ARM, built at #579 as `read_document`'s `textUrl` (A4 :1425), and the PUBLIC BRANCH that refuses until step 34.
+// ARM, built at #579 as `read_document`'s `textUrl` (A4 :1425), and the PUBLIC BRANCH, which step 34 opens: its serving
+// arms are `test/documentPublicServes.test.ts`'; the refusals and the flip below are this file's.
 //
 // `read_document` mints a short-lived signature — HMAC with TOKEN_HMAC_SECRET over a fixed `document-text:` label
 // first, then the commitment, the version hash and the expiry — and with a valid one this route serves THAT version's
-// text and reads no caller identity. Without one it behaves as the public branch: NOT_PUBLIC for every document while
-// no `DocumentOpeningDecision` exists, and a planted opening row THROWS naming step 34 (as `readDocument.ts`'s
-// `list_documents` does) — OPENED(d) is step 34's to read, and it is not read here.
+// text and reads no caller identity. Without one it behaves as the public branch: NOT_PUBLIC for every document no
+// publication opened, and a PINNED version's text under an opening in force (document step 34; A5 :1505 as CONFORMED, Q-H).
 // ---------------------------------------------------------------------------
 
 const SECRET = 'token-hmac-secret-for-tests';
@@ -109,7 +110,7 @@ describe('THE SIGNED ARM — that version’s text, and no caller identity read 
   });
 });
 
-describe('THE PUBLIC BRANCH — refuses every document until step 34 builds the opening (A5 :1505-:1506 as ruled)', () => {
+describe('THE PUBLIC BRANCH — NOT_PUBLIC for every document no publication opened (A5 :1505-:1506 as ruled)', () => {
   it('no signature and NO opening decision: 404 NOT_PUBLIC, `{ error, code }`', async () => {
     // THE FLOOR: the document exists and has text — a refusal of a document that did not would prove nothing.
     expect(store.versions.filter((v) => v['commitment'] === COMMITMENT && v['text'] !== null)).toHaveLength(2);
@@ -123,12 +124,20 @@ describe('THE PUBLIC BRANCH — refuses every document until step 34 builds the 
     expect(answer).toMatchObject({ code: 'NOT_PUBLIC' });
   });
 
-  it('THE DECOY FLIPS IT — a planted opening row THROWS naming step 34, never serves and never answers NOT_PUBLIC over it', async () => {
-    // WORLD: `decide_opening` (document step 34) is the ONLY writer of DocumentOpeningDecision, so no row exists at
-    // #579 — and NOT_PUBLIC is true only while none does. The same call, before and after the row: the flip is the case.
+  // DECLARED EDIT, document step 34 chunk 4b (R85; A5 :1505 as ruled: "the serve under an opening is step 34's test").
+  // Before step 34 this planted a DocumentOpeningDecision and expected a THROW naming the step — the world nothing wrote
+  // then. `decide_opening` writes it now, so the case holds what the row MEANS: a decision ALONE opens nothing (A4 :1444
+  // as CONFORMED, Q14 — it takes effect at a publication of a version citing the document), and with that publication the
+  // CURRENT text is served. The same call, before and after the publication: the flip is still the case.
+  it('THE FLIP — an opening decision ALONE still answers NOT_PUBLIC; a PUBLICATION citing the document puts it in force, and the text is served', async () => {
+    store.versions = store.versions.map((v) => (v['contentVersionHash'] === CURRENT_HASH ? { ...v, derivedUnder: [CURRENT_EXTRACTOR] } : v));
+    store.openings.push({ id: 'opening-1', thesisId: 'thesis-1', commitment: COMMITMENT, sequence: 1, opening: 'CONTENT', researcherId: 'res_1', createdAt: new Date(Date.UTC(2026, 8, 20)) });
     expect(await serveDocumentContent({ commitment: COMMITMENT }, NOW)).toMatchObject({ code: 'NOT_PUBLIC' });
-    store.openings.push({ id: 'opening-1', thesisId: 'thesis-1', commitment: COMMITMENT, sequence: 1, opening: 'CONTENT', researcherId: 'res_1' });
-    await expect(serveDocumentContent({ commitment: COMMITMENT }, NOW)).rejects.toThrow(/document step 34/);
+    // Its PIN — the version write pins every document mention, and `/content` serves the pinned version (A5 :1505 as
+    // CONFORMED, Q-H; declared at chunk 4b round 2).
+    store.mentions.push({ versionId: 'v1', kind: 'DOCUMENT', name: COMMITMENT, contentVersionHash: CURRENT_HASH, thesisVersion: { thesisId: 'thesis-1' } });
+    store.attempts.push({ id: 'attempt-1', thesisId: 'thesis-1', versionId: 'v1', outcome: 'PUBLISHED', createdAt: new Date(Date.UTC(2026, 8, 21)) });
+    expect(await serveDocumentContent({ commitment: COMMITMENT }, NOW)).toEqual({ text: 'the current text' });
   });
 });
 

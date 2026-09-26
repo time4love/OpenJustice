@@ -107,19 +107,23 @@ export function commitment(documentId: DocumentId, salt: Uint8Array): DocumentId
 }
 
 /**
- * The content version's name — A1 :1242-:1243.
+ * The content version's name — A1 :1242-:1243 as CONFORMED 2026-09-26 (the researcher, R85 Q-G).
  *
- * `sha256( utf8(text) )` over the extractor's output AS EMITTED, and EQUAL TO DOC_ID
- * when the content IS the bytes (`text` null): a photograph no engine reads has no
- * computed text, so its content version is the bytes themselves and its hash is the
- * document's own name (§3 :284).
+ * `sha256( utf8(text) )` over the extractor's output AS EMITTED, and the document's COMMITMENT when the content IS
+ * the bytes (`text` null): a photograph no engine reads has no computed text, so its content version is the bytes
+ * themselves, and it is named by the document's PUBLIC name.
  *
- * THAT EQUALITY IS THE ARM THE VERDICT RULE READS. Where the hash equals the name there
- * is no text to search, and an assertion about the document is UNCHECKED — never
- * silently PRESENT, and never a model reading an image to grade another model.
+ * NEVER THE DOC_ID. The pin is served at every opening (§7 :777–:779, :851) and "no hash of a copy a source held is ever
+ * published" (§7 :765–:770); a bytes-only version named by its DOC_ID published that hash below BYTES. The commitment
+ * is reproduced from the bytes AND the salt (§3 :293 as CONFORMED; A1 :1236–:1237), so a verifier opened to BYTES —
+ * handed both — reproduces it.
+ *
+ * THIS FUNCTION RETURNS WHAT IT IS HANDED for a null text, so the rule is its CALLERS': each hands the document's
+ * commitment (`documentContentVersions.deriveContent`), and `test/documentBytesOnlyName.test.ts` holds all three.
+ * The verdict rule never reads this hash: it reads `text === null` (`lib/verdict`).
  */
-export function contentVersionHashOf(text: string | null, documentId: DocumentId): DocumentId {
-  if (text === null) return documentId;
+export function contentVersionHashOf(text: string | null, commitment: DocumentId): DocumentId {
+  if (text === null) return commitment;
   return `0x${createHash('sha256').update(text, 'utf8').digest('hex')}`;
 }
 

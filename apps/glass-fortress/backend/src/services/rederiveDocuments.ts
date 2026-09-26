@@ -82,7 +82,8 @@ export async function rederiveDocuments(readObject: ReadObject): Promise<Rederiv
       continue;
     }
     // OUTSIDE the transaction, deliberately: see the header.
-    const derived = await deriveContent(bytes, document.mimeType, document.docId, 'HELD_BYTES');
+    // The COMMITMENT names a bytes-only version (A1 :1243 as CONFORMED 2026-09-26, R85 Q-G) — never the DOC_ID.
+    const derived = await deriveContent(bytes, document.mimeType, document.commitment, 'HELD_BYTES');
     const before = document.versions.map((version) => version.contentVersionHash);
     const write = (tx: Prisma.TransactionClient): Promise<unknown> =>
       recordContentVersion(tx, document.commitment, derived);

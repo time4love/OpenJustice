@@ -290,7 +290,7 @@ none of the above       no COMPUTED text exists; the content version IS the byte
 ```
 COMPUTED   reproducible from the bytes by a named extractor at a pinned version — the text, or
            the bytes when there is no text → contentVersionHash. What a citation pins; what the
-           ONE verdict rule checks an assertion against; what the corpus search reads
+           ONE verdict rule checks an assertion against; what the corpus search reads — **CONFORMED 2026-09-26 (the researcher, R85 Q-G, A1 :1243): the CONTENT is reproducible from the bytes alone; the bytes-only arm's contentVersionHash is the COMMITMENT, reproduced from the bytes AND the salt (A1 :1236–:1237)**
 OPINION    a model's reading of the document: a transcription, a summary, a date, the actors
            it names, a category — with model and prompt version. Provenance beside the version,
            labelled as a model's, never in the hash, never pinned, never a citation
@@ -320,7 +320,7 @@ not a new row.
 DocumentContentVersion                                                      ⚠️ to build
   name                    DOC_ID — the document
   text                    String | null — null when the content is the bytes
-  contentVersionHash      sha256(utf8(text)) · or = name when text is null
+  contentVersionHash      sha256(utf8(text)) · or = the COMMITMENT when text is null — **CONFORMED 2026-09-26 (the researcher, R85 Q-G) to §4 :436–:438 and §7 :765–:770: was "= name" (DOC_ID, :321), a hash of a copy a source held, served as the pin at every opening; A1 :1243 carries the same amendment**
   extractor · extractorVersion                    provenance: what read the bytes — **RULED 2026-09-23 (the researcher): and `derivedUnder`, an APPEND-ONLY LIST of every extractor version that REPRODUCED this text. :316–:317 (*a re-derivation yielding identical text is not a new row*) and A3 :1368 (*the version with extractorVersion = CURRENT_EXTRACTOR*) together TRAPPED a held document whose text a new extractor reproduces: no row carried the new version, so CURRENT(d) read AWAITING_DERIVATION forever while the pass reported UNCHANGED, and the document became uncitable under A6 :1531's hard check. Overwriting `extractorVersion` would lose which extractor FIRST produced the text, so the row keeps its identity AND its provenance and the LIST is what CURRENT(d) reads. `readFailed` rides beside it (A2 :1300).**
   derivedAt · derivedFrom  AT_RECEIPT | HELD_BYTES   provenance: whether the bytes were at rest
   opinion                 Json | null — transcription, summary, date, actors, categories, with — **CONFORMED 2026-09-23 to A2 :1302: one `DocumentOpinion` row per reading, append-only, not a column —**
@@ -1028,10 +1028,10 @@ one. A screenshot never has that: its bytes are the researcher's rendering, and 
 diffs in TIMESTAMP order, and it gains a third register that is never interleaved with them:
 
 ```
-documents:  [{ commitment, assertedAt — the researcher's, labelled · custody · anchored ·
+documents:  [{ commitment, title · assertedAt — the researcher's, labelled · custody · anchored ·
                content: { contentVersionHash } · equalsCapture | null · opening (§7) ·
                citedBy: [{ thesisId, published: true }] }]
-            — every OPENED document asserting this page (§7); nothing unopened, for anyone
+            — every OPENED document asserting this page (§7); nothing unopened, for anyone — **CONFORMED 2026-09-26 (the researcher, R85 Q-E): `title` added — §7 :848's chip face on the public page, checked by the gate (A6 :1537); was absent from this row**
 ```
 
 **Nothing is diffed against a document, ever.** A DIFF is two consecutive ACQUIRED captures the
@@ -1240,7 +1240,7 @@ ID(DOCUMENT record)   COMMITMENT(d) — what Evidence.fileHash holds, what the r
                   RECOMPUTABLE(e) compares
 token             #doc_<COMMITMENT>   thesis A1's token grammar, one kind added
 contentVersionHash    DOCUMENT: sha256( utf8(text) ) over the extractor's output as emitted;
-                  = DOC_ID(d) when the content is the bytes (§3)
+                  = COMMITMENT(d) when the content is the bytes (§3) — **CONFORMED 2026-09-26 (the researcher, R85 Q-G) to §4 :436–:438 and §7 :765–:770, the flows winning (:1226): the pin is served at every opening (§7 :777–:779, :851), and a bytes-only version hashed to DOC_ID published a hash of a copy a source held below BYTES; the commitment is the document's public name and a verifier holding the bytes and the salt reproduces it; was "= DOC_ID(d)"; zero bytes-only versions on staging and production when ruled (R85 Entries 5–6), so nothing stored moves**
 display           0x + 64 lowercase hex for every hash above — evidence A1's form
 DOCUMENT_COMMITMENT   the registry category on every document entry — one constant, one importable
                   symbol, beside ANCHOR_SCHEME; WRITES_ALLOWED reads index 0 only and is unchanged
@@ -1502,8 +1502,8 @@ POST /api/documents/withdraw                                          PUBLIC wri
   refuses   NOT_A_DOCUMENT · NOT_SEALED · WRONG_KEY · ALREADY_SHED
 
 GET /api/documents/:commitment/content                                PUBLIC serve · ⚠️ to build
-  does      serves CURRENT(d)'s pinned content — text, or bytes where the content is the bytes — **RULED 2026-09-24 (the researcher, Q1 of step 30's close, adopting Fable's answer with its two additions): a SIGNED ARM. `read_document` mints a short-lived signature, with a server secret — **RULED 2026-09-24 (the researcher, adopting Fable's answers with REVIEW's corrections): `TOKEN_HMAC_SECRET`, the HMAC taken over a fixed `document-text:` label first, so a signature for one purpose never verifies for another; no second variable, since only the secret's own leak forces a rotation and that rotates both uses anyway** — over the commitment, the version hash and an expiry; with a valid signature this route serves THAT version's text (`?version=<hash>`) and reads no caller identity — the signature proves the mint; without one it behaves exactly as below, which until step 34 is to refuse everything. The expiry is TEN MINUTES — a bearer link to gated text that may carry names as printed, minted for a read being made now, a stale link costing one more `read_document` — an operational parameter beside the sweep's, changed by measurement. The public branch is HELD BY A TEST from the day the arm is built: with no `DocumentOpeningDecision` in force it refuses `NOT_PUBLIC` for every document, and a planted opening row makes it THROW, naming step 34 — the `list_documents` precedent (an opening row before step 34 is a world no clause creates); the serve under an opening is step 34's test. #579 builds the signed arm and the refusing public branch; step 34 builds the opening that makes the public branch serve.**
-  refuses   NOT_PUBLIC (not OPENED) · NOT_OPENED_TO (OPENED(d) = PASSAGE) · SHED
+  does      serves a PINNED content version (R85 Q-H, the CONFORMED clause at this line's end) — text, or bytes where the content is the bytes — **RULED 2026-09-24 (the researcher, Q1 of step 30's close, adopting Fable's answer with its two additions): a SIGNED ARM. `read_document` mints a short-lived signature, with a server secret — **RULED 2026-09-24 (the researcher, adopting Fable's answers with REVIEW's corrections): `TOKEN_HMAC_SECRET`, the HMAC taken over a fixed `document-text:` label first, so a signature for one purpose never verifies for another; no second variable, since only the secret's own leak forces a rotation and that rotates both uses anyway** — over the commitment, the version hash and an expiry; with a valid signature this route serves THAT version's text (`?version=<hash>`) and reads no caller identity — the signature proves the mint; without one it behaves exactly as below, which until step 34 is to refuse everything. The expiry is TEN MINUTES — a bearer link to gated text that may carry names as printed, minted for a read being made now, a stale link costing one more `read_document` — an operational parameter beside the sweep's, changed by measurement. The public branch is HELD BY A TEST from the day the arm is built: with no `DocumentOpeningDecision` in force it refuses `NOT_PUBLIC` for every document, and a planted opening row makes it THROW, naming step 34 — the `list_documents` precedent (an opening row before step 34 is a world no clause creates); the serve under an opening is step 34's test. #579 builds the signed arm and the refusing public branch; step 34 builds the opening that makes the public branch serve.** — **CONFORMED 2026-09-26 (the researcher, R85 Q-H) to §7 :783 ("the pinned content version is served") and :851–:852: the public branch serves a PINNED version — `?version=<hash>`, the parameter the signed arm already takes, naming the pin of a citation on a version EVER published (A3 :1377's spelling); with no `?version`, the pin of the most recent publication citing d, for a hand-typed URL only — the public block's link always carries its own pin. CURRENT(d) is served only when it is such a pin: a reader checking a quoted phrase is handed the text PassageVerdict stamped, and a newer derivation is announced by the FLAG (§7 :855), never served in its place; was "CURRENT(d)'s pinned content"**
+  refuses   NOT_PUBLIC (not OPENED) · NOT_OPENED_TO (OPENED(d) = PASSAGE) · SHED · NOT_PINNED (`?version` names no pin of an ever-published citation of d — the document is opened, this version is not what was opened) — **CONFORMED 2026-09-26 (R85 Q-H): NOT_PINNED added, one spelling**
 
 GET /api/documents/:commitment/bytes                                  PUBLIC serve · ⚠️ to build
   does      serves the file, and { docId, salt } beside it, so a reader can reproduce the

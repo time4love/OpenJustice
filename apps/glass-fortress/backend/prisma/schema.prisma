@@ -2290,12 +2290,16 @@ model DocumentContentVersion {
   commitment         String
   document           Document            @relation(fields: [commitment], references: [commitment], onDelete: Restrict)
   /// NULL when the content IS the bytes — a photograph no engine reads (§3 :284). Then
-  /// `contentVersionHash` EQUALS the docId (A1 :1242-:1243) and every assertion about the
-  /// document is UNCHECKED. NULLED by SHED; this row, its hash and its provenance stay.
+  /// `contentVersionHash` EQUALS the document's COMMITMENT, never its docId (A1 :1243 and
+  /// §3 :323 as CONFORMED 2026-09-26, R85 Q-G: the pin is served at every opening, and a
+  /// DOC_ID below BYTES is a hash of a copy a source held, §7 :765-:770) and every assertion
+  /// about the document is UNCHECKED. NULLED by SHED; this row, its hash and its provenance stay.
   text               String?
   contentVersionHash String
-  /// PROVENANCE: what read the bytes. The COMPUTED register is reproducible from the
-  /// bytes by a named extractor at a pinned version; that is the whole line (§3 :299-:305).
+  /// PROVENANCE: what read the bytes. The COMPUTED CONTENT is reproducible from the bytes
+  /// alone by a named extractor at a pinned version; that is the whole line (§3 :299-:305).
+  /// A bytes-only version's HASH is the commitment, reproduced from the bytes AND the salt
+  /// (§3 :293 as CONFORMED 2026-09-26; A1 :1236-:1237).
   /// `extractorVersion` names the extractor that FIRST produced this text and is NEVER
   /// overwritten — it is provenance, not a pointer.
   extractor          String

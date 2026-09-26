@@ -18,6 +18,12 @@ jest.mock('../../src/services/promotionAssessor', () => ({
 // automock, every export a recording double, so the promotion case below observes ZERO calls rather than reading a file.
 jest.mock('../../src/services/Web3Service');
 jest.mock('../../src/services/anchorSnapshots');
+// THE BUCKET, AT ITS BOUNDARY (document step 34 chunk 4a, declared): the public block recomputes VERIFIED(d) of a HELD
+// document on each read (R85 Q-B), which reads the object — `./publicWorld` answers it.
+jest.mock('../../src/services/documentBucket', () => ({
+  ...jest.requireActual<typeof import('../../src/services/documentBucket')>('../../src/services/documentBucket'),
+  readObject: jest.fn(),
+}));
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -40,6 +46,17 @@ import * as anchorSnapshots from '../../src/services/anchorSnapshots';
 import { Web3Service } from '../../src/services/Web3Service';
 import { answered } from '../../src/services/documentPredicates';
 import { flaggedFor } from '../../src/services/evidencePredicates';
+import { publishThesisHandler } from '../../src/mcp/tools/publishThesis';
+import { resolvedRecordOf } from '../../src/mcp/tools/resolveRecord';
+import { listFindingsHandler } from '../../src/mcp/tools/listFindings';
+import * as documentStanding from '../../src/services/documentStanding';
+import * as publicationAssessor from '../../src/services/publicationAssessor';
+import * as publicationEvaluation from '../../src/services/publicationEvaluation';
+import { PAGE } from '../helpers/corpusFixture';
+import { THESIS as GATE_THESIS, VERSION as GATE_VERSION } from '../thesis/fixtures';
+import { resetTools as resetThesisTools } from '../thesis/tools';
+import { DOC as OPENED_DOC, world as publicWorld } from './publicWorld';
+import { ASSESSED, asked, COMMITMENT as PUBLISHED_COMMITMENT, DOC_MENTION, QUOTE, seedCitingDocument } from './publicationWorld';
 
 // ---------------------------------------------------------------------------
 // A4 :1452-:1470 — THE AMENDED TOOLS, BY THEIR ADDED ARMS ONLY.
@@ -302,19 +319,53 @@ describe('A4 :1458 — decide_gap: `citedName` MAY BE A COMMITMENT THE HEAD MENT
 });
 
 describe('A4 :1459-:1470 — the reads and the gate the document layer amends', () => {
+  // BEHAVIOURAL SINCE DOCUMENT STEP 34 chunk 4a (DECLARED; S5 of the R84 sketch, R85 [R1]): these three read the SOURCE of
+  // `services/publishThesis.ts`, `services/listFindings.ts` and `services/resolveRecord.ts` — paths that do not exist, so
+  // they were red for a reason no build could turn. Each now ASKS the built tool over a world (`./publicationWorld`,
+  // chunk 3's; `./publicWorld`, chunk 4a's), the step-33 precedent below (:332–:335). Every claim of the titles is kept.
+  afterEach(() => {
+    jest.restoreAllMocks();
+    resetThesisTools();
+  });
+
   it('publish_thesis writes a PassageVerdict per quoted span and `documentsOpened` (A4 :1459-:1461)', async () => {
-    const source = await sourceOf('services/publishThesis.ts');
-    expect(source).toMatch(/PassageVerdict|documentsOpened/);
+    resetDouble();
+    await seedCitingDocument();
+    store.documentOpeningDecisions = [
+      { id: 'opening-1', thesisId: GATE_THESIS.id, commitment: PUBLISHED_COMMITMENT, sequence: 1, opening: 'CONTENT', researcherId: AUTHOR, createdAt: new Date(Date.UTC(2026, 8, 20)) },
+    ];
+    jest.spyOn(documentStanding, 'documentVerificationOf').mockResolvedValue(asked({ verified: true }));
+    jest.spyOn(publicationEvaluation, 'publishabilityOf').mockReturnValue({ publishable: true, failed: [] });
+    jest.spyOn(publicationAssessor, 'assess').mockResolvedValue(ASSESSED);
+    actAs(AUTHOR);
+    const out = JSON.parse(await publishThesisHandler({ thesisId: GATE_THESIS.id, rationale: 'הטיעון', publicInterestStatement: 'עניין ציבורי' })) as Record<string, unknown>;
+    expect(written.filter((w) => w.model === 'passageVerdict').map((w) => w.data)).toEqual([
+      { versionId: GATE_VERSION.id, mentionId: DOC_MENTION, phrase: QUOTE, verdict: 'PRESENT' },
+    ]);
+    expect(out['documentsOpened']).toEqual([PUBLISHED_COMMITMENT]);
   });
 
   it('list_findings gains the `documents` register, OPENED ONLY — nothing unopened, for anyone (§9 :1034)', async () => {
-    const source = await sourceOf('services/listFindings.ts');
-    expect(source).toMatch(/documents/);
+    resetDouble();
+    publicWorld();
+    const opened = JSON.parse(await listFindingsHandler({ url: PAGE.url })) as { documents: { commitment: string }[] };
+    // The world holds TWO documents asserting the page and opens ONE: the register names exactly that one.
+    expect(opened.documents.map((d) => d.commitment)).toEqual([OPENED_DOC]);
+    resetDouble();
+    publicWorld({ opened: false });
+    const none = JSON.parse(await listFindingsHandler({ url: PAGE.url })) as { documents: unknown[] };
+    expect(none.documents).toEqual([]);
   });
 
   it('resolve_record by commitment answers §7’s block, or NOT_PUBLIC (A4 :1466-:1467)', async () => {
-    const source = await sourceOf('services/resolveRecord.ts');
-    expect(source).toMatch(/NOT_PUBLIC/);
+    resetDouble();
+    publicWorld();
+    const block = JSON.parse(JSON.stringify(await resolvedRecordOf({ fileHash: OPENED_DOC }))) as Record<string, unknown>;
+    expect([block['kind'], block['commitment'], block['opening']]).toEqual(['DOCUMENT', OPENED_DOC, 'CONTENT']);
+    resetDouble();
+    publicWorld({ opened: false });
+    const refused = JSON.parse(JSON.stringify(await resolvedRecordOf({ fileHash: OPENED_DOC }))) as Record<string, unknown>;
+    expect(refused['code']).toBe('NOT_PUBLIC');
   });
 
   it('check_on_chain_status asked about a commitment answers about ITS ENTRY (A4 :1468-:1469)', async () => {

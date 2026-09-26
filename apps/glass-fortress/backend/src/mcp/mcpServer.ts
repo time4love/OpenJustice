@@ -496,7 +496,10 @@ export function createMcpServer(): McpServer {
         'computed chunks and never the ordering — significance is the classifier\'s judgement, the ' +
         'order is always chronological, and the researcher ranks. `awaitingDerivation` means the ' +
         'walk owes a re-derivation, NOT that nothing changed. THE ANSWER IS THE SAME FOR EVERYONE: ' +
-        'this read has no second behaviour by identity. Writes nothing. Refuses NOT_SURVEYED and ' +
+        'this read has no second behaviour by identity. `documents` is a THIRD register, never interleaved with the ' +
+        'other two: every document a published thesis has OPENED that asserts this page — its commitment, title, custody, ' +
+        'whether it is anchored, its content version and its opening — and never one nobody opened. Writes nothing. ' +
+        'Refuses NOT_SURVEYED and ' +
         'NOT_PUBLIC (no published thesis cites any record of this page).',
       inputSchema: listFindingsSchema,
     },
@@ -557,7 +560,7 @@ export function createMcpServer(): McpServer {
     'resolve_record',
     {
       description:
-        'WHAT A CITATION POINTS AT — the record behind an #ev_ name, and who cites it. Given the ' +
+        'WHAT A CITATION POINTS AT — the record behind an #ev_ or a #doc_ name, and who cites it. Given the ' +
         'name a thesis cites (#ev_<fileHash>), returns the ' +
         'corpus record it resolves to — a capture or a pair of captures, with its page and ' +
         'timestamps — whether the name is RECOMPUTABLE from that record, whether it is VERIFIED ' +
@@ -566,8 +569,15 @@ export function createMcpServer(): McpServer {
         'answer, and the PUBLISHED thesis versions that cite it — each with its text and with any ' +
         'FLAG the platform has since raised: the record was withdrawn, or its content moved and ' +
         'nobody has re-affirmed it. A published version is never edited and never unpublished by ' +
-        'this platform; the flag is derived on every read and shown beside the citation. Reads the ' +
-        'chain for the record\'s own captures and nothing else. Writes nothing. Refuses ' +
+        'this platform; the flag is derived on every read and shown beside the citation. Given a ' +
+        'document\'s commitment (#doc_<commitment>), returns the document\'s PUBLIC block once a published ' +
+        'thesis has opened it: its title, custody, registry entry, how its identity was verified and when, the ' +
+        'opening, and each citing published version with its quoted passages and their verdicts as stamped at ' +
+        'publication — never the document\'s DOC_ID, its salt, or any model\'s reading of it. Reads the chain for ' +
+        'the record\'s own captures, or the document\'s own entry and — where it does not attest and the ' +
+        'document\'s bytes equal a capture\'s — that capture\'s entry, which attests it when attributed; ' +
+        'nothing else. ' +
+        'Writes nothing. Refuses ' +
         'NOT_A_RECORD and NOT_PUBLIC.',
       inputSchema: resolveRecordSchema,
     },

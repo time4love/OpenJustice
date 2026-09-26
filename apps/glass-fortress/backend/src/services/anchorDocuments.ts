@@ -2,7 +2,7 @@ import { toBytes32 } from '../lib/bytes32';
 import { anchorDocumentCommitment, type CaptureRegistrar, type RegistryWindow } from './anchorSnapshots';
 import { capturesEqualTo } from './documentCaptures';
 import { anchored, digestOf } from './documentPredicates';
-import { attributeClaim, entryFromChain, type AttributionVerdict, type ClaimAttribution } from './registryState';
+import { attributeClaim, entryFromChain, type AttributionVerdict, type ClaimAttribution, type RegistryReader } from './registryState';
 
 // ---------------------------------------------------------------------------
 // THE ONE DOCUMENT-ANCHORING FUNCTION, AND ANCHORED(d) ON EVERY READ — docs/gf-document-refactor-plan.md §4 :408, step 31
@@ -15,9 +15,19 @@ import { attributeClaim, entryFromChain, type AttributionVerdict, type ClaimAttr
 //
 // ANCHORED(d) HAS TWO ARMS (A3 :1366 as ruled): the COMMITMENT attributed to our registrar, or — for a HELD document
 // only — a capture whose documentHash EQUALS the DOC_ID, attributed. §4 :440–:442: "nothing is written for it": the
-// bytes' plain hash is already public as the capture's documentHash with two witnesses. The capture arm is asked FIRST,
-// so no write is attempted for such a document; a commitment written before the equality appeared stands. `standingOf`
-// reads both arms once, for the reads and for the write alike, and the pure `anchored` decides.
+// bytes' plain hash is already public as the capture's documentHash with two witnesses.
+//
+// ONE RULE FOR WHICH ARM ATTESTS — `attestationOf`, exported, the ONE reading of ANCHORED's chain half for every caller:
+// the anchoring write, every read (`standingsOf`, `anchoredOf`, `readStanding`), the publication gate's VERIFIED(d), and
+// `check_on_chain_status` and the public block (`checkOnChainStatus.commitmentEntryOf`). THE COMMITMENT IS ASKED FIRST
+// and, where it attests, it STANDS — "a commitment written before the equality appeared stands" (A3 :1366); only where it
+// does NOT attest (unregistered, or registered by another submitter) is a HELD document's equal capture asked, and an
+// attributed one attests (A4 :1469: "answered as attested by that capture, with its index"). Both arms are asked BEFORE
+// any write, so no write is attempted for a document an equal capture already attests. The pure `anchored` decides.
+//
+// WHY IT IS ONE FUNCTION (R85 chunk 4a round 2, REVIEW's M3): the write asked the capture first and the tool's commitment
+// arm asked the commitment first and never the capture behind a foreign submitter — so the gate called a document
+// VERIFIED that `check_on_chain_status` and the public block called unattested. Two spellings of one OR disagreed.
 //
 // CHAIN STATE BEFORE EVERY WRITE, AND AFTER. The before-read is what makes a write safe to attempt twice: a
 // commitment a timed-out transaction did register is found ATTRIBUTED and not written again. The after-read is the
@@ -56,30 +66,32 @@ export interface AnchorOutcome extends Standing {
   wrote: boolean;
 }
 
-interface Read extends Standing {
-  /** The commitment's own attribution — null where the capture arm answered first and the commitment was not asked. */
-  commitment: ClaimAttribution | null;
+/** Both arms as the chain answers them, and which attests — `attestationOf`'s answer. */
+export interface Attestation extends Standing {
+  /** The commitment's own attribution — ALWAYS asked, because where it attests it stands (A3 :1366). */
+  commitment: ClaimAttribution;
+  /** Where the commitment does not attest and a HELD document's bytes equal a capture's: that capture and its claim. */
+  capture: { claim: ClaimAttribution; url: string; capture: string } | null;
 }
 
-/** Both arms, read from chain state: the capture arm first (HELD only), then the commitment. Throws on a chain failure. */
-async function standingOf(registrar: CaptureRegistrar, document: AnchorableDocument): Promise<Read> {
+/** THE ONE READING OF ANCHORED's chain half (the header): the commitment first, then an equal capture. Throws on a chain failure. */
+export async function attestationOf(reader: RegistryReader, document: AnchorableDocument): Promise<Attestation> {
   const attributedHashes = new Set<string>();
   const ask = async (hash: string): Promise<ClaimAttribution> => {
-    const claim = await attributeClaim(registrar, entryFromChain(registrar), hash);
+    const claim = await attributeClaim(reader, entryFromChain(reader), hash);
     if (claim.verdict === 'ATTRIBUTED') attributedHashes.add(claim.hash);
     return claim;
   };
   const isAttributed = (hash: string): boolean => attributedHashes.has(toBytes32(hash).toLowerCase());
 
-  const equalCapture = document.held && (await capturesEqualTo(document.docId)) !== null ? toBytes32(digestOf(document.docId)) : null;
-  if (equalCapture !== null) {
-    await ask(equalCapture);
-    // Only the capture has been asked, so the predicate can be true here by the capture arm alone.
-    if (anchored(document.commitment, isAttributed, equalCapture)) return { anchored: true, by: 'CAPTURE', commitment: null };
-  }
   const commitment = await ask(document.commitment);
-  const isAnchored = anchored(document.commitment, isAttributed, equalCapture);
-  return { anchored: isAnchored, by: isAnchored ? 'COMMITMENT' : null, commitment };
+  if (anchored(document.commitment, isAttributed)) return { anchored: true, by: 'COMMITMENT', commitment, capture: null };
+  const equal = document.held ? await capturesEqualTo(document.docId) : null;
+  if (equal === null) return { anchored: false, by: null, commitment, capture: null };
+  const captureHash = toBytes32(digestOf(document.docId));
+  const claim = await ask(captureHash);
+  const isAnchored = anchored(document.commitment, isAttributed, captureHash);
+  return { anchored: isAnchored, by: isAnchored ? 'CAPTURE' : null, commitment, capture: { claim, url: equal.url, capture: equal.capture } };
 }
 
 const inFlight = new Map<string, Promise<AnchorOutcome>>();
@@ -95,9 +107,9 @@ export function anchorDocument(window: RegistryWindow, document: AnchorableDocum
 
 async function anchorOnce(window: RegistryWindow, document: AnchorableDocument): Promise<AnchorOutcome> {
   const registrar = await window.registrar();
-  const before = await standingOf(registrar, document);
+  const before = await attestationOf(registrar, document);
   if (before.anchored) return { anchored: true, by: before.by, wrote: false };
-  if (before.commitment?.verdict === 'FOREIGN_SUBMITTER') {
+  if (before.commitment.verdict === 'FOREIGN_SUBMITTER') {
     throw new Error(
       `anchorDocument: ${before.commitment.hash} is registered at index ${String(before.commitment.index)} by ` +
         `${String(before.commitment.submitter)}, not by this registrar. A salted commitment cannot collide (document ` +
@@ -105,7 +117,7 @@ async function anchorOnce(window: RegistryWindow, document: AnchorableDocument):
     );
   }
   await anchorDocumentCommitment(window, document.commitment);
-  const after = await standingOf(registrar, document);
+  const after = await attestationOf(registrar, document);
   return { anchored: after.anchored, by: after.by, wrote: true };
 }
 
@@ -132,7 +144,7 @@ export async function standingsOf(
   }
   for (const document of documents) {
     try {
-      const { anchored: isAnchored, by } = await standingOf(registrar, document);
+      const { anchored: isAnchored, by } = await attestationOf(registrar, document);
       answers.set(document.commitment, { anchored: isAnchored, by });
     } catch (error) {
       answers.set(document.commitment, { unread: `${document.commitment} could not be read from the chain — ${messageOf(error)}` });
@@ -162,11 +174,11 @@ export async function anchoredOf(window: RegistryWindow, documents: readonly Anc
 /**
  * ANCHORED(d) and the commitment's own verdict, read from chain state — the read `commitments-owed`, the standing pass
  * and `get_environment`'s count share. THROWS on a chain failure: an operational count that swallowed one would report
- * "nothing owed" for a chain it never reached. The verdict is null where the capture arm answered first.
+ * "nothing owed" for a chain it never reached. The commitment is always asked (`attestationOf`), so its verdict is too.
  */
-export async function readStanding(window: RegistryWindow, document: AnchorableDocument): Promise<Standing & { verdict: AttributionVerdict | null }> {
-  const read = await standingOf(await window.registrar(), document);
-  return { anchored: read.anchored, by: read.by, verdict: read.commitment?.verdict ?? null };
+export async function readStanding(window: RegistryWindow, document: AnchorableDocument): Promise<Standing & { verdict: AttributionVerdict }> {
+  const read = await attestationOf(await window.registrar(), document);
+  return { anchored: read.anchored, by: read.by, verdict: read.commitment.verdict };
 }
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));

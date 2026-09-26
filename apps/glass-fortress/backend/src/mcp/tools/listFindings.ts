@@ -11,6 +11,7 @@ import {
   type DiffEntry,
   type PageRef,
 } from '../../services/corpusReads';
+import { documentRegister, type RegisterRow } from '../../services/documentPublicRead';
 import { currentVersionOf, storedAttributionFor } from '../../services/evidencePredicates';
 import { answer, openPage, pageByUrl, type Refusal } from './evidenceRefusals';
 
@@ -41,6 +42,11 @@ import { answer, openPage, pageByUrl, type Refusal } from './evidenceRefusals';
 // code and no way for the reader to tell (docs/gf-walk-corrective-pass-2026-09-08.md).
 // Here every absence is named: `current: null` with `awaitingDerivation: true`,
 // `opinion: null`, `evidence: null`, `attributed: null`.
+//
+// THE THIRD REGISTER — `documents`, document flows §9 :1028–:1035 as CONFORMED 2026-09-26 (R85 Q-E), A4 :1465; document
+// step 34. Every OPENED document asserting this page, "never interleaved" with captures and diffs, and NOTHING UNOPENED,
+// FOR ANYONE: composed by `documentPublicRead`, the ONE composer of what the public reads of a document, which asks the
+// chain for each (its `anchored`) — bounded by the documents a published thesis opened for this one page.
 // ---------------------------------------------------------------------------
 
 export const listFindingsSchema = {
@@ -57,6 +63,8 @@ interface Findings {
   counts: { captures: number; diffs: number; awaitingDerivation: number };
   captures: CaptureEntry[];
   diffs: DiffEntry[];
+  /** §9 :1031–:1034 — every OPENED document asserting this page; never interleaved with the two registers above. */
+  documents: RegisterRow[];
 }
 
 /** THE ONE FUNCTION behind the tool and `GET /api/pages/:trackedUrlId/findings` (docs/gf-ui-flows.md §6 :212, :221–:223). */
@@ -96,6 +104,7 @@ export async function findingsOf(ref: PageRef): Promise<Findings | Refusal<'NOT_
     // THE ROWS ARE `corpusReads`' — one composition for this read and for `list_corpus` across pages (UI-2).
     captures: captures.map((capture) => captureRow(page, capture, attribution, linkage)),
     diffs: diffs.map((diff) => diffRow(page, diff, acquired, linkage)),
+    documents: await documentRegister(page.url),
   };
 }
 

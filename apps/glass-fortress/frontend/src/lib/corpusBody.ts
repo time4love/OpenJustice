@@ -15,6 +15,7 @@ import {
   type RecordCaptureAttribution,
   type RecordNames,
   type RecordVerified,
+  type ReservedDocument,
   type ResolvedRecord,
   type TrajectoryAnswer,
   type TrajectoryCapture,
@@ -445,6 +446,20 @@ export function parseResolvedRecord(body: unknown): ResolvedRecord {
       };
     }),
   };
+}
+
+/**
+ * THE RECORDS ROUTE'S ANSWER AS THE RECORD PAGE READS IT — a corpus record, or a DOCUMENT (document step 34, R85 Q-C).
+ *
+ * `resolve_record` answers a document's COMMITMENT with §7's public block. This frontend does not draw it yet (document
+ * plan :280–:282), so the DOCUMENT kind narrows to `{ kind, commitment }` and nothing else, and every other body is
+ * `parseResolvedRecord`'s, UNCHANGED — so a bare commitment is never a 500 on a public page, and the corpus arms keep
+ * their one parser.
+ */
+export function parseRecordAnswer(body: unknown): ResolvedRecord | ReservedDocument {
+  const answer = object(body, 'the answer');
+  if (answer.kind === 'DOCUMENT') return { kind: 'DOCUMENT', commitment: text(answer.commitment, 'commitment') };
+  return parseResolvedRecord(body);
 }
 
 /**

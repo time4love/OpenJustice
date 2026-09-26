@@ -136,7 +136,7 @@ describe('a reader that RAN and found nothing — `READ_NOTHING`, a different fa
     // THE FLOOR UNDER THE WHOLE REGISTER. Before this, an empty workbook came back
     // COMPUTED with the text `# sheet1` — a string this repository's serialiser invented,
     // whose hash would then have become the document's content version instead of the
-    // document's own name (A1 :1242-:1243). A serialiser must not author content under
+    // document's commitment (A1 :1243 as CONFORMED 2026-09-26, R85 Q-G). A serialiser must not author content under
     // the document's name, and `READ_NOTHING` was unreachable for a spreadsheet while it did.
     const extraction = await extract(Buffer.alloc(0), 'text/csv');
 

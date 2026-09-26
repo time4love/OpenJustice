@@ -378,8 +378,8 @@ const readSpreadsheetCells: Reader = async (bytes, type) => {
  * A WORKBOOK WITH NO CELL CONTENT RETURNS NULL, and that is not a tidy-up. The `#` line is
  * a LABEL, not content: without this, an EMPTY spreadsheet came back as COMPUTED text
  * reading exactly `# sheet1`, so the document's `contentVersionHash` would have been the
- * hash of a string this serialiser INVENTED rather than the document's own name (A1
- * :1242-:1243, which rules the bytes-only hash to BE the name). That is the serialiser
+ * hash of a string this serialiser INVENTED rather than the document's commitment (A1
+ * :1243 as CONFORMED 2026-09-26, which rules the bytes-only hash to BE the commitment). That is the serialiser
  * authoring content under the document's name — the same failure the cell rules below
  * refuse for dates and hyperlinks, one level up. It also made `READ_NOTHING` unreachable
  * for a spreadsheet: every workbook, however empty, answered COMPUTED.

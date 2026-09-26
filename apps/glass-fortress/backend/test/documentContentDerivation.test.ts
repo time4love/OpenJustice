@@ -39,7 +39,7 @@ jest.mock('../src/lib/prisma', () => ({
 }));
 
 import type { Document, DocumentContentVersion, DocumentOpinion, Prisma, Shed } from '@prisma/client';
-import { contentVersionHashOf } from '../src/lib/documentIdentity';
+import { commitment as commitmentOf, contentVersionHashOf, docId as docIdOf } from '../src/lib/documentIdentity';
 import { CURRENT_EXTRACTOR } from '../src/lib/documentExtractor';
 import { prisma } from '../src/lib/prisma';
 import {
@@ -340,20 +340,24 @@ describe('recordContentVersion — a re-derivation with identical text is NOT a 
     // service boundary: `extractor-coverage` counts a broken PDF apart from a photograph
     // by the COLUMN (A7 :1591), so the column is what has to carry it.
     const corrupt = Buffer.from('this is not a workbook at all', 'utf8');
-    const name = '0x' + '7'.repeat(64);
+    const name = docIdOf(corrupt);
+    const publicName = commitmentOf(name, Buffer.alloc(32, 7));
 
     const derived = await deriveContent(
       corrupt,
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      name,
+      publicName,
       'HELD_BYTES',
     );
 
     expect(derived.readFailed).toBe(true);
     expect(derived.text).toBeNull();
-    // Bytes-only, so the hash IS the document's own name \u2014 a failed read is still bytes
-    // the platform holds, never a document it turned away.
-    expect(derived.contentVersionHash).toBe(name);
+    // Bytes-only, so the hash IS the document's COMMITMENT \u2014 a failed read is still bytes
+    // the platform holds, never a document it turned away. DECLARED EDIT, document step 34 (R85 Q-G; A1 :1243 as
+    // CONFORMED 2026-09-26): it read "the document's own name" (the DOC_ID); STRENGTHENED to the commitment, and never
+    // the DOC_ID, which the pin would publish below BYTES.
+    expect(derived.contentVersionHash).toBe(publicName);
+    expect(derived.contentVersionHash).not.toBe(name);
 
     const state = store();
     const row = await recordContentVersion(state.tx, '0x' + 'b'.repeat(64), derived);
@@ -374,14 +378,18 @@ describe('recordContentVersion — a re-derivation with identical text is NOT a 
     expect(row.readFailed).toBe(false);
   }, 30000);
 
-  it('the bytes-only arm derives a version whose hash IS the document’s own name (A1 :1242-:1243)', async () => {
+  // DECLARED EDIT, document step 34 (R85 Q-G; A1 :1243 as CONFORMED 2026-09-26): "IS the document's own name" (the
+  // DOC_ID) → the COMMITMENT, and never the DOC_ID — STRENGTHENED, a real docId and a real commitment of it.
+  it('the bytes-only arm derives a version whose hash IS the document’s COMMITMENT, never its DOC_ID (A1 :1243 as CONFORMED)', async () => {
     const audio = fixture('UNREADABLE');
-    const name = '0x' + 'f'.repeat(64);
+    const name = docIdOf(audio.bytes());
+    const publicName = commitmentOf(name, Buffer.alloc(32, 15));
 
-    const derived = await deriveContent(audio.bytes(), audio.mimeType, name, 'HELD_BYTES');
+    const derived = await deriveContent(audio.bytes(), audio.mimeType, publicName, 'HELD_BYTES');
 
     expect(derived.text).toBeNull();
-    expect(derived.contentVersionHash).toBe(name);
+    expect(derived.contentVersionHash).toBe(publicName);
+    expect(derived.contentVersionHash).not.toBe(name);
     expect(derived.extractorVersion).toBe(CURRENT_EXTRACTOR);
   });
 });
@@ -514,7 +522,7 @@ describe('the pass APPENDS to derivedUnder when it re-derives to content the row
     const reproduced = versionRow({
       id: 'version-1',
       text: SHEET.groundTruth,
-      contentVersionHash: contentVersionHashOf(SHEET.groundTruth, document.docId),
+      contentVersionHash: contentVersionHashOf(SHEET.groundTruth, document.commitment),
       extractorVersion: OLD_EXTRACTOR,
     });
     const state = store([reproduced]);
@@ -543,7 +551,7 @@ describe('the pass APPENDS to derivedUnder when it re-derives to content the row
     const reproduced = versionRow({
       id: 'version-1',
       text: SHEET.groundTruth,
-      contentVersionHash: contentVersionHashOf(SHEET.groundTruth, document.docId),
+      contentVersionHash: contentVersionHashOf(SHEET.groundTruth, document.commitment),
       extractorVersion: OLD_EXTRACTOR,
       derivedUnder: [OLD_EXTRACTOR, CURRENT_EXTRACTOR],
     });

@@ -1,4 +1,14 @@
+// THE RECEIPT'S WORLD, for the two PUBLIC SERVES (document step 34 chunk 4b, DECLARED): their cases now ASK the built route
+// over `./servesWorld`; the intake and withdrawal cases below are unchanged and stay steps 32's and 35's.
+jest.mock('../../src/lib/prisma', () => (require('./world') as typeof import('./world')).prismaDouble);
+jest.mock('../../src/services/documentBucket', () => (require('./world') as typeof import('./world')).bucketDouble);
+
+import express from 'express';
+import request from 'supertest';
+import { commitment as commitmentOf, docId as docIdOf } from '../../src/lib/documentIdentity';
+import { documentContentRouter } from '../../src/routes/documentContentRoutes';
 import { built } from './built';
+import { BYTES, DOC, DOC_ID, TEXT, world } from './servesWorld';
 import {
   BYTES_SERVE_REFUSALS,
   CONTENT_SERVE_REFUSALS,
@@ -24,8 +34,6 @@ interface Refusal { error: string; code: string }
 interface Routes {
   intake: (body: unknown) => Promise<{ status: number; body: unknown }>;
   withdraw: (body: { commitment: string; key: string }) => Promise<{ status: number; body: unknown }>;
-  serveContent: (commitment: string) => Promise<{ status: number; body: unknown }>;
-  serveBytes: (commitment: string) => Promise<{ status: number; body: unknown }>;
 }
 
 /** Reached through the predicate module so an unbuilt layer fails BY NAME. */
@@ -88,20 +96,41 @@ describe('A5 :1498-:1502 — POST /api/documents/withdraw. STEP 35’S.', () => 
 });
 
 describe('A5 :1504-:1511 — the two PUBLIC serves. STEP 34’S.', () => {
-  it('/content serves CURRENT(d)’s pinned content — the text, or the bytes where the content IS the bytes', async () => {
-    const { serveContent } = await routes();
-    const answer = await serveContent('0xc1');
-    expect(answer.status).toBeGreaterThan(0);
+  // BEHAVIOURAL SINCE DOCUMENT STEP 34 chunk 4b (DECLARED; S5, R85): these two called `serveContent` / `serveBytes` on the
+  // PREDICATE module (`routes()` above) — names it never exports, so they were red for a reason no build could turn — and
+  // asserted only `status > 0`. They now ASK the built router over `./servesWorld`, and assert what the titles say.
+  const app = express();
+  app.use('/api/documents', documentContentRouter);
+  const raw = (path: string) =>
+    request(app).get(path).buffer(true).parse((res, done) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      res.on('end', () => done(null, Buffer.concat(chunks)));
+    });
+
+  // DECLARED EDIT, chunk 4b round 3 (REVIEW's M7): the title conformed to A5 :1505 as now written — "serves a PINNED content
+  // version" (R85 Q-H); was "serves CURRENT(d)’s pinned content". No assertion moves.
+  it('/content serves a PINNED content version — the text, or the bytes where the content IS the bytes', async () => {
+    world({ decisions: [['CONTENT', 20]] });
+    const text = await request(app).get(`/api/documents/${DOC}/content`);
+    expect([text.status, text.text]).toEqual([200, TEXT]);
+    world({ decisions: [['CONTENT', 20]], text: null, document: { mimeType: 'image/png' } });
+    const bytes = await raw(`/api/documents/${DOC}/content`);
+    expect([bytes.status, bytes.headers['content-type'], Buffer.compare(bytes.body as Buffer, Buffer.from(BYTES))]).toEqual([200, 'image/png', 0]);
   });
 
-  it('/content refuses NOT_PUBLIC, NOT_OPENED_TO and SHED — three, and no more', () => {
-    expect([...CONTENT_SERVE_REFUSALS].sort()).toEqual(['NOT_OPENED_TO', 'NOT_PUBLIC', 'SHED']);
+  // DECLARED EDIT, document step 34 chunk 4b round 2: A5 :1506 as CONFORMED 2026-09-26 (the researcher's Q-H) adds
+  // NOT_PINNED — `?version` names no pin of an ever-published citation of d.
+  it('/content refuses NOT_PUBLIC, NOT_OPENED_TO, SHED and NOT_PINNED — four, and no more', () => {
+    expect([...CONTENT_SERVE_REFUSALS].sort()).toEqual(['NOT_OPENED_TO', 'NOT_PINNED', 'NOT_PUBLIC', 'SHED']);
   });
 
   it('/bytes serves the file AND { docId, salt } beside it, so a reader reproduces the commitment (A5 :1509-:1510)', async () => {
-    const { serveBytes } = await routes();
-    const answer = await serveBytes('0xc1');
-    expect(answer.status).toBeGreaterThan(0);
+    world({ decisions: [['BYTES', 20]] });
+    const answer = await raw(`/api/documents/${DOC}/bytes`);
+    expect([answer.status, answer.headers['x-document-id']]).toEqual([200, DOC_ID]);
+    const salt = Buffer.from(String(answer.headers['x-document-salt']).slice(2), 'hex');
+    expect(commitmentOf(docIdOf(new Uint8Array(answer.body as Buffer)), salt)).toBe(DOC);
   });
 
   it('/bytes adds NOT_HELD — a sealed document has no bytes ANYWHERE (A5 :1511)', () => {

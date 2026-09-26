@@ -25,11 +25,11 @@ import type { AttributionVerdict } from './registryState';
 /** RULED 2026-09-24 (relay item 8): an OPERATIONAL PARAMETER, measured on `Document.receivedAt`. */
 export const OWED_AGE_FLOOR_MS = 10 * 60_000;
 
-/** What `readStanding` answers for one document. */
+/** What `readStanding` answers for one document — the commitment's verdict ALWAYS, since it is always asked (`attestationOf`). */
 export interface OwedStanding {
   anchored: boolean;
   by: AnchoredBy;
-  verdict: AttributionVerdict | null;
+  verdict: AttributionVerdict;
 }
 
 export interface OwedCommitment {
@@ -69,8 +69,8 @@ export async function commitmentsOwed(
       if (standing.by === 'CAPTURE') report.byCapture += 1;
       continue;
     }
-    if (standing.verdict === null || standing.verdict === 'ATTRIBUTED') {
-      throw new Error(`commitments-owed: ${document.commitment} reads not anchored with the verdict ${String(standing.verdict)} — the two reads disagree`);
+    if (standing.verdict === 'ATTRIBUTED') {
+      throw new Error(`commitments-owed: ${document.commitment} reads not anchored with the verdict ${standing.verdict} — the two reads disagree`);
     }
     const ageMs = now.getTime() - document.receivedAt.getTime();
     if (ageMs < OWED_AGE_FLOOR_MS) {

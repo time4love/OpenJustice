@@ -338,6 +338,39 @@ function everPublishedOutcome(cond: unknown): string | null {
 }
 
 /**
+ * A mention `where` that names NO version — DOCUMENT STEP 34, additive (DECLARED; R85 chunk 4a; LOW-l, R84-state §7).
+ *
+ * Before this, such a query answered EVERY mention whatever it asked, so a reader asking "the DOCUMENT mentions of these
+ * commitments on a PUBLISHED version" passed over a double that never filtered — a case green for a query that forgot its
+ * `where`. It now HONOURS what it can model: `kind`, `name` and `id` by equality or `{ in }`, and the relation
+ * `thesisVersion` as `{ isPublished: { isNot: null } }` (the pin) or `EVER_PUBLISHED`'s shape, over the relation a mention
+ * row carries (`test/thesis/rows.ts`) and the store's attempts. ANY OTHER FIELD OR SHAPE IS IGNORED, as before — never a
+ * rejection — because callers written against the loose double must keep their answer; the loose arm is recorded, not
+ * hidden.
+ */
+function mentionsWhereWithoutVersion(where: Row): (row: Row) => boolean {
+  const tests: ((row: Row) => boolean)[] = [];
+  for (const [field, cond] of Object.entries(where)) {
+    if (field === 'kind' || field === 'name' || field === 'id') {
+      if (typeof cond !== 'object' || cond === null) tests.push((row) => row[field] === cond);
+      else if ('in' in cond && Array.isArray(cond.in) && Object.keys(cond).length === 1) {
+        const wanted: readonly unknown[] = cond.in;
+        tests.push((row) => wanted.includes(row[field]));
+      }
+    } else if (field === 'thesisVersion' && JSON.stringify(cond) === JSON.stringify({ isPublished: { isNot: null } })) {
+      tests.push((row) => {
+        const version = row['thesisVersion'];
+        return typeof version === 'object' && version !== null && 'isPublished' in version && version.isPublished != null;
+      });
+    } else if (field === 'thesisVersion' && everPublishedOutcome(cond) !== null) {
+      const outcome = everPublishedOutcome(cond);
+      tests.push((row) => store.attempts.some((a) => a['versionId'] === row['versionId'] && a['outcome'] === outcome));
+    }
+  }
+  return (row) => tests.every((test) => test(row));
+}
+
+/**
  * THE VERSION LIST, as `thesisVersion.findMany` and `findFirst` read it — thesis step 23, ADDITIVE (R49 §e6 E9).
  *
  * THREE ARMS: a plain value is an EQUALITY (`thesisId` exactly as before, `id` newly), `{ in: [...] }` is membership, and
@@ -690,7 +723,7 @@ export const db = {
     findMany: jest.fn(
       ask('thesisMention', 'findMany', (args: { where?: { versionId?: string | { in?: string[] }; kind?: string | { in?: string[] } } }) => {
         const where = args.where ?? {};
-        if (where.versionId === undefined) return Promise.resolve(store.mentions);
+        if (where.versionId === undefined) return Promise.resolve(store.mentions.filter(mentionsWhereWithoutVersion(where)));
         // AND `{ in }`, which `carriedWhere` already honours for every other delegate — R57 chunk 3's
         // `citationRefsByVersion` reads the mentions of EVERY published version in one query, so that a thesis
         // published five times costs one round trip and not five. Without this the hand-rolled `where` here
@@ -1185,6 +1218,15 @@ export const db = {
       }
       return Promise.resolve({ count: args.data.length });
     }),
+    // DOCUMENT STEP 34 chunk 4a, additive (DECLARED): the public block reads the verdicts back by `{ mentionId: { in } }`
+    // (`documentPublicRead`) — through `whereTests`, equality and `in`, anything else REJECTS by name.
+    findMany: jest.fn(
+      ask('passageVerdict', 'findMany', (args?: { where?: Row }) => {
+        const tests = whereTests('passageVerdict', args?.where);
+        if (!Array.isArray(tests)) return Promise.reject(tests);
+        return Promise.resolve(store.passageVerdicts.filter((row) => tests.every((test) => test(row))));
+      }),
+    ),
   },
   withdrawal: appendOnly('withdrawal', 'withdrawals'),
   note: appendOnly('note', 'notes'),

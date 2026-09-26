@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { resolveRecordByName, type ResolvedRecord } from '../../services/corpusReads';
+import { documentRecordOf, type DocumentBlock } from '../../services/documentPublicRead';
 import { flagged, verified, type CaptureAttribution, type FlagReport } from '../../services/evidencePredicates';
 import { answer, refusal, openPage, type Refusal } from './evidenceRefusals';
 
@@ -24,12 +25,18 @@ import { answer, refusal, openPage, type Refusal } from './evidenceRefusals';
 //
 // THE CHAIN IS ASKED HERE, BOUNDED BY THE RECORD — one capture, or two. That is
 // what makes this tool safely open where a whole timeline would not be.
+//
+// A DOCUMENT'S COMMITMENT — document flows A4 :1466–:1467, §7 :863–:864; document step 34. A name the corpus does not
+// resolve is tried as a commitment: §7's public block (`documentPublicRead`, the ONE composer), or `NOT_PUBLIC` for a
+// document no published version opened. A name that is neither is `NOT_A_RECORD`, as before. The corpus is asked FIRST:
+// a salted commitment cannot be a corpus name (§4 :440), so the order decides nothing but cost. The name is the bare
+// commitment — `#doc_` is the token's prefix and never part of a name (A1 :1241; A4 :1398).
 // ---------------------------------------------------------------------------
 
 export const resolveRecordSchema = {
   fileHash: z
     .string()
-    .describe("The record's name — the 0x-prefixed hash a thesis cites as #ev_<fileHash>"),
+    .describe("The record's name — the 0x-prefixed hash a thesis cites as #ev_<fileHash>, or a document's commitment, cited as #doc_<commitment>"),
 };
 
 interface Citation {
@@ -64,9 +71,18 @@ function recordNames(resolved: ResolvedRecord): { capture: string } | { before: 
 }
 
 /** THE ONE FUNCTION behind the tool and `GET /api/records/:fileHash` (UI-3). */
-export async function resolvedRecordOf(input: { fileHash: string }): Promise<Resolved | Refusal<'NOT_A_RECORD' | 'NOT_PUBLIC'>> {
+export async function resolvedRecordOf(input: { fileHash: string }): Promise<Resolved | DocumentBlock | Refusal<'NOT_A_RECORD' | 'NOT_PUBLIC'>> {
   const resolved = await resolveRecordByName(input.fileHash);
   if (resolved === null) {
+    const document = await documentRecordOf(input.fileHash);
+    if (document === 'NOT_PUBLIC') {
+      return refusal(
+        'NOT_PUBLIC',
+        'No public document answers to that commitment. A document is public only once a published thesis has opened it ' +
+          '(document flows §7 :863–:864).',
+      );
+    }
+    if (document !== null) return document;
     return refusal(
       'NOT_A_RECORD',
       `${input.fileHash} names nothing the corpus holds. A record's name is composed from the ` +

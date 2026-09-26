@@ -7,6 +7,9 @@ jest.mock('../src/lib/prisma', () => ({
     evidence: { findMany: jest.fn(), findUnique: jest.fn() },
     thesisMention: { count: jest.fn(), findMany: jest.fn(), findUnique: jest.fn() },
     integrityCheck: { findMany: jest.fn() },
+    // DECLARED, document step 34 chunk 4a (R85): list_findings reads its `documents` register (§9 :1031–:1034), so the
+    // world gains the table every database holds — here holding no document asserting the page: an empty register.
+    document: { findMany: jest.fn(() => Promise.resolve([])) },
   },
 }));
 

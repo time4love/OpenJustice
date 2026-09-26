@@ -44,9 +44,10 @@ export interface DerivedContent {
 /**
  * The extractor's answer, as a version — PURE, and run OUTSIDE the transaction.
  *
- * `docId` is passed because the bytes-only arm's hash IS the document's own name
- * (A1 :1242-:1243): where no text was computed there is nothing to hash but the
- * bytes, and their hash is already known rather than recomputed here.
+ * `commitment` is passed because the bytes-only arm's hash IS the document's COMMITMENT
+ * (A1 :1243 as CONFORMED 2026-09-26, R85 Q-G): where no text was computed the version is
+ * the bytes themselves, named by the document's PUBLIC name — never by its DOC_ID, which the
+ * pin would publish below BYTES (§7 :765–:770).
  *
  * IT ALWAYS PRODUCES A VERSION, AND THAT IS THE RULING OF 2026-09-23. Round 1
  * returned null when `CURRENT_EXTRACTOR` was null — the honest answer while nothing
@@ -55,19 +56,19 @@ export interface DerivedContent {
  * now ruled (`docs/gf-extractor-ruling-2026-09-23.md`), the constant is set, and that
  * arm can never be taken again — so it is GONE rather than left as a branch no
  * instrument can see. A document whose bytes yield no text still gets a version: its
- * text is null and its `contentVersionHash` IS the document's own name (A1 :1242-:1243),
- * which is what §3 :284's bytes-only arm means.
+ * text is null and its `contentVersionHash` IS the document's commitment (A1 :1243 as
+ * CONFORMED), which is what §3 :284's bytes-only arm means.
  */
 export async function deriveContent(
   bytes: Uint8Array,
   mimeType: string,
-  docId: string,
+  commitment: string,
   derivedFrom: DocumentDerivedFrom,
 ): Promise<DerivedContent> {
   const extraction = await extract(bytes, mimeType);
   return {
     text: extraction.text,
-    contentVersionHash: contentVersionHashOf(extraction.text, docId),
+    contentVersionHash: contentVersionHashOf(extraction.text, commitment),
     extractor: extraction.extractor ?? extraction.readerClass,
     extractorVersion: CURRENT_EXTRACTOR,
     readFailed: extraction.readFailed,

@@ -479,6 +479,17 @@ export interface ResolvedRecord {
   citedBy: CitingPublishedVersion[];
 }
 
+/**
+ * A DOCUMENT's answer on the records route, as this frontend reads it TODAY — document step 34 (R85 Q-C). `resolve_record`
+ * answers a commitment with document flows §7's public block; drawing it is the frontend's own change (document plan
+ * :280–:282), so until then the kind and the commitment are narrowed and NOTHING else, and the page renders the RESERVED
+ * sentence (ui §26 :860–:861).
+ */
+export interface ReservedDocument {
+  kind: 'DOCUMENT';
+  commitment: string;
+}
+
 /** One capture's chain verdict, as `check_on_chain_status` reports it (A4 :1111–:1114). */
 export interface CaptureChainStatus {
   capture: string;

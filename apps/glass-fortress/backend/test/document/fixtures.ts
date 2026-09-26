@@ -130,8 +130,8 @@ export function shedRow(over: Partial<ShedRow> = {}): ShedRow {
 }
 
 /**
- * A content version. `text: null` is the bytes-only arm, where the hash EQUALS the docId
- * (A1 :1242-:1243).
+ * A content version. `text: null` is the bytes-only arm, where the hash EQUALS the document's COMMITMENT
+ * (A1 :1243 as CONFORMED 2026-09-26, R85 Q-G — never the docId).
  *
  * `derivedUnder` DEFAULTS TO THE ROW'S OWN `extractorVersion`, so a caller overriding one
  * gets a coherent row without naming the other — A2 :1300 (RULED 2026-09-23): the list is

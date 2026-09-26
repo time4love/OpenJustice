@@ -9,9 +9,7 @@ import { publishThesisHandler } from '../src/mcp/tools/publishThesis';
 import * as anchorDocuments from '../src/services/anchorDocuments';
 import * as documentStanding from '../src/services/documentStanding';
 import * as evidencePredicates from '../src/services/evidencePredicates';
-import type { DocumentVerification } from '../src/services/evidencePredicates';
 import * as publicationAssessor from '../src/services/publicationAssessor';
-import type { PublicationAssessorOutput } from '../src/services/publicationAssessor';
 import * as publicationEvaluation from '../src/services/publicationEvaluation';
 import { evaluatePublication, publishabilityOf, rowsOf, type PublicationEvaluation, type ThesisCheck } from '../src/services/publicationEvaluation';
 import type { RegistryWindow } from '../src/services/anchorSnapshots';
@@ -19,8 +17,9 @@ import { resetDouble, store, written, writtenViaTx } from './helpers/evidenceDou
 import { AUTHOR, THESIS, VERSION } from './thesis/fixtures';
 import { PASSING, seedPublishable } from './thesis/gateWorld';
 import { commitment as commitmentOf } from '../src/lib/documentIdentity';
-import { HELD_BEFORE, HELD_NOW, RECEIPT, seedHeld, seedSealed } from './document/citationWorld';
+import { HELD_BEFORE, HELD_NOW } from './document/citationWorld';
 import { mentionRow } from './thesis/rows';
+import { ASSESSED, asked, COMMITMENT, DOC_MENTION, QUOTE, seedCitingDocument } from './document/publicationWorld';
 import { actAs, answerOf, call, resetTools } from './thesis/tools';
 
 // ---------------------------------------------------------------------------
@@ -35,56 +34,6 @@ import { actAs, answerOf, call, resetTools } from './thesis/tools';
 // test. The gate world's diff citation is dropped because its record is modelled for the gate's STUBBED evidence half
 // (`test/thesis/gate.test.ts` :107) and not for VERIFIED's read of its captures.
 // ---------------------------------------------------------------------------
-
-const DOC_MENTION = 'mention-doc';
-/**
- * The document's REAL public name — `commitment(docId, salt)` over the citation world's row (`documentRow` :27–:43). That
- * world's `COMMITMENT` is a label, and RECOMPUTABLE(e)'s third arm (document A3 :1364) rightly refuses a row named by a
- * label: here the name is the one the row reproduces.
- */
-const COMMITMENT = commitmentOf(`0x${'d1'.repeat(32)}`, Buffer.alloc(32));
-const DEBATE = { id: 'debate-doc', status: 'PROMOTED', recordFileHash: COMMITMENT, thesisId: THESIS.id };
-
-/** The gate world, its head citing the document alone — argued, promoted, pinned at `pin`. */
-/** The span the head quotes by default — present in the citation world's computed text (`versionRow` :47–:58). */
-const QUOTE = 'הטקסט המחושב';
-
-async function seedCitingDocument(over: { pin?: string; sealed?: boolean; quotes?: readonly string[] } = {}): Promise<void> {
-  await seedPublishable();
-  if (over.sealed === true) seedSealed();
-  else seedHeld();
-  store.documents = store.documents.map((d) => ({ ...d, commitment: COMMITMENT }));
-  store.documentContentVersions = store.documentContentVersions.map((v) => ({ ...v, commitment: COMMITMENT }));
-  const pin = over.pin ?? (over.sealed === true ? RECEIPT : HELD_NOW);
-  store.evidenceRows = [
-    ...store.evidenceRows,
-    {
-      fileHash: COMMITMENT,
-      kind: 'DOCUMENT',
-      documentCommitment: COMMITMENT,
-      status: 'PROMOTED',
-      affirmedContentVersionHash: pin,
-      snapshotId: null,
-      snapshot: null,
-      urlVersionDiffId: null,
-      urlVersionDiff: null,
-    },
-  ];
-  const document = mentionRow(
-    { id: DOC_MENTION, versionId: VERSION.id, kind: 'DOCUMENT', name: COMMITMENT, contentVersionHash: pin, debateSessionId: DEBATE.id },
-    false,
-    DEBATE,
-  );
-  store.mentions = [document];
-  // Check 19 reads the paragraph that carries the token (debatePassage.passagesCiting), so the head's text carries it.
-  const quoted = (over.quotes ?? [QUOTE]).map((q) => `"${q}"`).join(' ');
-  store.versions = [{ ...VERSION, text: `הקוד קובע ${quoted} #doc_${COMMITMENT}.` }];
-}
-
-const asked = (answer: { verified: boolean } | { unread: string }): DocumentVerification => ({
-  asked: true,
-  byCommitment: new Map([[COMMITMENT, answer]]),
-});
 
 const rowOf = (rows: readonly ThesisCheck[], id: string): ThesisCheck => {
   // Compared as a STRING: a gate with no such row fails THIS case by name, never the file at compile time.
@@ -480,13 +429,3 @@ describe('Q15 — every cited document’s TITLE is handed to the publication as
   });
 });
 
-const ASSESSED: PublicationAssessorOutput = {
-  rationaleHasSubstance: true,
-  substanceGaps: [],
-  verdict: 'SUPPORTS',
-  objection: '',
-  names: [],
-  allegationsFramed: true,
-  allegationsNote: '',
-  assessment: 'הנימוק בעל ממש.',
-};

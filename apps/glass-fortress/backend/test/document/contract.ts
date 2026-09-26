@@ -287,8 +287,8 @@ export const WITHDRAW_ROUTE_REFUSALS = [
   'ALREADY_SHED',
 ] as const;
 
-/** A5 :1506 — the content serve. */
-export const CONTENT_SERVE_REFUSALS = ['NOT_PUBLIC', 'NOT_OPENED_TO', 'SHED'] as const;
+/** A5 :1506 — the content serve. NOT_PINNED since A5 :1506 as CONFORMED 2026-09-26 (R85 Q-H; declared at chunk 4b round 2). */
+export const CONTENT_SERVE_REFUSALS = ['NOT_PUBLIC', 'NOT_OPENED_TO', 'SHED', 'NOT_PINNED'] as const;
 
 /** A5 :1511 — the bytes serve; NOT_HELD because a sealed document has no bytes anywhere. */
 export const BYTES_SERVE_REFUSALS = ['NOT_PUBLIC', 'NOT_OPENED_TO', 'NOT_HELD', 'SHED'] as const;

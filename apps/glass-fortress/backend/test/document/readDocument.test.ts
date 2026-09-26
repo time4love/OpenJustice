@@ -166,7 +166,9 @@ beforeEach(() => {
   seedObject(AUDIO.docId, AUDIO.bytes);
   seedDocument({ docId: AUDIO.docId, commitment: AUDIO_COMMITMENT, bytes: AUDIO.docId, mimeType: AUDIO.mimeType, byteLength: AUDIO.byteLength, title: 'the interview' });
   seedArrival('res_1', AUDIO_COMMITMENT, new Date(Date.UTC(2026, 8, 22)));
-  seedVersion({ commitment: AUDIO_COMMITMENT, text: null, contentVersionHash: AUDIO.docId, derivedUnder: [CURRENT] });
+  // DECLARED EDIT, document step 34 (R85 Q-G; A1 :1243 as CONFORMED 2026-09-26): every bytes-only version this file
+  // seeds is named by its document's COMMITMENT — five seeds, written under the retired "= DOC_ID" rule.
+  seedVersion({ commitment: AUDIO_COMMITMENT, text: null, contentVersionHash: AUDIO_COMMITMENT, derivedUnder: [CURRENT] });
   // A SPREADSHEET whose reader FAILED — the corrupt-file world ruled 2026-09-23 (A2 :1300): accepted as bytes-only.
   seedDocument({ docId: '0x' + 'd6'.repeat(32), commitment: BROKEN_SHEET_COMMITMENT, bytes: '0x' + 'd6'.repeat(32), mimeType: SHEET.mimeType, title: 'the broken sheet' });
   seedArrival('res_1', BROKEN_SHEET_COMMITMENT, new Date(Date.UTC(2026, 8, 22, 1)));
@@ -360,7 +362,7 @@ describe('A4 :1425-:1426 as ruled 2026-09-23 (F1 ruling 2, §9 Q2) — TEXT LAST
     seedObject(scan.docId, scan.bytes);
     seedDocument({ docId: scan.docId, commitment, bytes: scan.docId, mimeType: scan.mimeType, byteLength: scan.byteLength, title: 'the photograph' });
     seedArrival('res_1', commitment);
-    seedVersion({ commitment, text: null, contentVersionHash: scan.docId, derivedUnder: [CURRENT] });
+    seedVersion({ commitment, text: null, contentVersionHash: commitment, derivedUnder: [CURRENT] });
     const { readDocument, imageFor } = (await reads()) as unknown as Reads & { imageFor: (answer: unknown) => Promise<{ mimeType: string } | null> };
     const held = await readDocument(commitment, 'res_1');
     const withText = await readDocument(HELD_COMMITMENT, 'res_1');
@@ -560,7 +562,7 @@ describe('A4 :1437-:1441 — describe_document, PAID, on the researcher’s word
     seedObject(docId, bytes);
     seedDocument({ docId, commitment: scan, bytes: docId, mimeType: 'application/pdf', byteLength: bytes.length, title: 'the scan' });
     seedArrival('res_1', scan);
-    seedVersion({ commitment: scan, text: null, contentVersionHash: docId, derivedUnder: [CURRENT] });
+    seedVersion({ commitment: scan, text: null, contentVersionHash: scan, derivedUnder: [CURRENT] });
     const { describeDocument } = await describe_();
     modelAnswer.value = { summary: 'a page', wholeAnswer: 'END' };
     await describeDocument(HELD_COMMITMENT, 'res_1');
@@ -662,7 +664,7 @@ describe('A4 :1440 as ruled 2026-09-23 — describe_document refuses TOO_LARGE a
     seedObject(docId, bytes);
     seedDocument({ docId, commitment, bytes: docId, mimeType: 'application/pdf', byteLength: bytes.length, title: 'the bound' });
     seedArrival('res_1', commitment);
-    seedVersion({ commitment, text: null, contentVersionHash: docId, derivedUnder: [CURRENT] });
+    seedVersion({ commitment, text: null, contentVersionHash: commitment, derivedUnder: [CURRENT] });
     const { describeDocument } = await describe_();
     modelAnswer.value = { summary: 'at the bound', wholeAnswer: 'END' };
     const answer = await describeDocument(commitment, 'res_1');
@@ -681,7 +683,7 @@ describe('A4 :1440 as ruled 2026-09-23 — describe_document refuses TOO_LARGE a
     // No bucket object is seeded: the refusal comes BEFORE the bucket read.
     seedDocument({ docId, commitment, bytes: docId, mimeType: 'image/png', byteLength: 50_000_001, title: 'the large photograph' });
     seedArrival('res_1', commitment);
-    seedVersion({ commitment, text: null, contentVersionHash: docId, derivedUnder: [CURRENT] });
+    seedVersion({ commitment, text: null, contentVersionHash: commitment, derivedUnder: [CURRENT] });
     const { describeDocument } = await describe_();
     modelAnswer.value = { summary: 'must not be reached', wholeAnswer: 'END' };
     const answer = await describeDocument(commitment, 'res_1');

@@ -792,7 +792,7 @@ export const FIXTURES: readonly Fixture[] = [
     groundTruth: '',
     proves:
       "§3 :284's fourth row, and the ONLY fixture that reaches NO_READER_FOR_TYPE: a type outside the " +
-      'reader table, text null, contentVersionHash EQUALS docId, every assertion UNCHECKED — counted as ' +
+      'reader table, text null, contentVersionHash EQUALS the commitment, every assertion UNCHECKED — counted as ' +
       'bytes-only, NEVER as a failure',
     bytes: noReaderWav,
   },

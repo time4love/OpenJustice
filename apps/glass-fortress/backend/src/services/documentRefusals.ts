@@ -45,17 +45,22 @@ export type DocumentToolCode =
 export type DocumentUploadCode = 'INVALID_BODY' | 'UNSUPPORTED_TYPE' | 'TOO_LARGE' | 'BUCKET_ABSENT' | 'STORAGE_UNAVAILABLE';
 
 /**
- * A5 :1506 — the CONTENT serve's codes. Until step 34 builds the opening, its public branch refuses NOT_PUBLIC for
- * every document (A5 :1505 as ruled 2026-09-24); NOT_OPENED_TO and SHED are named here because the contract names them.
+ * A5 :1506 — the CONTENT serve's codes: NOT_PUBLIC, SHED, NOT_OPENED_TO where OPENED(d) is PASSAGE (step 34), and
+ * NOT_PINNED where `?version` names no pin of an ever-published citation of d (A5 :1506 as CONFORMED 2026-09-26, R85 Q-H).
  */
-export type ContentServeCode = 'NOT_PUBLIC' | 'NOT_OPENED_TO' | 'SHED';
+export type ContentServeCode = 'NOT_PUBLIC' | 'NOT_OPENED_TO' | 'SHED' | 'NOT_PINNED';
 
-export interface DocumentRefusal<C extends DocumentToolCode | DocumentUploadCode | ContentServeCode = DocumentToolCode> {
+/** A5 :1511 — the BYTES serve's codes: the content serve's, below BYTES, and NOT_HELD for a sealed document (step 34). */
+export type BytesServeCode = 'NOT_PUBLIC' | 'NOT_OPENED_TO' | 'NOT_HELD' | 'SHED';
+
+type AnyDocumentCode = DocumentToolCode | DocumentUploadCode | ContentServeCode | BytesServeCode;
+
+export interface DocumentRefusal<C extends AnyDocumentCode = DocumentToolCode> {
   error: string;
   code: C;
 }
 
-export function documentRefusal<C extends DocumentToolCode | DocumentUploadCode | ContentServeCode>(code: C, error: string): DocumentRefusal<C> {
+export function documentRefusal<C extends AnyDocumentCode>(code: C, error: string): DocumentRefusal<C> {
   return { error, code };
 }
 
